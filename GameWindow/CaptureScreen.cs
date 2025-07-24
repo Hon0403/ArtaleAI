@@ -11,7 +11,7 @@ using Windows.Graphics.DirectX;
 using Windows.Graphics.DirectX.Direct3D11;
 using WinRT;
 
-namespace ArtaleAI.Capture
+namespace ArtaleAI.GameWindow
 {
     [ComImport]
     [Guid("A9B3D012-3DF2-4EE3-B8D1-8695F457D3C1")]
@@ -45,7 +45,7 @@ namespace ArtaleAI.Capture
 
             _session = _framePool.CreateCaptureSession(item);
             _lastSize = item.Size;
-            _session.StartCapture(); // ✅ 自動開始捕捉
+            _session.StartCapture();
         }
 
         public Bitmap? TryGetNextFrame()
@@ -53,7 +53,7 @@ namespace ArtaleAI.Capture
             using var frame = _framePool.TryGetNextFrame();
             if (frame == null) return null;
 
-            // ✅ 簡化：只在尺寸真的改變時才重建
+            // 只在尺寸真的改變時才重建
             if (frame.ContentSize.Width != _lastSize.Width || frame.ContentSize.Height != _lastSize.Height)
             {
                 _lastSize = frame.ContentSize;
@@ -67,7 +67,7 @@ namespace ArtaleAI.Capture
             return ConvertToBitmap(frame);
         }
 
-        // ✅ 簡化的位圖轉換方法
+        // 簡化的位圖轉換方法
         private Bitmap ConvertToBitmap(Direct3D11CaptureFrame frame)
         {
             using var sourceTexture = GetSharpDXTexture2D(frame.Surface);
@@ -85,7 +85,7 @@ namespace ArtaleAI.Capture
             var boundsRect = new Rectangle(0, 0, desc.Width, desc.Height);
             var mapDest = bitmap.LockBits(boundsRect, ImageLockMode.WriteOnly, bitmap.PixelFormat);
 
-            // ✅ 優化：檢查是否可以一次複製全部
+            // 檢查是否可以一次複製全部
             if (dataBox.RowPitch == mapDest.Stride)
             {
                 Utilities.CopyMemory(mapDest.Scan0, dataBox.DataPointer, desc.Height * dataBox.RowPitch);
@@ -114,7 +114,7 @@ namespace ArtaleAI.Capture
         private static IDirect3DDevice CreateDirect3DDevice(SharpDX.DXGI.Device dxgiDevice)
         {
             CreateDirect3D11DeviceFromDXGIDevice(dxgiDevice.NativePointer, out var d3dDevicePtr);
-            var d3dDevice = MarshalInterface<IDirect3DDevice>.FromAbi(d3dDevicePtr);
+            var d3dDevice = MarshalInspectable<IDirect3DDevice>.FromAbi(d3dDevicePtr);
             Marshal.Release(d3dDevicePtr);
             return d3dDevice;
         }

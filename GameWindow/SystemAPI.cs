@@ -1,17 +1,17 @@
 ﻿using System.Runtime.InteropServices;
 
 
-namespace ArtaleAI.Utils
+namespace ArtaleAI.GameWindow
 {
 
-    public static class NativeMethods
+    public static class SystemAPI
     {
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern IntPtr FindWindow(string? lpClassName, string lpWindowName);
+        public static extern nint FindWindow(string? lpClassName, string lpWindowName);
 
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+        public static extern bool GetWindowRect(nint hWnd, out RECT lpRect);
 
         [StructLayout(LayoutKind.Sequential)]
         public struct RECT

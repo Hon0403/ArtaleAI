@@ -11,8 +11,6 @@ namespace ArtaleAI
         [STAThread]
         static void Main()
         {
-            // 初始化 COM，確保正確的公寓模式
-            System.Threading.Thread.CurrentThread.SetApartmentState(System.Threading.ApartmentState.STA);
 
             // 啟用視覺樣式
             Application.EnableVisualStyles();
@@ -21,7 +19,7 @@ namespace ArtaleAI
             Application.SetCompatibleTextRenderingDefault(false);
 
             // 執行主表單
-            Application.Run(new Form1());
+            Application.Run(new MainForm());
         }
     }
 }

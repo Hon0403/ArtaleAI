@@ -1,13 +1,13 @@
-﻿using ArtaleAI.Configuration;
+﻿using ArtaleAI.Config;
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Windows.Graphics.Capture;
 using WinRT;
 
-namespace ArtaleAI.Capture
+namespace ArtaleAI.GameWindow
 {
-    public static class CaptureHelper
+    public static class WindowFinder
     {
         [ComImport]
         [Guid("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356")]
@@ -30,9 +30,9 @@ namespace ArtaleAI.Capture
         [DllImport("combase.dll")]
         private static extern int WindowsDeleteString(IntPtr hstring);
 
-        // ✅ 精簡版：移除多餘的驗證和詳細日誌
         public static GraphicsCaptureItem? TryCreateItemForWindow(string windowTitle, Action<string>? progressReporter = null)
         {
+            // 直接使用 FindWindow，不再有命名衝突
             var hwnd = FindWindow(null, windowTitle);
             if (hwnd == IntPtr.Zero) return null;
 
@@ -51,7 +51,8 @@ namespace ArtaleAI.Capture
                 var createResult = factory.CreateForWindow(hwnd, ref item_iid, out var item_ptr);
                 if (createResult != 0 || item_ptr == IntPtr.Zero) return null;
 
-                var item = MarshalInterface<GraphicsCaptureItem>.FromAbi(item_ptr);
+                // 確保使用正確的 WinRT 轉換方式
+                var item = MarshalInspectable<GraphicsCaptureItem>.FromAbi(item_ptr);
                 Marshal.Release(item_ptr);
                 return item;
             }
@@ -61,31 +62,39 @@ namespace ArtaleAI.Capture
             }
         }
 
-        // ✅ 精簡版：只保留核心功能
         public static GraphicsCaptureItem? TryCreateItemWithFallback(AppConfig config, Action<string>? progressReporter = null)
         {
-            progressReporter?.Invoke("正在連接遊戲視窗...");
+            progressReporter?.Invoke("=== 開始自動尋找視窗 ===");
+            progressReporter?.Invoke($"預設視窗標題: '{config.General.GameWindowTitle}'");
+            progressReporter?.Invoke($"上次記錄視窗: '{config.General.LastSelectedWindowName}'");
+            progressReporter?.Invoke($"上次記錄程序: '{config.General.LastSelectedProcessName}'");
 
-            // 1. 嘗試預設視窗標題
-            var item = TryCreateItemForWindow(config.General.GameWindowTitle);
+            // 1. 優先嘗試原本的視窗標題
+            var item = TryCreateItemForWindow(config.General.GameWindowTitle, progressReporter);
             if (item != null)
             {
-                progressReporter?.Invoke("✅ 視窗連接成功");
+                progressReporter?.Invoke($"使用預設視窗標題找到: {config.General.GameWindowTitle}");
                 return item;
             }
+            progressReporter?.Invoke($"預設視窗標題找不到: {config.General.GameWindowTitle}");
 
-            // 2. 嘗試記憶的視窗名稱
+            // 2. 嘗試上次成功的視窗名稱
             if (!string.IsNullOrEmpty(config.General.LastSelectedWindowName))
             {
-                item = TryCreateItemForWindow(config.General.LastSelectedWindowName);
+                item = TryCreateItemForWindow(config.General.LastSelectedWindowName, progressReporter);
                 if (item != null)
                 {
-                    progressReporter?.Invoke("✅ 視窗連接成功");
+                    progressReporter?.Invoke($"使用上次記錄的視窗: {config.General.LastSelectedWindowName}");
                     return item;
                 }
+                progressReporter?.Invoke($"上次記錄視窗找不到: {config.General.LastSelectedWindowName}");
+            }
+            else
+            {
+                progressReporter?.Invoke("上次記錄視窗名稱為空");
             }
 
-            // 3. 嘗試透過程序查找
+            // 3. 嘗試透過程序名稱查找
             if (!string.IsNullOrEmpty(config.General.LastSelectedProcessName))
             {
                 try
@@ -95,19 +104,22 @@ namespace ArtaleAI.Capture
                     {
                         if (process.MainWindowHandle != IntPtr.Zero && !string.IsNullOrEmpty(process.MainWindowTitle))
                         {
-                            item = TryCreateItemForWindow(process.MainWindowTitle);
+                            item = TryCreateItemForWindow(process.MainWindowTitle, progressReporter);
                             if (item != null)
                             {
-                                progressReporter?.Invoke("✅ 視窗連接成功");
+                                progressReporter?.Invoke($"透過程序名稱找到視窗: {config.General.LastSelectedProcessName}");
                                 return item;
                             }
                         }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    progressReporter?.Invoke($"透過程序名稱查找失敗: {ex.Message}");
+                }
             }
 
-            progressReporter?.Invoke("❌ 自動連接失敗，需要手動選擇");
+            progressReporter?.Invoke("所有自動方式都失敗，需要手動選擇");
             return null;
         }
     }

@@ -1,16 +1,16 @@
 ﻿using OpenCvSharp;
 using OpenCvSharp.Extensions;
 using System.Drawing;
-using ArtaleAI.Configuration;
+using ArtaleAI.Config;
 
-namespace ArtaleAI.Processing
+namespace ArtaleAI.Minimap
 {
-    public class MinimapProcessor : IDisposable
+    public class DetectMap : IDisposable
     {
         private readonly AppConfig _config;
         private readonly Dictionary<string, Mat> _templates;
 
-        public MinimapProcessor(AppConfig config)
+        public DetectMap(AppConfig config)
         {
             _config = config;
             _templates = new Dictionary<string, Mat>();
@@ -43,11 +43,11 @@ namespace ArtaleAI.Processing
                     {
                         _templates[kvp.Key] = Cv2.ImRead(kvp.Value.Path, ImreadModes.Color);
                     }
-                    Console.WriteLine($"✅ 已載入模板: {kvp.Key} (通道數: {_templates[kvp.Key].Channels()})");
+                    Console.WriteLine($"已載入模板: {kvp.Key} (通道數: {_templates[kvp.Key].Channels()})");
                 }
                 else
                 {
-                    Console.WriteLine($"❌ 找不到模板: {kvp.Key} - {kvp.Value.Path}");
+                    Console.WriteLine($"找不到模板: {kvp.Key} - {kvp.Value.Path}");
                 }
             }
         }

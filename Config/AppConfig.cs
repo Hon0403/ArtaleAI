@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using YamlDotNet.Serialization;
 
-namespace ArtaleAI.Configuration
+namespace ArtaleAI.Config
 {
     public class AppConfig
     {

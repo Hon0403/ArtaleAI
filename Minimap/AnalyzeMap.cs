@@ -1,6 +1,5 @@
-﻿using ArtaleAI.Capture;
-using ArtaleAI.Configuration;
-using ArtaleAI.Processing;
+﻿using ArtaleAI.GameWindow;
+using ArtaleAI.Config;
 using System;
 using System.Diagnostics;
 using System.Drawing;
@@ -9,7 +8,7 @@ using System.Threading.Tasks;
 using Windows.Graphics.Capture;
 using WinRT.Interop;
 
-namespace ArtaleAI.Services
+namespace ArtaleAI.Minimap
 {
     /// <summary>
     /// 用於打包小地圖快照及其分析結果的資料結構。
@@ -24,7 +23,7 @@ namespace ArtaleAI.Services
     /// <summary>
     /// 提供與小地圖相關的服務，例如擷取快照並分析。
     /// </summary>
-    public static class MinimapService
+    public static class AnalyzeMap
     {
         /// <summary>
         /// 執行一次性的螢幕捕捉，智慧偵測、裁切小地圖，並分析玩家位置。
@@ -35,20 +34,20 @@ namespace ArtaleAI.Services
         /// <param name="progressReporter">用於回報進度訊息的委派。</param>
         /// <returns>一個包含小地圖快照和分析數據的 MinimapSnapshotResult 物件。</returns>
         /// <exception cref="Exception">當發生無法處理的錯誤時拋出。</exception>
-        public static async Task<MinimapSnapshotResult?> GetSnapshotAsync(IntPtr windowHandle, AppConfig config, GraphicsCaptureItem? selectedItem, Action<string>? progressReporter)
+        public static async Task<MinimapSnapshotResult?> GetSnapshotAsync(nint windowHandle, AppConfig config, GraphicsCaptureItem? selectedItem, Action<string>? progressReporter)
         {
             GraphicsCapturer? capturer = null;
-            MinimapProcessor? minimapProcessor = null;
+            DetectMap? minimapProcessor = null;
 
             try
             {
-                minimapProcessor = new MinimapProcessor(config);
+                minimapProcessor = new DetectMap(config);
 
                 // 1. 尋找或確認捕捉目標
                 if (selectedItem == null)
                 {
                     progressReporter?.Invoke("正在嘗試自動找到遊戲視窗...");
-                    selectedItem = CaptureHelper.TryCreateItemWithFallback(config, progressReporter);
+                    selectedItem = WindowFinder.TryCreateItemWithFallback(config, progressReporter);
 
                     if (selectedItem == null)
                     {
@@ -60,14 +59,14 @@ namespace ArtaleAI.Services
                         if (selectedItem != null)
                         {
                             await SaveWindowSelection(selectedItem, config, progressReporter);
-                            progressReporter?.Invoke($"✅ 已記住選擇: {selectedItem.DisplayName}");
+                            progressReporter?.Invoke($"已記住選擇: {selectedItem.DisplayName}");
                         }
                     }
                 }
 
                 if (selectedItem == null)
                 {
-                    progressReporter?.Invoke("❌ 未選擇視窗");
+                    progressReporter?.Invoke("未選擇視窗");
                     return null;
                 }
 
@@ -79,7 +78,7 @@ namespace ArtaleAI.Services
                 {
                     if (fullFrame == null)
                     {
-                        progressReporter?.Invoke("❌ 無法擷取畫面");
+                        progressReporter?.Invoke("無法擷取畫面");
                         return null;
                     }
 
@@ -87,7 +86,7 @@ namespace ArtaleAI.Services
                     var minimapRect = minimapProcessor.FindMinimapOnScreen(fullFrame);
                     if (!minimapRect.HasValue)
                     {
-                        progressReporter?.Invoke("❌ 找不到小地圖");
+                        progressReporter?.Invoke("找不到小地圖");
                         throw new Exception("無法偵測到小地圖區域");
                     }
 
@@ -112,32 +111,48 @@ namespace ArtaleAI.Services
         }
 
         /// <summary>
-        /// 將使用者手動選擇的視窗資訊保存到設定檔中。
+        /// 保存用戶手動選擇的視窗資訊（視窗記憶功能的核心組件）
         /// </summary>
         private static async Task SaveWindowSelection(GraphicsCaptureItem item, AppConfig config, Action<string>? progressReporter)
         {
             try
             {
+                progressReporter?.Invoke("正在保存視窗選擇到記憶中...");
+
+                // 保存視窗名稱
                 config.General.LastSelectedWindowName = item.DisplayName;
 
-                // 嘗試找到與視窗標題匹配的程序
-                var process = Process.GetProcesses()
-                    .Where(p => !string.IsNullOrEmpty(p.MainWindowTitle) && p.MainWindowTitle == item.DisplayName)
-                    .FirstOrDefault();
-
-                if (process != null)
+                // 嘗試獲取對應的程序資訊作為備用恢復方式
+                try
                 {
-                    config.General.LastSelectedProcessName = process.ProcessName;
-                    config.General.LastSelectedProcessId = process.Id;
+                    var process = Process.GetProcesses()
+                        .Where(p => !string.IsNullOrEmpty(p.MainWindowTitle) &&
+                                   p.MainWindowTitle == item.DisplayName)
+                        .FirstOrDefault();
+
+                    if (process != null)
+                    {
+                        config.General.LastSelectedProcessName = process.ProcessName;
+                        config.General.LastSelectedProcessId = process.Id;
+                        progressReporter?.Invoke($"已記錄程序資訊: {process.ProcessName}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    progressReporter?.Invoke($"程序資訊獲取失敗: {ex.Message}");
+                    // 不影響主要功能，繼續執行
                 }
 
-                ConfigManager.SaveConfig(config);
+                // 持久化到配置檔案
+                ConfigSaver.SaveConfig(config);
+                progressReporter?.Invoke("視窗記憶已保存，下次啟動將自動連接");
             }
             catch (Exception ex)
             {
-                progressReporter?.Invoke($"❌ 保存視窗選擇時發生錯誤: {ex.Message}");
-                // 靜默處理儲存失敗，不影響主流程
+                progressReporter?.Invoke($"保存視窗選擇時發生錯誤: {ex.Message}");
+                // 不重新拋出異常，因為這不應該影響主要的捕捉功能
             }
         }
+
     }
 }
