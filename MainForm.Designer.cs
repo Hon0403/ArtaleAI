@@ -50,7 +50,6 @@
             radioButton2 = new RadioButton();
             radioButton1 = new RadioButton();
             groupBox2 = new GroupBox();
-            pictureBoxZoom = new PictureBox();
             labelZoomFactor = new Label();
             numericUpDownZoom = new NumericUpDown();
             groupBox1 = new GroupBox();
@@ -68,7 +67,6 @@
             groupBox4.SuspendLayout();
             groupBox3.SuspendLayout();
             groupBox2.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)pictureBoxZoom).BeginInit();
             ((System.ComponentModel.ISupportInitialize)numericUpDownZoom).BeginInit();
             groupBox1.SuspendLayout();
             panel3.SuspendLayout();
@@ -177,8 +175,8 @@
             groupBox4.Controls.Add(label1);
             groupBox4.Controls.Add(hScrollBar2);
             groupBox4.Controls.Add(hScrollBar1);
-            groupBox4.Dock = DockStyle.Bottom;
-            groupBox4.Location = new Point(0, 227);
+            groupBox4.Dock = DockStyle.Top;
+            groupBox4.Location = new Point(0, 297);
             groupBox4.Name = "groupBox4";
             groupBox4.Size = new Size(198, 106);
             groupBox4.TabIndex = 4;
@@ -235,8 +233,8 @@
             groupBox3.Controls.Add(radioButton3);
             groupBox3.Controls.Add(radioButton2);
             groupBox3.Controls.Add(radioButton1);
-            groupBox3.Dock = DockStyle.Bottom;
-            groupBox3.Location = new Point(0, 333);
+            groupBox3.Dock = DockStyle.Top;
+            groupBox3.Location = new Point(0, 184);
             groupBox3.Name = "groupBox3";
             groupBox3.Size = new Size(198, 113);
             groupBox3.TabIndex = 3;
@@ -300,32 +298,22 @@
             // 
             // groupBox2
             // 
-            groupBox2.Controls.Add(pictureBoxZoom);
+            groupBox2.AutoSize = true;
             groupBox2.Controls.Add(labelZoomFactor);
             groupBox2.Controls.Add(numericUpDownZoom);
-            groupBox2.Location = new Point(1, 3);
+            groupBox2.Dock = DockStyle.Top;
+            groupBox2.Location = new Point(0, 108);
             groupBox2.Name = "groupBox2";
-            groupBox2.Size = new Size(200, 224);
+            groupBox2.Size = new Size(198, 76);
             groupBox2.TabIndex = 2;
             groupBox2.TabStop = false;
             groupBox2.Text = "放大鏡";
             // 
-            // pictureBoxZoom
-            // 
-            pictureBoxZoom.BorderStyle = BorderStyle.FixedSingle;
-            pictureBoxZoom.Dock = DockStyle.Top;
-            pictureBoxZoom.Location = new Point(3, 19);
-            pictureBoxZoom.Name = "pictureBoxZoom";
-            pictureBoxZoom.Size = new Size(194, 170);
-            pictureBoxZoom.SizeMode = PictureBoxSizeMode.StretchImage;
-            pictureBoxZoom.TabIndex = 1;
-            pictureBoxZoom.TabStop = false;
-            pictureBoxZoom.Paint += pictureBoxZoom_Paint;
-            // 
             // labelZoomFactor
             // 
+            labelZoomFactor.AutoSize = true;
             labelZoomFactor.Font = new Font("Microsoft JhengHei UI", 9F, FontStyle.Bold, GraphicsUnit.Point, 136);
-            labelZoomFactor.Location = new Point(3, 197);
+            labelZoomFactor.Location = new Point(3, 33);
             labelZoomFactor.Name = "labelZoomFactor";
             labelZoomFactor.Size = new Size(58, 15);
             labelZoomFactor.TabIndex = 0;
@@ -333,7 +321,8 @@
             // 
             // numericUpDownZoom
             // 
-            numericUpDownZoom.Location = new Point(67, 195);
+            numericUpDownZoom.AutoSize = true;
+            numericUpDownZoom.Location = new Point(67, 31);
             numericUpDownZoom.Maximum = new decimal(new int[] { 20, 0, 0, 0 });
             numericUpDownZoom.Minimum = new decimal(new int[] { 2, 0, 0, 0 });
             numericUpDownZoom.Name = "numericUpDownZoom";
@@ -347,8 +336,8 @@
             groupBox1.Controls.Add(btn_create);
             groupBox1.Controls.Add(btn_save);
             groupBox1.Controls.Add(comboBox1);
-            groupBox1.Dock = DockStyle.Bottom;
-            groupBox1.Location = new Point(0, 446);
+            groupBox1.Dock = DockStyle.Top;
+            groupBox1.Location = new Point(0, 0);
             groupBox1.Name = "groupBox1";
             groupBox1.Size = new Size(198, 108);
             groupBox1.TabIndex = 0;
@@ -406,13 +395,13 @@
             pictureBoxMinimap.MouseLeave += pictureBoxMinimap_MouseLeave;
             pictureBoxMinimap.MouseMove += pictureBoxMinimap_MouseMove;
             // 
-            // Form1
+            // MainForm
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(807, 588);
             Controls.Add(tabControl1);
-            Name = "Form1";
+            Name = "MainForm";
             Text = "Form1";
             panel1.ResumeLayout(false);
             panel1.PerformLayout();
@@ -428,7 +417,7 @@
             groupBox3.ResumeLayout(false);
             groupBox3.PerformLayout();
             groupBox2.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)pictureBoxZoom).EndInit();
+            groupBox2.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)numericUpDownZoom).EndInit();
             groupBox1.ResumeLayout(false);
             groupBox1.PerformLayout();
@@ -453,7 +442,6 @@
         private System.Windows.Forms.Panel panel3;
         private System.Windows.Forms.GroupBox groupBox1;
         private System.Windows.Forms.ComboBox comboBox1;
-        private System.Windows.Forms.PictureBox pictureBoxZoom;
         private System.Windows.Forms.NumericUpDown numericUpDownZoom;
         private Label labelZoomFactor;
         private GroupBox groupBox2;

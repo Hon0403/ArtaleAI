@@ -16,16 +16,111 @@ namespace ArtaleAI
         private AppConfig _config;
         private readonly EditorMinimap _editorMinimap = new();
 
+        // ✅ 新增：浮動放大鏡相關變數
+        private Form? _zoomWindow;
+        private PictureBox? _floatingZoomBox;
+
         public MainForm()
         {
             InitializeComponent();
-
-            // ★ 步驟 1: 程式啟動時載入設定檔
             LoadConfiguration();
-
-            // ★ 步驟 2: 綁定事件
             tabControl1.SelectedIndexChanged += TabControl1_SelectedIndexChanged;
-            numericUpDownZoom.ValueChanged += numericUpDownZoom_ValueChanged; // 綁定儲存事件
+            numericUpDownZoom.ValueChanged += numericUpDownZoom_ValueChanged;
+
+            InitializeFloatingMagnifier();
+        }
+
+        /// <summary>
+        /// 初始化浮動放大鏡視窗
+        /// </summary>
+        private void InitializeFloatingMagnifier()
+        {
+            _zoomWindow = new Form
+            {
+                FormBorderStyle = FormBorderStyle.None,
+                TopMost = true,
+                ShowInTaskbar = false,
+                Size = new Size(150, 150),
+                BackColor = Color.White,
+                Visible = false
+            };
+
+            _floatingZoomBox = new PictureBox
+            {
+                Dock = DockStyle.Fill,
+                SizeMode = PictureBoxSizeMode.StretchImage,
+                BorderStyle = BorderStyle.FixedSingle
+            };
+
+            _zoomWindow.Controls.Add(_floatingZoomBox);
+            _floatingZoomBox.Paint += FloatingZoomBox_Paint;
+        }
+
+        /// <summary>
+        /// 繪製浮動放大鏡的十字準線
+        /// </summary>
+        private void FloatingZoomBox_Paint(object sender, PaintEventArgs e)
+        {
+            if (_floatingZoomBox?.Image == null) return;
+
+            var g = e.Graphics;
+            int w = _floatingZoomBox.Width;
+            int h = _floatingZoomBox.Height;
+
+            using (var pen = new Pen(Color.Red, 2))
+            {
+                g.DrawLine(pen, w / 2, 0, w / 2, h);
+                g.DrawLine(pen, 0, h / 2, w, h / 2);
+            }
+
+            using (var borderPen = new Pen(Color.Black, 1))
+            {
+                g.DrawRectangle(borderPen, 0, 0, w - 1, h - 1);
+            }
+        }
+
+        /// <summary>
+        /// 更新跟隨滑鼠的放大鏡
+        /// </summary>
+        private void UpdateFloatingMagnifier(Point mouseLocation)
+        {
+            if (_zoomWindow == null || _floatingZoomBox == null) return;
+
+            decimal zoomFactor = numericUpDownZoom.Value;
+
+            if (pictureBoxMinimap.Image == null || zoomFactor <= 0)
+            {
+                _zoomWindow.Visible = false;
+                return;
+            }
+
+            var zoomedImage = _editorMinimap.CreateZoomImage(
+                (Bitmap)pictureBoxMinimap.Image,
+                mouseLocation,
+                pictureBoxMinimap,
+                _floatingZoomBox.Size,
+                zoomFactor);
+
+            if (zoomedImage != null)
+            {
+                _floatingZoomBox.Image?.Dispose();
+                _floatingZoomBox.Image = zoomedImage;
+
+                var screenPoint = pictureBoxMinimap.PointToScreen(mouseLocation);
+                var magnifierPosition = new Point(
+                    screenPoint.X + 20,
+                    screenPoint.Y + 20
+                );
+
+                var screen = Screen.FromPoint(screenPoint);
+                if (magnifierPosition.X + _zoomWindow.Width > screen.WorkingArea.Right)
+                    magnifierPosition.X = screenPoint.X - _zoomWindow.Width - 20;
+                if (magnifierPosition.Y + _zoomWindow.Height > screen.WorkingArea.Bottom)
+                    magnifierPosition.Y = screenPoint.Y - _zoomWindow.Height - 20;
+
+                _zoomWindow.Location = magnifierPosition;
+                _zoomWindow.Visible = true;
+            }
         }
 
         /// <summary>
@@ -37,22 +132,20 @@ namespace ArtaleAI
             {
                 _config = ConfigLoader.LoadConfig();
                 // ★ 將設定檔中的值，設定到 UI 控制項上
-                // 使用 try-catch 避免設定值超出控制項範圍
                 try
                 {
                     numericUpDownZoom.Value = _config.General.ZoomFactor;
                 }
                 catch (ArgumentOutOfRangeException)
                 {
-                    // 如果設定檔的值無效，則使用控制項的預設值
                     _config.General.ZoomFactor = numericUpDownZoom.Value;
-                    ConfigSaver.SaveConfig(_config); // 並回存
+                    ConfigSaver.SaveConfig(_config);
                 }
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"讀取設定檔失敗: {ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                _config = new AppConfig(); // 若失敗，則使用預設設定
+                _config = new AppConfig();
             }
         }
 
@@ -64,7 +157,7 @@ namespace ArtaleAI
             if (_config != null)
             {
                 _config.General.ZoomFactor = numericUpDownZoom.Value;
-                ConfigSaver.SaveConfig(_config); // 即時儲存變更
+                ConfigSaver.SaveConfig(_config);
             }
         }
 
@@ -94,18 +187,17 @@ namespace ArtaleAI
                     }));
                 };
 
-                // ✅ 直接使用原有的返回類型
                 var result = await _editorMinimap.LoadSnapshotAsync(this.Handle, _config, reporter);
 
                 if (result?.MinimapImage != null && result.CaptureItem != null)
                 {
                     pictureBoxMinimap.Image?.Dispose();
                     pictureBoxMinimap.Image = result.MinimapImage;
-                    textBox1.AppendText("小地圖快照載入成功。\r\n");
+                    textBox1.AppendText("✅ 小地圖快照載入成功。\r\n");
                 }
                 else
                 {
-                    textBox1.AppendText("小地圖載入操作已取消或失敗。\r\n");
+                    textBox1.AppendText("⚠️ 小地圖載入操作已取消或失敗。\r\n");
                 }
             }
             catch (Exception ex)
@@ -119,117 +211,38 @@ namespace ArtaleAI
             }
         }
 
-
-        /// <summary>
-        /// 更新放大鏡的顯示內容。
-        /// </summary>
-        private void UpdateZoomBox(Point mouseLocation)
-        {
-            // ★ 此處邏輯不變，直接讀取 numericUpDownZoom 的值即可
-            // 因為它的值已經和設定檔同步
-            decimal zoomFactor = numericUpDownZoom.Value;
-
-            if (pictureBoxMinimap.Image == null || zoomFactor <= 0)
-            {
-                pictureBoxZoom.Visible = false;
-                return;
-            }
-
-            pictureBoxZoom.Visible = true;
-            Point? originalImagePoint = PointToImage(pictureBoxMinimap, mouseLocation);
-            if (!originalImagePoint.HasValue) return;
-
-            int zoomWidth = (int)(pictureBoxZoom.Width / zoomFactor);
-            int zoomHeight = (int)(pictureBoxZoom.Height / zoomFactor);
-
-            var cropRect = new Rectangle(
-                originalImagePoint.Value.X - zoomWidth / 2,
-                originalImagePoint.Value.Y - zoomHeight / 2,
-                zoomWidth,
-                zoomHeight);
-
-            var zoomedBitmap = new Bitmap(pictureBoxZoom.Width, pictureBoxZoom.Height);
-            using (var g = Graphics.FromImage(zoomedBitmap))
-            {
-                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                g.DrawImage(pictureBoxMinimap.Image, new Rectangle(0, 0, zoomedBitmap.Width, zoomedBitmap.Height), cropRect, GraphicsUnit.Pixel);
-            }
-
-            pictureBoxZoom.Image?.Dispose();
-            pictureBoxZoom.Image = zoomedBitmap;
-        }
-
-        private void pictureBoxZoom_Paint(object sender, PaintEventArgs e)
-        {
-            if (pictureBoxZoom.Image == null) return;
-            var g = e.Graphics;
-            int w = pictureBoxZoom.ClientSize.Width;
-            int h = pictureBoxZoom.ClientSize.Height;
-            using (var pen = new Pen(Color.Red, 1))
-            {
-                g.DrawLine(pen, w / 2, 0, w / 2, h);
-                g.DrawLine(pen, 0, h / 2, w, h / 2);
-            }
-        }
-
         private void pictureBoxMinimap_MouseLeave(object sender, EventArgs e)
         {
-            pictureBoxZoom.Visible = false;
+            _zoomWindow?.Hide();  // 隱藏浮動放大鏡
         }
 
         private void pictureBoxMinimap_MouseMove(object sender, MouseEventArgs e)
         {
-            UpdateZoomBox(e.Location);
+            UpdateFloatingMagnifier(e.Location);  // 使用新的浮動放大鏡
         }
 
         private void pictureBoxMinimap_MouseClick(object sender, MouseEventArgs e)
         {
-            Point? originalImagePoint = PointToImage(pictureBoxMinimap, e.Location);
+            // 使用 EditorMinimap 的座標轉換方法
+            Point? originalImagePoint = _editorMinimap.ConvertToImageCoordinates(pictureBoxMinimap, e.Location);
             if (!originalImagePoint.HasValue) return;
+
             textBox1.AppendText($"📍 已在原始圖片座標 ({originalImagePoint.Value.X}, {originalImagePoint.Value.Y}) 新增路徑點。\r\n");
+
             using (var g = pictureBoxMinimap.CreateGraphics())
             {
-                Point displayPoint = ImageToPoint(pictureBoxMinimap, originalImagePoint.Value);
+                Point displayPoint = _editorMinimap.ConvertToDisplayCoordinates(pictureBoxMinimap, originalImagePoint.Value);
                 g.FillEllipse(Brushes.Aqua, displayPoint.X - 4, displayPoint.Y - 4, 8, 8);
             }
         }
 
-        private Point? PointToImage(PictureBox pb, Point point)
+        /// <summary>
+        /// 資源清理
+        /// </summary>
+        protected override void OnFormClosed(FormClosedEventArgs e)
         {
-            if (pb.Image == null) return null;
-            var clientSize = pb.ClientSize;
-            var imageSize = pb.Image.Size;
-            float ratioX = (float)clientSize.Width / imageSize.Width;
-            float ratioY = (float)clientSize.Height / imageSize.Height;
-            float ratio = Math.Min(ratioX, ratioY);
-            int displayWidth = (int)(imageSize.Width * ratio);
-            int displayHeight = (int)(imageSize.Height * ratio);
-            int offsetX = (clientSize.Width - displayWidth) / 2;
-            int offsetY = (clientSize.Height - displayHeight) / 2;
-            var displayRect = new Rectangle(offsetX, offsetY, displayWidth, displayHeight);
-            if (!displayRect.Contains(point)) return null;
-            float imageX = point.X - offsetX;
-            float imageY = point.Y - offsetY;
-            float originalX = imageX / ratio;
-            float originalY = imageY / ratio;
-            return new Point((int)originalX, (int)originalY);
-        }
-
-        private Point ImageToPoint(PictureBox pb, Point imagePoint)
-        {
-            if (pb.Image == null) return Point.Empty;
-            var clientSize = pb.ClientSize;
-            var imageSize = pb.Image.Size;
-            float ratioX = (float)clientSize.Width / imageSize.Width;
-            float ratioY = (float)clientSize.Height / imageSize.Height;
-            float ratio = Math.Min(ratioX, ratioY);
-            int displayWidth = (int)(imageSize.Width * ratio);
-            int displayHeight = (int)(imageSize.Height * ratio);
-            int offsetX = (clientSize.Width - displayWidth) / 2;
-            int offsetY = (clientSize.Height - displayHeight) / 2;
-            int controlX = (int)(imagePoint.X * ratio) + offsetX;
-            int controlY = (int)(imagePoint.Y * ratio) + offsetY;
-            return new Point(controlX, controlY);
+            _zoomWindow?.Dispose();
+            base.OnFormClosed(e);
         }
     }
 }
