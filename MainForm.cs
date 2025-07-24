@@ -1,4 +1,6 @@
-﻿using ArtaleAI.Configuration;
+﻿using ArtaleAI.Config;
+using ArtaleAI.GameWindow;
+using ArtaleAI.Minimap;
 using ArtaleAI.Services;
 using System;
 using System.Drawing;
@@ -9,12 +11,12 @@ using Windows.Graphics.Capture;
 
 namespace ArtaleAI
 {
-    public partial class Form1 : Form
+    public partial class MainForm : Form
     {
         private AppConfig _config;
-        private GraphicsCaptureItem? _selectedCaptureItem;
+        private readonly EditorMinimap _editorMinimap = new();
 
-        public Form1()
+        public MainForm()
         {
             InitializeComponent();
 
@@ -33,7 +35,7 @@ namespace ArtaleAI
         {
             try
             {
-                _config = ConfigManager.LoadConfig();
+                _config = ConfigLoader.LoadConfig();
                 // ★ 將設定檔中的值，設定到 UI 控制項上
                 // 使用 try-catch 避免設定值超出控制項範圍
                 try
@@ -44,7 +46,7 @@ namespace ArtaleAI
                 {
                     // 如果設定檔的值無效，則使用控制項的預設值
                     _config.General.ZoomFactor = numericUpDownZoom.Value;
-                    ConfigManager.SaveConfig(_config); // 並回存
+                    ConfigSaver.SaveConfig(_config); // 並回存
                 }
             }
             catch (Exception ex)
@@ -62,7 +64,7 @@ namespace ArtaleAI
             if (_config != null)
             {
                 _config.General.ZoomFactor = numericUpDownZoom.Value;
-                ConfigManager.SaveConfig(_config); // 即時儲存變更
+                ConfigSaver.SaveConfig(_config); // 即時儲存變更
             }
         }
 
@@ -82,7 +84,8 @@ namespace ArtaleAI
 
             try
             {
-                // 設定已經在啟動時載入，此處無需重複載入
+                _config = ConfigLoader.LoadConfig();
+
                 Action<string> reporter = message =>
                 {
                     this.Invoke((Action)(() =>
@@ -91,46 +94,31 @@ namespace ArtaleAI
                     }));
                 };
 
-                var result = await MinimapService.GetSnapshotAsync(
-                    this.Handle,
-                    _config,
-                    _selectedCaptureItem,
-                    reporter);
+                // ✅ 直接使用原有的返回類型
+                var result = await _editorMinimap.LoadSnapshotAsync(this.Handle, _config, reporter);
 
                 if (result?.MinimapImage != null && result.CaptureItem != null)
                 {
                     pictureBoxMinimap.Image?.Dispose();
                     pictureBoxMinimap.Image = result.MinimapImage;
-                    _selectedCaptureItem = result.CaptureItem;
-                    textBox1.AppendText("✅ 小地圖快照載入成功。\r\n");
-
-                    if (_config.General.LastSelectedWindowName != result.CaptureItem.DisplayName)
-                    {
-                        textBox1.AppendText($"提示：已將預設捕捉視窗更新為 '{result.CaptureItem.DisplayName}'。\r\n");
-                        _config.General.LastSelectedWindowName = result.CaptureItem.DisplayName;
-                        ConfigManager.SaveConfig(_config);
-                    }
+                    textBox1.AppendText("小地圖快照載入成功。\r\n");
                 }
                 else
                 {
-                    textBox1.AppendText("⚠️ 小地圖載入操作已取消或失敗。\r\n");
-                    if (_selectedCaptureItem != null && result?.CaptureItem == null)
-                    {
-                        _selectedCaptureItem = null;
-                    }
+                    textBox1.AppendText("小地圖載入操作已取消或失敗。\r\n");
                 }
             }
             catch (Exception ex)
             {
                 MessageBox.Show(ex.Message, "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 textBox1.AppendText($"錯誤: {ex.Message}\r\n");
-                _selectedCaptureItem = null;
             }
             finally
             {
                 tabControl1.Enabled = true;
             }
         }
+
 
         /// <summary>
         /// 更新放大鏡的顯示內容。
@@ -171,8 +159,6 @@ namespace ArtaleAI
             pictureBoxZoom.Image = zoomedBitmap;
         }
 
-
-        // ... 其他方法 (pictureBoxZoom_Paint, pictureBoxMinimap_MouseLeave, etc.) 維持不變 ...
         private void pictureBoxZoom_Paint(object sender, PaintEventArgs e)
         {
             if (pictureBoxZoom.Image == null) return;

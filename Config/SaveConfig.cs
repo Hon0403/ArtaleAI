@@ -1,19 +1,22 @@
-﻿using System.Text;
+﻿using System;
+using System.IO;
+using System.Linq;
+using System.Text;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
-namespace ArtaleAI.Configuration
+namespace ArtaleAI.Config
 {
-    public static class ConfigManager
+    /// <summary>
+    /// 負責儲存應用程式配置檔案
+    /// </summary>
+    public static class ConfigSaver
     {
-        // ✅ 修改：使用專案主目錄的絕對路徑
         private static string GetProjectConfigPath()
         {
-            // 取得當前執行檔案的目錄
             var currentDir = AppDomain.CurrentDomain.BaseDirectory;
-
-            // 向上尋找專案根目錄（包含 .csproj 檔案的目錄）
             var projectDir = currentDir;
+
             while (projectDir != null && !Directory.GetFiles(projectDir, "*.csproj").Any())
             {
                 projectDir = Directory.GetParent(projectDir)?.FullName;
@@ -24,27 +27,10 @@ namespace ArtaleAI.Configuration
                 throw new DirectoryNotFoundException("找不到專案根目錄");
             }
 
-            return Path.Combine(projectDir, "Configuration", "config.yaml");
+            return Path.Combine(projectDir, "Config", "config.yaml");
         }
 
         private static readonly string DefaultPath = GetProjectConfigPath();
-
-        public static AppConfig LoadConfig(string? path = null)
-        {
-            var configPath = path ?? DefaultPath;
-            Console.WriteLine($"📖 讀取配置檔案: {configPath}");
-
-            if (!File.Exists(configPath))
-            {
-                throw new FileNotFoundException($"找不到設定檔！路徑：{configPath}", configPath);
-            }
-
-            var yamlContent = File.ReadAllText(configPath, Encoding.UTF8);
-            var deserializer = new DeserializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                .Build();
-            return deserializer.Deserialize<AppConfig>(yamlContent) ?? new AppConfig();
-        }
 
         public static void SaveConfig(AppConfig config, string? path = null)
         {
@@ -52,7 +38,7 @@ namespace ArtaleAI.Configuration
 
             try
             {
-                Console.WriteLine($"💾 儲存配置檔案到: {configPath}");
+                Console.WriteLine($"儲存配置檔案到: {configPath}");
                 Console.WriteLine($"儲存內容 - LastSelectedWindowName: '{config.General.LastSelectedWindowName}'");
                 Console.WriteLine($"儲存內容 - LastSelectedProcessName: '{config.General.LastSelectedProcessName}'");
 
@@ -61,7 +47,6 @@ namespace ArtaleAI.Configuration
                     .Build();
                 var yamlContent = serializer.Serialize(config);
 
-                // 確保目錄存在
                 var directory = Path.GetDirectoryName(configPath);
                 if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                 {
@@ -70,22 +55,22 @@ namespace ArtaleAI.Configuration
                 }
 
                 File.WriteAllText(configPath, yamlContent, Encoding.UTF8);
-                Console.WriteLine($"✅ 設定已成功儲存至專案目錄: {configPath}");
+                Console.WriteLine($"設定已成功儲存至: {configPath}");
 
                 // 驗證寫入結果
-                var reloadedConfig = LoadConfig(configPath);
+                var reloadedConfig = ConfigLoader.LoadConfig(configPath);
                 if (reloadedConfig.General.LastSelectedWindowName == config.General.LastSelectedWindowName)
                 {
-                    Console.WriteLine("✅ 儲存驗證成功");
+                    Console.WriteLine("儲存驗證成功");
                 }
                 else
                 {
-                    Console.WriteLine("❌ 儲存驗證失敗");
+                    Console.WriteLine("儲存驗證失敗");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ 儲存設定檔時發生錯誤: {ex.Message}");
+                Console.WriteLine($"儲存設定檔時發生錯誤: {ex.Message}");
                 Console.WriteLine($"詳細錯誤: {ex.StackTrace}");
                 throw;
             }
