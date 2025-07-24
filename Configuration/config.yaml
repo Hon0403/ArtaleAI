@@ -1,0 +1,24 @@
+﻿general:
+  gameWindowTitle: MapleStory Worlds-Artale (繁體中文版)
+  lastSelectedWindowName: MapleStory Worlds-Artale (繁體中文版)
+  lastSelectedProcessName: msw
+  lastSelectedProcessId: 25336
+  minimapUpscaleFactor: 4
+  zoomFactor: 15
+templates:
+  minimap:
+    playerThreshold: 0.7
+    cornerThreshold: 0.7
+    playerMarker:
+      path: templates/minimap/player_marker.png
+    otherPlayers:
+      path: templates/minimap/other_players.png
+    corners:
+      topLeft:
+        path: templates/minimap/topleft.png
+      topRight:
+        path: templates/minimap/topright.png
+      bottomLeft:
+        path: templates/minimap/bottom_left.png
+      bottomRight:
+        path: templates/minimap/bottom_right.png
