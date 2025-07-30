@@ -22,3 +22,6 @@ templates:
         path: templates/minimap/bottom_left.png
       bottomRight:
         path: templates/minimap/bottom_right.png
+  # 新增的區塊
+  monsterDetection:
+    defaultThreshold: 0.7

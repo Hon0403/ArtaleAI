@@ -4,6 +4,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
+using ArtaleAI.Utils; // ✅ 確保引用工具類
 
 namespace ArtaleAI.Services
 {
@@ -20,6 +21,7 @@ namespace ArtaleAI.Services
         public bool HasTemplates => _currentTemplates.Any();
         public string? CurrentMonsterName { get; private set; }
 
+        // ✅ 確保建構函式參數正確
         public MonsterTemplateService(ComboBox monsterComboBox, IMonsterTemplateEventHandler eventHandler)
         {
             _monsterComboBox = monsterComboBox ?? throw new ArgumentNullException(nameof(monsterComboBox));
@@ -38,6 +40,8 @@ namespace ArtaleAI.Services
             try
             {
                 _monsterComboBox.Items.Clear();
+
+                // ✅ 使用正確的方法
                 string monstersDirectory = _eventHandler.GetMonstersDirectory();
 
                 if (!Directory.Exists(monstersDirectory))
@@ -48,7 +52,6 @@ namespace ArtaleAI.Services
 
                 // 獲取所有子資料夾（每個資料夾代表一隻怪物）
                 var monsterFolders = Directory.GetDirectories(monstersDirectory);
-
                 if (!monsterFolders.Any())
                 {
                     _eventHandler.OnStatusMessage("未找到任何怪物模板資料夾");
@@ -80,6 +83,7 @@ namespace ArtaleAI.Services
                 // 清理現有模板
                 ClearCurrentTemplates();
 
+                // ✅ 使用正確的方法
                 string monsterFolderPath = Path.Combine(_eventHandler.GetMonstersDirectory(), monsterName);
 
                 if (!Directory.Exists(monsterFolderPath))
@@ -92,7 +96,6 @@ namespace ArtaleAI.Services
 
                 // 尋找所有PNG圖片檔案
                 var templateFiles = Directory.GetFiles(monsterFolderPath, "*.png");
-
                 if (!templateFiles.Any())
                 {
                     _eventHandler.OnStatusMessage($"⚠️ 在 '{monsterName}' 資料夾中未找到任何PNG模板檔案");
@@ -117,6 +120,8 @@ namespace ArtaleAI.Services
                 }
 
                 CurrentMonsterName = monsterName;
+
+                // ✅ 確保方法調用正確，明確傳遞兩個參數
                 _eventHandler.OnTemplatesLoaded(monsterName, _currentTemplates.Count);
             }
             catch (Exception ex)
@@ -145,7 +150,6 @@ namespace ArtaleAI.Services
         {
             if (index < 0 || index >= _currentTemplates.Count)
                 return null;
-
             return _currentTemplates[index];
         }
 

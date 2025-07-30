@@ -2,6 +2,8 @@
 using OpenCvSharp.Extensions;
 using System.Drawing;
 using ArtaleAI.Config;
+using System.IO;
+using System.Collections.Generic;
 
 namespace ArtaleAI.Minimap
 {
@@ -34,7 +36,6 @@ namespace ArtaleAI.Minimap
                 if (File.Exists(kvp.Value.Path))
                 {
                     bool isCornerTemplate = kvp.Key.StartsWith("Top") || kvp.Key.StartsWith("Bottom");
-
                     if (isCornerTemplate)
                     {
                         _templates[kvp.Key] = Cv2.ImRead(kvp.Value.Path, ImreadModes.Grayscale);
@@ -64,7 +65,6 @@ namespace ArtaleAI.Minimap
                 {
                     var tl = topLeft.Value.Location;
                     var br = bottomRight.Value.Location;
-
                     var brTemplate = _templates["BottomRight"];
                     int width = (br.X + brTemplate.Width) - tl.X;
                     int height = (br.Y + brTemplate.Height) - tl.Y;
@@ -90,8 +90,8 @@ namespace ArtaleAI.Minimap
                     var template = _templates["PlayerMarker"];
                     return new System.Drawing.Point(loc.X + template.Width / 2, loc.Y + template.Height / 2);
                 }
-                return null;
             }
+            return null;
         }
 
         private (System.Drawing.Point Location, double MaxValue)? MatchTemplateInternal(Mat inputMat, string templateName, double threshold, bool useGrayscale)
@@ -102,7 +102,6 @@ namespace ArtaleAI.Minimap
             }
 
             using Mat processedInput = new Mat();
-
             if (useGrayscale)
             {
                 if (inputMat.Channels() != 1) Cv2.CvtColor(inputMat, processedInput, ColorConversionCodes.BGRA2GRAY);
@@ -129,6 +128,7 @@ namespace ArtaleAI.Minimap
                     return (new System.Drawing.Point(maxLoc.X, maxLoc.Y), maxVal);
                 }
             }
+
             return null;
         }
 
