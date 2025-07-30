@@ -1,0 +1,114 @@
+{
+  "WaypointPaths": [
+    {
+      "Id": "fe0956e6-3758-4e1b-a343-c43a277a19cd",
+      "Points": [
+        {
+          "Id": "c726b1d3-6ca7-40d2-ab91-0176eea43b44",
+          "Position": {
+            "IsEmpty": false,
+            "X": 86,
+            "Y": 50
+          }
+        },
+        {
+          "Id": "3c30953e-a00b-4b01-b5b3-db9f13d827b9",
+          "Position": {
+            "IsEmpty": false,
+            "X": 86,
+            "Y": 50
+          }
+        },
+        {
+          "Id": "f8cc5380-a7f4-4aa4-9f2b-422a0a86845d",
+          "Position": {
+            "IsEmpty": false,
+            "X": 86,
+            "Y": 50
+          }
+        },
+        {
+          "Id": "296139b3-4a63-4e10-a9fa-bf853ecc87c1",
+          "Position": {
+            "IsEmpty": false,
+            "X": 97,
+            "Y": 50
+          }
+        },
+        {
+          "Id": "ebf10d38-ffed-4857-9f31-97220eba3848",
+          "Position": {
+            "IsEmpty": false,
+            "X": 97,
+            "Y": 50
+          }
+        },
+        {
+          "Id": "15a65c5e-1904-4642-b9fa-6d33a8e7bb7c",
+          "Position": {
+            "IsEmpty": false,
+            "X": 97,
+            "Y": 50
+          }
+        }
+      ]
+    },
+    {
+      "Id": "28a848af-634a-4197-98dd-7e7db78cbb39",
+      "Points": [
+        {
+          "Id": "49e47fae-5e12-430a-bd6e-af951969ce6e",
+          "Position": {
+            "IsEmpty": false,
+            "X": 70,
+            "Y": 76
+          }
+        },
+        {
+          "Id": "bb3727e5-b99b-4746-9470-0f80269ef05c",
+          "Position": {
+            "IsEmpty": false,
+            "X": 70,
+            "Y": 76
+          }
+        },
+        {
+          "Id": "1e5430be-d548-448f-8cf5-0d9a722cf9ec",
+          "Position": {
+            "IsEmpty": false,
+            "X": 70,
+            "Y": 76
+          }
+        },
+        {
+          "Id": "32dacf6f-75ee-4b4f-97c0-cf16aee96f7a",
+          "Position": {
+            "IsEmpty": false,
+            "X": 94,
+            "Y": 76
+          }
+        },
+        {
+          "Id": "72c2f08c-1177-4269-9588-ed535b8f64ab",
+          "Position": {
+            "IsEmpty": false,
+            "X": 94,
+            "Y": 76
+          }
+        },
+        {
+          "Id": "22880593-4804-4b13-8eaa-9c22aad33d3e",
+          "Position": {
+            "IsEmpty": false,
+            "X": 94,
+            "Y": 76
+          }
+        }
+      ]
+    }
+  ],
+  "SafeZone": [],
+  "ForbiddenAreas": [],
+  "Ropes": [],
+  "RestrictedPoints": []
+}
