@@ -1,6 +1,6 @@
-﻿using System;
+﻿using ArtaleAI.Utils;
+using System;
 using System.IO;
-using System.Linq;
 using System.Text;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -12,25 +12,9 @@ namespace ArtaleAI.Config
     /// </summary>
     public static class ConfigLoader
     {
-        private static string GetProjectConfigPath()
-        {
-            var currentDir = AppDomain.CurrentDomain.BaseDirectory;
-            var projectDir = currentDir;
-
-            while (projectDir != null && !Directory.GetFiles(projectDir, "*.csproj").Any())
-            {
-                projectDir = Directory.GetParent(projectDir)?.FullName;
-            }
-
-            if (projectDir == null)
-            {
-                throw new DirectoryNotFoundException("找不到專案根目錄");
-            }
-
-            return Path.Combine(projectDir, "Config", "config.yaml");
-        }
-
-        private static readonly string DefaultPath = GetProjectConfigPath();
+        // ✅ 移除重複的 GetProjectConfigPath() 方法
+        // ✅ 使用統一的工具類
+        private static readonly string DefaultPath = ProjectPathUtils.GetConfigFilePath();
 
         public static AppConfig LoadConfig(string? path = null)
         {
@@ -46,6 +30,7 @@ namespace ArtaleAI.Config
             var deserializer = new DeserializerBuilder()
                 .WithNamingConvention(CamelCaseNamingConvention.Instance)
                 .Build();
+
             return deserializer.Deserialize<AppConfig>(yamlContent) ?? new AppConfig();
         }
     }
