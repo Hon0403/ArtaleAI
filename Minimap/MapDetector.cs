@@ -7,12 +7,12 @@ using System.Collections.Generic;
 
 namespace ArtaleAI.Minimap
 {
-    public class DetectMap : IDisposable
+    public class MapDetector : IDisposable
     {
         private readonly AppConfig _config;
         private readonly Dictionary<string, Mat> _templates;
 
-        public DetectMap(AppConfig config)
+        public MapDetector(AppConfig config)
         {
             _config = config;
             _templates = new Dictionary<string, Mat>();

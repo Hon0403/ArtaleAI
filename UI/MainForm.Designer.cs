@@ -7,19 +7,6 @@
         /// </summary>
         private System.ComponentModel.IContainer components = null;
 
-        /// <summary>
-        ///  Clean up any resources being used.
-        /// </summary>
-        /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing && (components != null))
-            {
-                components.Dispose();
-            }
-            base.Dispose(disposing);
-        }
-
         #region Windows Form Designer generated code
 
         /// <summary>
@@ -28,6 +15,7 @@
         /// </summary>
         private void InitializeComponent()
         {
+            components = new System.ComponentModel.Container();
             panel1 = new Panel();
             groupBox5 = new GroupBox();
             cbo_MonsterTemplates = new ComboBox();
@@ -71,6 +59,7 @@
             pictureBoxMinimap = new PictureBox();
             tabPage3 = new TabPage();
             pictureBoxLiveView = new PictureBox();
+            tmr_MonsterMatch = new System.Windows.Forms.Timer(components);
             panel1.SuspendLayout();
             groupBox5.SuspendLayout();
             groupBox6.SuspendLayout();
@@ -554,6 +543,10 @@
             pictureBoxLiveView.TabIndex = 0;
             pictureBoxLiveView.TabStop = false;
             // 
+            // tmr_MonsterMatch
+            // 
+            tmr_MonsterMatch.Tick += tmr_MonsterMatch_Tick;
+            // 
             // MainForm
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -637,5 +630,6 @@
         private Label label5;
         private TabPage tabPage3;
         private PictureBox pictureBoxLiveView;
+        private System.Windows.Forms.Timer tmr_MonsterMatch;
     }
 }

@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace ArtaleAI.PathEditor
+﻿namespace ArtaleAI
 {
     /// <summary>
     /// 地圖檔案管理事件處理介面
@@ -8,34 +6,34 @@ namespace ArtaleAI.PathEditor
     public interface IMapFileEventHandler
     {
         /// <summary>
-        /// 獲取地圖資料夾路徑
-        /// </summary>
-        string GetMapDataDirectory();
-
-        /// <summary>
-        /// 當狀態訊息需要顯示時觸發
+        /// 顯示狀態訊息
         /// </summary>
         void OnStatusMessage(string message);
 
         /// <summary>
-        /// 當發生錯誤時觸發
+        /// 顯示錯誤訊息
         /// </summary>
         void OnError(string errorMessage);
 
         /// <summary>
-        /// 當地圖載入完成時觸發
+        /// 獲取地圖資料目錄路徑
+        /// </summary>
+        string GetMapDataDirectory();
+
+        /// <summary>
+        /// 當地圖檔案載入完成時觸發
         /// </summary>
         void OnMapLoaded(string mapFileName);
 
         /// <summary>
-        /// 當新地圖建立時觸發
-        /// </summary>
-        void OnNewMapCreated();
-
-        /// <summary>
-        /// 當地圖儲存完成時觸發
+        /// 當地圖檔案儲存完成時觸發
         /// </summary>
         void OnMapSaved(string mapFileName, bool isNewFile);
+
+        /// <summary>
+        /// 當建立新地圖時觸發
+        /// </summary>
+        void OnNewMapCreated();
 
         /// <summary>
         /// 更新視窗標題
@@ -43,7 +41,7 @@ namespace ArtaleAI.PathEditor
         void UpdateWindowTitle(string title);
 
         /// <summary>
-        /// 觸發小地圖重繪
+        /// 刷新小地圖顯示
         /// </summary>
         void RefreshMinimap();
     }

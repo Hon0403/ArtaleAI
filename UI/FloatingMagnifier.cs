@@ -1,23 +1,24 @@
-﻿using System;
+﻿using ArtaleAI.UI;
+using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
-namespace ArtaleAI.Magnifier
+namespace ArtaleAI.UI
 {
     /// <summary>
     /// 浮動放大鏡 - 獨立的放大鏡功能模組
     /// </summary>
     public class FloatingMagnifier : IDisposable
     {
-        private readonly IMagnifierEventHandler _eventHandler;
+        private readonly IApplicationEventHandler _eventHandler;
         private Form? _zoomWindow;
         private PictureBox? _floatingZoomBox;
         private bool _isVisible;
 
         public bool IsVisible => _isVisible;
 
-        public FloatingMagnifier(IMagnifierEventHandler eventHandler)
+        public FloatingMagnifier(IApplicationEventHandler eventHandler)
         {
             _eventHandler = eventHandler ?? throw new ArgumentNullException(nameof(eventHandler));
             InitializeMagnifier();

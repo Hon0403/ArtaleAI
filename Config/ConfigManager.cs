@@ -1,14 +1,15 @@
-﻿using System;
+﻿using ArtaleAI.UI;
+using System;
 using System.IO;
 
 namespace ArtaleAI.Config
 {
-    public class ConfigurationManager
+    public class ConfigManager
     {
         private readonly IConfigEventHandler _eventHandler;
         public AppConfig? CurrentConfig { get; private set; }
 
-        public ConfigurationManager(IConfigEventHandler eventHandler)
+        public ConfigManager(IConfigEventHandler eventHandler)
         {
             _eventHandler = eventHandler;
         }

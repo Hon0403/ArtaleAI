@@ -1,10 +1,13 @@
 ﻿using ArtaleAI.Config;
+using ArtaleAI.GameWindow; // 確保引入
+using ArtaleAI.UI;
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-namespace ArtaleAI.LiveView
+namespace ArtaleAI.GameCapture
 {
     /// <summary>
     /// 即時顯示控制器 - 負責協調UI和服務
@@ -14,10 +17,12 @@ namespace ArtaleAI.LiveView
         private readonly LiveViewService _liveViewService;
         private readonly PictureBox _displayPictureBox;
         private readonly TextBox _statusTextBox;
-        private readonly Control _parentControl; // 用於Invoke操作
+        private readonly Control _parentControl;
+        public GraphicsCapturer? Capturer => _liveViewService.Capturer;
 
         public bool IsRunning => _liveViewService.IsRunning;
 
+        // 維持您原本的建構函式不變
         public LiveViewController(PictureBox displayPictureBox, TextBox statusTextBox, Control parentControl)
         {
             _displayPictureBox = displayPictureBox ?? throw new ArgumentNullException(nameof(displayPictureBox));
@@ -27,12 +32,8 @@ namespace ArtaleAI.LiveView
             _liveViewService = new LiveViewService(this);
         }
 
-        /// <summary>
-        /// 開始即時顯示
-        /// </summary>
         public async Task StartAsync(AppConfig config)
         {
-            // 清空顯示區域
             if (_displayPictureBox.InvokeRequired)
             {
                 _displayPictureBox.Invoke(new Action(() => _displayPictureBox.Image = null));
@@ -41,20 +42,40 @@ namespace ArtaleAI.LiveView
             {
                 _displayPictureBox.Image = null;
             }
-
             await _liveViewService.StartAsync(config);
         }
 
-        /// <summary>
-        /// 停止即時顯示
-        /// </summary>
         public async Task StopAsync()
         {
             await _liveViewService.StopAsync();
         }
 
-        #region ILiveViewEventHandler 實作
+        // 用於在畫面上繪製怪物的位置
+        public void DrawMonsterRectangles(List<Point> monsterLocations, Size monsterSize)
+        {
+            if (_displayPictureBox.Image == null || !_parentControl.Visible) return;
 
+            // 使用 Invoke 確保在 UI 執行緒上操作
+            _parentControl.Invoke(new Action(() =>
+            {
+                if (_displayPictureBox.Image == null) return;
+
+                using (var graphics = Graphics.FromImage(_displayPictureBox.Image))
+                {
+                    using (var pen = new Pen(Color.Red, 2))
+                    {
+                        foreach (var loc in monsterLocations)
+                        {
+                            graphics.DrawRectangle(pen, loc.X, loc.Y, monsterSize.Width, monsterSize.Height);
+                        }
+                    }
+                }
+                // 刷新 PictureBox 以顯示新的繪圖
+                _displayPictureBox.Invalidate();
+            }));
+        }
+
+        #region ILiveViewEventHandler 實作
         public void OnFrameAvailable(Bitmap frame)
         {
             try
@@ -68,16 +89,7 @@ namespace ArtaleAI.LiveView
                     UpdateDisplay(frame);
                 }
             }
-            catch (ObjectDisposedException)
-            {
-                // 控制項已被釋放，忽略
-                frame?.Dispose();
-            }
-            catch (InvalidOperationException)
-            {
-                // Invoke 失敗，忽略
-                frame?.Dispose();
-            }
+            catch (Exception) { frame?.Dispose(); } // 忽略錯誤並釋放 frame
         }
 
         public void OnStatusMessage(string message)
@@ -93,14 +105,7 @@ namespace ArtaleAI.LiveView
                     AppendStatusMessage(message);
                 }
             }
-            catch (ObjectDisposedException)
-            {
-                // 控制項已被釋放，忽略
-            }
-            catch (InvalidOperationException)
-            {
-                // Invoke 失敗，忽略
-            }
+            catch (Exception) { } // 忽略錯誤
         }
 
         public void OnError(string errorMessage)
@@ -116,20 +121,11 @@ namespace ArtaleAI.LiveView
                     ShowErrorMessage(errorMessage);
                 }
             }
-            catch (ObjectDisposedException)
-            {
-                // 控制項已被釋放，忽略
-            }
-            catch (InvalidOperationException)
-            {
-                // Invoke 失敗，忽略
-            }
+            catch (Exception) { } // 忽略錯誤
         }
-
         #endregion
 
         #region 私有方法
-
         private void UpdateDisplay(Bitmap frame)
         {
             if (_displayPictureBox.IsDisposed)
@@ -137,7 +133,6 @@ namespace ArtaleAI.LiveView
                 frame?.Dispose();
                 return;
             }
-
             var oldFrame = _displayPictureBox.Image;
             _displayPictureBox.Image = frame;
             oldFrame?.Dispose();
@@ -146,7 +141,6 @@ namespace ArtaleAI.LiveView
         private void AppendStatusMessage(string message)
         {
             if (_statusTextBox.IsDisposed) return;
-
             _statusTextBox.AppendText(message + "\r\n");
             _statusTextBox.ScrollToCaret();
         }
@@ -156,7 +150,6 @@ namespace ArtaleAI.LiveView
             AppendStatusMessage($"❌ {errorMessage}");
             MessageBox.Show(errorMessage, "即時顯示發生錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
-
         #endregion
 
         public void Dispose()

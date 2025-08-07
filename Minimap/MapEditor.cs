@@ -4,7 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 
-namespace ArtaleAI.PathEditor
+namespace ArtaleAI.Minimap
 {
     /// <summary>
     /// 負責管理所有地圖編輯的核心邏輯、數據狀態和繪製。

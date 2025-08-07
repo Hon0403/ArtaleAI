@@ -1,12 +1,13 @@
 ﻿using ArtaleAI.Config;
 using ArtaleAI.GameWindow;
+using ArtaleAI.UI;
 using System;
 using System.Drawing;
 using System.Threading;
 using System.Threading.Tasks;
 using Windows.Graphics.Capture;
 
-namespace ArtaleAI.LiveView
+namespace ArtaleAI.GameCapture
 {
     /// <summary>
     /// 即時顯示服務 - 負責實際的畫面捕捉和處理
@@ -18,6 +19,7 @@ namespace ArtaleAI.LiveView
         private Task? _captureTask;
         private readonly ILiveViewEventHandler _eventHandler;
         private bool _isRunning;
+        public GraphicsCapturer? Capturer => _capturer;
 
         public bool IsRunning => _isRunning;
 

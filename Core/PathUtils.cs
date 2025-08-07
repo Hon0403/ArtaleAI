@@ -7,7 +7,7 @@ namespace ArtaleAI.Utils
     /// <summary>
     /// 專案路徑工具類 - 統一管理所有路徑相關邏輯
     /// </summary>
-    public static class ProjectPathUtils
+    public static class PathUtils
     {
         private static string? _projectRoot;
 

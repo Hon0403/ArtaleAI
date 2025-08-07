@@ -1,5 +1,4 @@
 ﻿using ArtaleAI.Config;
-using ArtaleAI.Minimap;
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -7,12 +6,12 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using Windows.Graphics.Capture;
 
-namespace ArtaleAI.Services
+namespace ArtaleAI.Minimap
 {
     /// <summary>
     /// 編輯器小地圖服務 - 包含座標轉換和放大鏡功能
     /// </summary>
-    public class EditorMinimap
+    public class MinimapEditor
     {
         private GraphicsCaptureItem? _selectedCaptureItem;
 
@@ -20,11 +19,11 @@ namespace ArtaleAI.Services
         /// 載入小地圖快照
         /// </summary>
         public async Task<MinimapSnapshotResult?> LoadSnapshotAsync(
-            IntPtr windowHandle,
+            nint windowHandle,
             AppConfig config,
             Action<string>? progressReporter = null)
         {
-            var result = await AnalyzeMap.GetSnapshotAsync(
+            var result = await MapAnalyzer.GetSnapshotAsync(
                 windowHandle,
                 config,
                 _selectedCaptureItem,

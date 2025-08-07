@@ -2,7 +2,7 @@
 using System.IO;
 using System.Text.Json;
 
-namespace ArtaleAI.PathEditor
+namespace ArtaleAI.Minimap
 {
     /// <summary>
     /// 負責管理一張地圖上的所有標記數據，並處理檔案的儲存與讀取。

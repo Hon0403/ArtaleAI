@@ -23,7 +23,7 @@ namespace ArtaleAI.Minimap
     /// <summary>
     /// 提供與小地圖相關的服務，例如擷取快照並分析。
     /// </summary>
-    public static class AnalyzeMap
+    public static class MapAnalyzer
     {
         /// <summary>
         /// 執行一次性的螢幕捕捉，智慧偵測、裁切小地圖，並分析玩家位置。
@@ -37,11 +37,11 @@ namespace ArtaleAI.Minimap
         public static async Task<MinimapSnapshotResult?> GetSnapshotAsync(nint windowHandle, AppConfig config, GraphicsCaptureItem? selectedItem, Action<string>? progressReporter)
         {
             GraphicsCapturer? capturer = null;
-            DetectMap? minimapProcessor = null;
+            MapDetector? minimapProcessor = null;
 
             try
             {
-                minimapProcessor = new DetectMap(config);
+                minimapProcessor = new MapDetector(config);
 
                 // 1. 尋找或確認捕捉目標
                 if (selectedItem == null)

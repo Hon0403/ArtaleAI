@@ -1,9 +1,10 @@
-﻿using System;
+﻿using ArtaleAI.UI;
+using System;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 
-namespace ArtaleAI.PathEditor
+namespace ArtaleAI.Minimap
 {
     /// <summary>
     /// 地圖檔案管理器 - 負責地圖檔案的載入、儲存和UI綁定

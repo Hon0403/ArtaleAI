@@ -14,7 +14,7 @@ namespace ArtaleAI.Config
     {
         // ✅ 移除重複的 GetProjectConfigPath() 方法
         // ✅ 使用統一的工具類
-        private static readonly string DefaultPath = ProjectPathUtils.GetConfigFilePath();
+        private static readonly string DefaultPath = PathUtils.GetConfigFilePath();
 
         public static AppConfig LoadConfig(string? path = null)
         {

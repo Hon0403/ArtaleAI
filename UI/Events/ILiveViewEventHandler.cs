@@ -1,6 +1,6 @@
-﻿using System;
+﻿using System.Drawing;
 
-namespace ArtaleAI.LiveView
+namespace ArtaleAI
 {
     /// <summary>
     /// 即時顯示事件處理介面
@@ -8,17 +8,17 @@ namespace ArtaleAI.LiveView
     public interface ILiveViewEventHandler
     {
         /// <summary>
-        /// 當有新畫面可用時觸發
+        /// 當新的畫面可用時觸發
         /// </summary>
-        void OnFrameAvailable(System.Drawing.Bitmap frame);
+        void OnFrameAvailable(Bitmap frame);
 
         /// <summary>
-        /// 當狀態訊息需要顯示時觸發
+        /// 顯示狀態訊息
         /// </summary>
         void OnStatusMessage(string message);
 
         /// <summary>
-        /// 當發生錯誤時觸發
+        /// 顯示錯誤訊息
         /// </summary>
         void OnError(string errorMessage);
     }

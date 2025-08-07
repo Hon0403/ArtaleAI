@@ -2,7 +2,7 @@
 using System.Drawing;
 using System.Text.Json.Serialization;
 
-namespace ArtaleAI.PathEditor
+namespace ArtaleAI.Minimap
 {
     /// <summary>
     /// 定義了所有編輯模式的種類。

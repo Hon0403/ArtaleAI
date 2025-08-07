@@ -4,31 +4,31 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
-using ArtaleAI.Utils; // ✅ 確保引用工具類
+using ArtaleAI;
 
-namespace ArtaleAI.Services
+namespace ArtaleAI.Monster
 {
     /// <summary>
-    /// 怪物模板服務 - 負責怪物模板的載入、管理和UI綁定
+    /// 統一的怪物服務 - 整合模板管理和偵測功能
     /// </summary>
-    public class MonsterTemplateService : IDisposable
+    public class MonsterService : IDisposable
     {
-        private readonly IMonsterTemplateEventHandler _eventHandler;
+        private readonly IApplicationEventHandler _eventHandler;
         private readonly ComboBox _monsterComboBox;
         private List<Bitmap> _currentTemplates;
+        private readonly TemplateMatcher _matcher;
 
         public List<Bitmap> CurrentTemplates => _currentTemplates.AsReadOnly().ToList();
         public bool HasTemplates => _currentTemplates.Any();
         public string? CurrentMonsterName { get; private set; }
 
-        // ✅ 確保建構函式參數正確
-        public MonsterTemplateService(ComboBox monsterComboBox, IMonsterTemplateEventHandler eventHandler)
+        public MonsterService(ComboBox monsterComboBox, IApplicationEventHandler eventHandler)
         {
             _monsterComboBox = monsterComboBox ?? throw new ArgumentNullException(nameof(monsterComboBox));
             _eventHandler = eventHandler ?? throw new ArgumentNullException(nameof(eventHandler));
             _currentTemplates = new List<Bitmap>();
+            _matcher = new TemplateMatcher();
 
-            // 綁定下拉選單事件
             _monsterComboBox.SelectedIndexChanged += OnMonsterSelectionChanged;
         }
 
@@ -41,7 +41,6 @@ namespace ArtaleAI.Services
             {
                 _monsterComboBox.Items.Clear();
 
-                // ✅ 使用正確的方法
                 string monstersDirectory = _eventHandler.GetMonstersDirectory();
 
                 if (!Directory.Exists(monstersDirectory))
@@ -50,7 +49,6 @@ namespace ArtaleAI.Services
                     return;
                 }
 
-                // 獲取所有子資料夾（每個資料夾代表一隻怪物）
                 var monsterFolders = Directory.GetDirectories(monstersDirectory);
                 if (!monsterFolders.Any())
                 {
@@ -60,7 +58,6 @@ namespace ArtaleAI.Services
 
                 foreach (var folder in monsterFolders)
                 {
-                    // 只取資料夾的名稱作為選項
                     string monsterName = new DirectoryInfo(folder).Name;
                     _monsterComboBox.Items.Add(monsterName);
                 }
@@ -80,10 +77,8 @@ namespace ArtaleAI.Services
         {
             try
             {
-                // 清理現有模板
                 ClearCurrentTemplates();
 
-                // ✅ 使用正確的方法
                 string monsterFolderPath = Path.Combine(_eventHandler.GetMonstersDirectory(), monsterName);
 
                 if (!Directory.Exists(monsterFolderPath))
@@ -94,7 +89,6 @@ namespace ArtaleAI.Services
 
                 _eventHandler.OnStatusMessage($"正在從 '{monsterName}' 載入怪物模板...");
 
-                // 尋找所有PNG圖片檔案
                 var templateFiles = Directory.GetFiles(monsterFolderPath, "*.png");
                 if (!templateFiles.Any())
                 {
@@ -102,12 +96,10 @@ namespace ArtaleAI.Services
                     return;
                 }
 
-                // 載入每張圖片
                 foreach (var file in templateFiles)
                 {
                     try
                     {
-                        // 使用 using 和 new Bitmap(tempBitmap) 的方式來讀取，避免鎖定檔案
                         using (var tempBitmap = new Bitmap(file))
                         {
                             _currentTemplates.Add(new Bitmap(tempBitmap));
@@ -120,8 +112,6 @@ namespace ArtaleAI.Services
                 }
 
                 CurrentMonsterName = monsterName;
-
-                // ✅ 確保方法調用正確，明確傳遞兩個參數
                 _eventHandler.OnTemplatesLoaded(monsterName, _currentTemplates.Count);
             }
             catch (Exception ex)
@@ -131,9 +121,43 @@ namespace ArtaleAI.Services
         }
 
         /// <summary>
-        /// 清理當前載入的模板
+        /// 偵測螢幕上的怪物
         /// </summary>
-        public void ClearCurrentTemplates()
+        public List<MonsterDetectionResult> DetectMonstersOnScreen(Bitmap screenImage)
+        {
+            if (!HasTemplates || screenImage == null)
+                return new List<MonsterDetectionResult>();
+
+            var results = new List<MonsterDetectionResult>();
+
+            for (int i = 0; i < _currentTemplates.Count; i++)
+            {
+                var matches = _matcher.FindAllMatches(screenImage, _currentTemplates[i], 0.7);
+
+                foreach (var match in matches)
+                {
+                    results.Add(new MonsterDetectionResult
+                    {
+                        MonsterName = CurrentMonsterName ?? "未知",
+                        Location = match,
+                        Confidence = 0.8, // 簡化實作
+                        TemplateIndex = i,
+                        DetectionTime = DateTime.Now
+                    });
+                }
+            }
+
+            return results;
+        }
+
+        public Bitmap? GetTemplate(int index)
+        {
+            if (index < 0 || index >= _currentTemplates.Count)
+                return null;
+            return _currentTemplates[index];
+        }
+
+        private void ClearCurrentTemplates()
         {
             foreach (var template in _currentTemplates)
             {
@@ -143,51 +167,6 @@ namespace ArtaleAI.Services
             CurrentMonsterName = null;
         }
 
-        /// <summary>
-        /// 獲取指定索引的模板圖片
-        /// </summary>
-        public Bitmap? GetTemplate(int index)
-        {
-            if (index < 0 || index >= _currentTemplates.Count)
-                return null;
-            return _currentTemplates[index];
-        }
-
-        /// <summary>
-        /// 獲取所有可用的怪物名稱
-        /// </summary>
-        public string[] GetAvailableMonsters()
-        {
-            try
-            {
-                string monstersDirectory = _eventHandler.GetMonstersDirectory();
-                if (!Directory.Exists(monstersDirectory))
-                    return Array.Empty<string>();
-
-                var monsterFolders = Directory.GetDirectories(monstersDirectory);
-                return monsterFolders.Select(folder => new DirectoryInfo(folder).Name).ToArray();
-            }
-            catch (Exception ex)
-            {
-                _eventHandler.OnError($"獲取怪物列表失敗: {ex.Message}");
-                return Array.Empty<string>();
-            }
-        }
-
-        /// <summary>
-        /// 設定選中的怪物
-        /// </summary>
-        public void SelectMonster(string monsterName)
-        {
-            if (_monsterComboBox.Items.Contains(monsterName))
-            {
-                _monsterComboBox.SelectedItem = monsterName;
-            }
-        }
-
-        /// <summary>
-        /// 下拉選單選擇變更事件處理
-        /// </summary>
         private void OnMonsterSelectionChanged(object? sender, EventArgs e)
         {
             if (_monsterComboBox.SelectedItem == null) return;
@@ -199,28 +178,23 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>
-        /// 重新整理怪物選項（當有新的怪物資料夾時使用）
-        /// </summary>
-        public void RefreshMonsterOptions()
-        {
-            var currentSelection = _monsterComboBox.SelectedItem?.ToString();
-            InitializeMonsterDropdown();
-
-            // 恢復之前的選擇
-            if (!string.IsNullOrEmpty(currentSelection) && _monsterComboBox.Items.Contains(currentSelection))
-            {
-                _monsterComboBox.SelectedItem = currentSelection;
-            }
-        }
-
         public void Dispose()
         {
-            // 解除事件綁定
             _monsterComboBox.SelectedIndexChanged -= OnMonsterSelectionChanged;
-
-            // 清理模板資源
             ClearCurrentTemplates();
+            _matcher?.Dispose();
         }
+    }
+
+    /// <summary>
+    /// 怪物偵測結果
+    /// </summary>
+    public class MonsterDetectionResult
+    {
+        public string MonsterName { get; set; } = string.Empty;
+        public Point Location { get; set; }
+        public double Confidence { get; set; }
+        public int TemplateIndex { get; set; }
+        public DateTime DetectionTime { get; set; }
     }
 }
