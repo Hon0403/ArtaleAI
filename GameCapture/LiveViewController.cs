@@ -20,9 +20,10 @@ namespace ArtaleAI.GameCapture
         private readonly Control _parentControl;
         public GraphicsCapturer? Capturer => _liveViewService.Capturer;
 
+        private Bitmap? _currentFrame;
+        private readonly object _frameLock = new object();
         public bool IsRunning => _liveViewService.IsRunning;
 
-        // 維持您原本的建構函式不變
         public LiveViewController(PictureBox displayPictureBox, TextBox statusTextBox, Control parentControl)
         {
             _displayPictureBox = displayPictureBox ?? throw new ArgumentNullException(nameof(displayPictureBox));
@@ -80,6 +81,12 @@ namespace ArtaleAI.GameCapture
         {
             try
             {
+                lock (_frameLock)
+                {
+                    _currentFrame?.Dispose();
+                    _currentFrame = new Bitmap(frame);
+                }
+
                 if (_displayPictureBox.InvokeRequired)
                 {
                     _displayPictureBox.Invoke(new Action<Bitmap>(UpdateDisplay), frame);
@@ -89,7 +96,7 @@ namespace ArtaleAI.GameCapture
                     UpdateDisplay(frame);
                 }
             }
-            catch (Exception) { frame?.Dispose(); } // 忽略錯誤並釋放 frame
+            catch (Exception) { frame?.Dispose(); }
         }
 
         public void OnStatusMessage(string message)
@@ -125,6 +132,14 @@ namespace ArtaleAI.GameCapture
         }
         #endregion
 
+        public Bitmap? GetCurrentCaptureFrame()
+        {
+            lock (_frameLock)
+            {
+                return _currentFrame == null ? null : new Bitmap(_currentFrame);
+            }
+        }
+
         #region 私有方法
         private void UpdateDisplay(Bitmap frame)
         {
@@ -154,6 +169,10 @@ namespace ArtaleAI.GameCapture
 
         public void Dispose()
         {
+            lock (_frameLock)
+            {
+                _currentFrame?.Dispose();
+            }
             _liveViewService?.Dispose();
         }
     }

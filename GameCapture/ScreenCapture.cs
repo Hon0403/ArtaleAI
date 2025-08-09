@@ -34,19 +34,25 @@ namespace ArtaleAI.GameWindow
         {
             _item = item;
             _device = new SharpDX.Direct3D11.Device(SharpDX.Direct3D.DriverType.Hardware, DeviceCreationFlags.BgraSupport);
+
+            // 啟用多執行緒保護
+            var multithread = _device.QueryInterface<SharpDX.Direct3D11.Multithread>();
+            multithread.SetMultithreadProtected(true);
+
             var dxgiDevice = _device.QueryInterface<SharpDX.DXGI.Device>();
             var d3dDevice = CreateDirect3DDevice(dxgiDevice);
 
-            _framePool = Direct3D11CaptureFramePool.Create(
+            _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
                 d3dDevice,
                 DirectXPixelFormat.B8G8R8A8UIntNormalized,
-                2,
+                3,  // 增加緩衝區數量
                 item.Size);
 
             _session = _framePool.CreateCaptureSession(item);
             _lastSize = item.Size;
             _session.StartCapture();
         }
+
 
         public Bitmap? TryGetNextFrame()
         {

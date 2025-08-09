@@ -1,10 +1,12 @@
-﻿using System;
+﻿using ArtaleAI;
+using ArtaleAI.Config;
+using ArtaleAI.Core;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
-using ArtaleAI;
 
 namespace ArtaleAI.Monster
 {
@@ -17,6 +19,7 @@ namespace ArtaleAI.Monster
         private readonly ComboBox _monsterComboBox;
         private List<Bitmap> _currentTemplates;
         private readonly TemplateMatcher _matcher;
+        private ConfigManager? _configurationManager;
 
         public List<Bitmap> CurrentTemplates => _currentTemplates.AsReadOnly().ToList();
         public bool HasTemplates => _currentTemplates.Any();
@@ -62,7 +65,7 @@ namespace ArtaleAI.Monster
                     _monsterComboBox.Items.Add(monsterName);
                 }
 
-                _eventHandler.OnStatusMessage($"✅ 成功載入 {monsterFolders.Length} 種怪物模板選項");
+                _eventHandler.OnStatusMessage($"成功載入 {monsterFolders.Length} 種怪物模板選項");
             }
             catch (Exception ex)
             {
@@ -71,14 +74,13 @@ namespace ArtaleAI.Monster
         }
 
         /// <summary>
-        /// 載入指定怪物的模板
+        /// 載入指定怪物的模板（非同步版本）
         /// </summary>
-        public void LoadMonsterTemplates(string monsterName)
+        public async Task LoadMonsterTemplates(string monsterName)
         {
             try
             {
                 ClearCurrentTemplates();
-
                 string monsterFolderPath = Path.Combine(_eventHandler.GetMonstersDirectory(), monsterName);
 
                 if (!Directory.Exists(monsterFolderPath))
@@ -89,27 +91,41 @@ namespace ArtaleAI.Monster
 
                 _eventHandler.OnStatusMessage($"正在從 '{monsterName}' 載入怪物模板...");
 
-                var templateFiles = Directory.GetFiles(monsterFolderPath, "*.png");
+                // 非同步獲取檔案列表
+                var templateFiles = await Task.Run(() =>
+                    Directory.GetFiles(monsterFolderPath, "*.png"));
+
                 if (!templateFiles.Any())
                 {
-                    _eventHandler.OnStatusMessage($"⚠️ 在 '{monsterName}' 資料夾中未找到任何PNG模板檔案");
+                    _eventHandler.OnStatusMessage($"在 '{monsterName}' 資料夾中未找到任何PNG模板檔案");
                     return;
                 }
 
-                foreach (var file in templateFiles)
+                // 非同步載入所有模板圖片
+                var templateTasks = templateFiles.Select(async file =>
                 {
                     try
                     {
-                        using (var tempBitmap = new Bitmap(file))
+                        return await Task.Run(() =>
                         {
-                            _currentTemplates.Add(new Bitmap(tempBitmap));
-                        }
+                            using (var tempBitmap = new Bitmap(file))
+                            {
+                                return new Bitmap(tempBitmap);
+                            }
+                        });
                     }
                     catch (Exception ex)
                     {
-                        _eventHandler.OnStatusMessage($"⚠️ 載入模板檔案失敗: {Path.GetFileName(file)} - {ex.Message}");
+                        _eventHandler.OnStatusMessage($"載入模板檔案失敗: {Path.GetFileName(file)} - {ex.Message}");
+                        return null;
                     }
-                }
+                });
+
+                // 等待所有模板載入完成
+                var loadedTemplates = await Task.WhenAll(templateTasks);
+
+                // 過濾掉載入失敗的模板
+                _currentTemplates.AddRange(loadedTemplates.Where(t => t != null));
 
                 CurrentMonsterName = monsterName;
                 _eventHandler.OnTemplatesLoaded(monsterName, _currentTemplates.Count);
@@ -120,34 +136,64 @@ namespace ArtaleAI.Monster
             }
         }
 
+
         /// <summary>
         /// 偵測螢幕上的怪物
         /// </summary>
-        public List<MonsterDetectionResult> DetectMonstersOnScreen(Bitmap screenImage)
+        public async Task<List<MonsterDetectionResult>> DetectMonstersOnScreenAsync(Bitmap screenImage)
         {
             if (!HasTemplates || screenImage == null)
                 return new List<MonsterDetectionResult>();
 
-            var results = new List<MonsterDetectionResult>();
+            var config = (_eventHandler as MainForm)?.ConfigurationManager?.CurrentConfig;
+            var detectionSettings = config?.Templates?.MonsterDetection;
 
-            for (int i = 0; i < _currentTemplates.Count; i++)
+            return await Task.Run(() =>
             {
-                var matches = _matcher.FindAllMatches(screenImage, _currentTemplates[i], 0.7);
+                var results = new List<MonsterDetectionResult>();
+                using var screenCopy = new Bitmap(screenImage);
 
-                foreach (var match in matches)
+                for (int i = 0; i < _currentTemplates.Count; i++)
                 {
-                    results.Add(new MonsterDetectionResult
+                    try
                     {
-                        MonsterName = CurrentMonsterName ?? "未知",
-                        Location = match,
-                        Confidence = 0.8, // 簡化實作
-                        TemplateIndex = i,
-                        DetectionTime = DateTime.Now
-                    });
-                }
-            }
+                        // 使用設定檔中的所有參數
+                        var matches = _matcher.FindAllMatches(
+                            screenCopy,
+                            _currentTemplates[i],
+                            detectionSettings.DefaultThreshold,  // 0.01
+                            detectionSettings.UseColorFilter,    // 從設定檔讀取
+                            detectionSettings.ColorTolerance     // 從設定檔讀取
+                        );
 
-            return results;
+                        foreach (var match in matches)
+                        {
+                            results.Add(new MonsterDetectionResult
+                            {
+                                MonsterName = CurrentMonsterName ?? "未知",
+                                Location = match,
+                                Confidence = detectionSettings.DefaultConfidence,
+                                TemplateIndex = i,
+                                DetectionTime = DateTime.Now
+                            });
+                        }
+
+                        // 限制結果數量
+                        if (results.Count >= detectionSettings.MaxDetectionResults)
+                            break;
+                    }
+                    catch (Exception ex)
+                    {
+                        // 根據設定檔控制除錯輸出
+                        if (detectionSettings.EnableDebugOutput)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"模板 {i} 匹配失敗: {ex.Message}");
+                        }
+                    }
+                }
+
+                return results;
+            });
         }
 
         public Bitmap? GetTemplate(int index)
@@ -167,16 +213,17 @@ namespace ArtaleAI.Monster
             CurrentMonsterName = null;
         }
 
-        private void OnMonsterSelectionChanged(object? sender, EventArgs e)
+        private async void OnMonsterSelectionChanged(object? sender, EventArgs e)
         {
             if (_monsterComboBox.SelectedItem == null) return;
 
             string selectedMonster = _monsterComboBox.SelectedItem.ToString() ?? string.Empty;
             if (!string.IsNullOrEmpty(selectedMonster))
             {
-                LoadMonsterTemplates(selectedMonster);
+                await LoadMonsterTemplates(selectedMonster);
             }
         }
+
 
         public void Dispose()
         {

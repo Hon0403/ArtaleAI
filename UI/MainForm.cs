@@ -13,6 +13,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Windows.Graphics.Capture;
+using System.Runtime.InteropServices;
 
 namespace ArtaleAI
 {
@@ -21,9 +22,18 @@ namespace ArtaleAI
         IMapFileEventHandler,          // 地圖檔案管理  
         IApplicationEventHandler       // 統一應用事件
     {
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern IntPtr LoadLibrary(string lpFileName);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool FreeLibrary(IntPtr hModule);
+
         #region Private Fields
 
         private ConfigManager? _configurationManager;
+        public ConfigManager? ConfigurationManager => _configurationManager;
+
         private readonly MinimapEditor _editorMinimap = new();
         private GraphicsCaptureItem? _selectedCaptureItem;
         private readonly MapEditor _mapEditor = new();
@@ -32,6 +42,10 @@ namespace ArtaleAI
         private FloatingMagnifier? _floatingMagnifier;
         private MonsterService? _monsterService;
         private MapFileManager? _mapFileManager;
+
+        private System.Threading.Timer? _backgroundMonsterTimer;
+        private bool _isMonsterDetectionRunning = false;
+        private readonly object _detectionLock = new object();
 
         #endregion
 
@@ -42,6 +56,25 @@ namespace ArtaleAI
             InitializeComponent();
             InitializeServices();
             BindEvents();
+            InitializeTimer();
+
+            var diagnosisTimer = new System.Windows.Forms.Timer
+            {
+                Interval = 500,
+                Enabled = true
+            };
+            diagnosisTimer.Tick += (s, e) =>
+            {
+                diagnosisTimer.Stop();
+                diagnosisTimer.Dispose();
+                ComprehensiveOpenCvDiagnosis();
+            };
+
+        }
+
+        private void MainForm_Load(object sender, EventArgs e)
+        {
+            ComprehensiveOpenCvDiagnosis();
         }
 
         private void InitializeServices()
@@ -54,13 +87,26 @@ namespace ArtaleAI
             _liveViewController = new LiveViewController(pictureBoxLiveView, textBox1, this);
             _floatingMagnifier = new FloatingMagnifier(this);
 
-            // ✅ 使用 MonsterService 而非 TemplateManager
             _monsterService = new MonsterService(cbo_MonsterTemplates, this);
             _monsterService.InitializeMonsterDropdown();
 
             _mapFileManager = new MapFileManager(cbo_MapFiles, _mapEditor, this);
             _mapFileManager.InitializeMapFilesDropdown();
+
         }
+
+        private void InitializeTimer()
+        {
+            _backgroundMonsterTimer = new System.Threading.Timer(
+                ProcessMonsterDetectionBackground,
+                null,
+                Timeout.Infinite,
+                Timeout.Infinite
+            );
+
+            OnStatusMessage("背景 Timer 初始化完成");
+        }
+
 
         private void BindEvents()
         {
@@ -86,6 +132,7 @@ namespace ArtaleAI
             // 按鈕事件
             btn_SaveMap.Click += btn_SaveMap_Click;
             btn_New.Click += btn_New_Click;
+
         }
 
         #endregion
@@ -101,7 +148,7 @@ namespace ArtaleAI
             }
 
             numericUpDownZoom.Value = config.General?.ZoomFactor ?? 15;
-            OnStatusMessage("✅ 配置檔案載入完成");
+            OnStatusMessage("配置檔案載入完成");
         }
 
         public void OnConfigSaved(AppConfig config)
@@ -112,7 +159,7 @@ namespace ArtaleAI
                 return;
             }
 
-            OnStatusMessage("✅ 設定已儲存");
+            OnStatusMessage("設定已儲存");
         }
 
         public void OnConfigError(string errorMessage)
@@ -128,7 +175,7 @@ namespace ArtaleAI
 
         public void OnMapLoaded(string mapFileName)
         {
-            OnStatusMessage($"✅ 成功載入地圖: {mapFileName}");
+            OnStatusMessage($"成功載入地圖: {mapFileName}");
         }
 
         public void OnMapSaved(string mapFileName, bool isNewFile)
@@ -141,12 +188,12 @@ namespace ArtaleAI
 
             string message = isNewFile ? "新地圖儲存成功！" : "儲存成功！";
             MessageBox.Show(message, "地圖檔案管理", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            OnStatusMessage($"✅ 地圖儲存: {mapFileName}");
+            OnStatusMessage($"地圖儲存: {mapFileName}");
         }
 
         public void OnNewMapCreated()
         {
-            OnStatusMessage("✅ 已建立新地圖");
+            OnStatusMessage("已建立新地圖");
         }
 
         public void UpdateWindowTitle(string title)
@@ -195,7 +242,7 @@ namespace ArtaleAI
                 return;
             }
 
-            OnStatusMessage($"✅ 成功載入 {templateCount} 個 '{monsterName}' 的模板");
+            OnStatusMessage($"成功載入 {templateCount} 個 '{monsterName}' 的模板");
         }
 
         // 即時顯示功能
@@ -249,20 +296,21 @@ namespace ArtaleAI
 
         private async void TabControl1_SelectedIndexChanged(object? sender, EventArgs e)
         {
-            // 停止當前的即時顯示
             if (_liveViewController != null && _liveViewController.IsRunning)
                 await _liveViewController.StopAsync();
 
+            _backgroundMonsterTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+
             switch (tabControl1.SelectedIndex)
             {
-                case 1: // 小地圖編輯分頁
+                case 1:
                     await UpdateMinimapSnapshotAsync();
                     break;
-
-                case 2: // 即時顯示分頁
+                case 2:
                     var config = _configurationManager?.CurrentConfig ?? new AppConfig();
                     await _liveViewController.StartAsync(config);
-                    tmr_MonsterMatch.Start();
+                    await Task.Delay(3000);
+                    _backgroundMonsterTimer?.Change(0, 100); // 100ms 間隔
                     break;
             }
         }
@@ -285,14 +333,14 @@ namespace ArtaleAI
                 if (result?.MinimapImage != null)
                 {
                     pictureBoxMinimap.Image = result.MinimapImage;
-                    OnStatusMessage("✅ 小地圖快照載入成功");
+                    OnStatusMessage("小地圖快照載入成功");
 
                     // 更新選中的捕捉項目
                     _selectedCaptureItem = result.CaptureItem;
                 }
                 else
                 {
-                    OnStatusMessage("⚠️ 小地圖載入操作已取消或失敗");
+                    OnStatusMessage("小地圖載入操作已取消或失敗");
                 }
             }
             catch (Exception ex)
@@ -424,44 +472,49 @@ namespace ArtaleAI
 
         #region 怪物匹配
 
-        private void tmr_MonsterMatch_Tick(object sender, EventArgs e)
+        private async void ProcessMonsterDetectionBackground(object? state)
         {
-            // 1. 取得遊戲畫面截圖
-            var capturer = _liveViewController?.Capturer;
-            if (capturer == null) return;
-
-            Bitmap? screenCapture = capturer.TryGetNextFrame();
-
-            // 2. ✅ 修正：使用 MonsterService 的方法
-            if (screenCapture != null && _monsterService != null && _monsterService.HasTemplates)
+            lock (_detectionLock)
             {
-                try
-                {
-                    // 3. ✅ 使用 MonsterService 的偵測方法
-                    var monsterResults = _monsterService.DetectMonstersOnScreen(screenCapture);
+                if (_isMonsterDetectionRunning) return;
+                _isMonsterDetectionRunning = true;
+            }
 
-                    // 4. 處理找到的結果
+            try
+            {
+                Bitmap? screenCapture = _liveViewController?.GetCurrentCaptureFrame();
+
+                if (screenCapture != null && _monsterService != null && _monsterService.HasTemplates)
+                {
+                    var monsterResults = await _monsterService.DetectMonstersOnScreenAsync(screenCapture);
+
                     if (monsterResults.Any())
                     {
-                        OnStatusMessage($"🎯 找到了 {monsterResults.Count} 隻怪物！");
-
-                        // ✅ 使用 MonsterService 的模板資訊
-                        var templateSize = _monsterService.GetTemplate(0)?.Size ?? new Size(32, 32);
-                        var locations = monsterResults.Select(r => r.Location).ToList();
-
-                        _liveViewController?.DrawMonsterRectangles(locations, templateSize);
+                        this.BeginInvoke(() =>
+                        {
+                            OnStatusMessage($"找到了 {monsterResults.Count} 隻怪物！");
+                            var templateSize = _monsterService.GetTemplate(0)?.Size ?? new Size(32, 32);
+                            var locations = monsterResults.Select(r => r.Location).ToList();
+                            _liveViewController?.DrawMonsterRectangles(locations, templateSize);
+                        });
                     }
-                }
-                catch (Exception ex)
-                {
-                    OnError($"怪物匹配時發生錯誤: {ex.Message}");
-                }
-                finally
-                {
+
                     screenCapture.Dispose();
                 }
             }
+            catch (Exception ex)
+            {
+                this.BeginInvoke(() => OnError($"怪物偵測錯誤: {ex.Message}"));
+            }
+            finally
+            {
+                lock (_detectionLock)
+                {
+                    _isMonsterDetectionRunning = false;
+                }
+            }
         }
+
 
         #endregion
 
@@ -472,7 +525,8 @@ namespace ArtaleAI
             try
             {
                 // 停止計時器
-                tmr_MonsterMatch?.Stop();
+                _backgroundMonsterTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+                _backgroundMonsterTimer?.Dispose();
 
                 // 清理所有資源
                 _floatingMagnifier?.Dispose();
@@ -483,7 +537,7 @@ namespace ArtaleAI
                 // 確保圖片資源被釋放
                 pictureBoxMinimap.Image?.Dispose();
 
-                OnStatusMessage("✅ 應用程式已清理完成");
+                OnStatusMessage("應用程式已清理完成");
             }
             catch (Exception ex)
             {
@@ -495,5 +549,114 @@ namespace ArtaleAI
         }
 
         #endregion
+
+        #region OpenCV 診斷功能
+
+        private void ComprehensiveOpenCvDiagnosis()
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("=== OpenCvSharp4.Windows 完整診斷 ===");
+
+                var currentDir = AppDomain.CurrentDomain.BaseDirectory;
+
+                // 檢查系統環境
+                System.Diagnostics.Debug.WriteLine($"應用程式目錄: {currentDir}");
+                System.Diagnostics.Debug.WriteLine($"處理程序架構: {(Environment.Is64BitProcess ? "64-bit" : "32-bit")}");
+                System.Diagnostics.Debug.WriteLine($".NET 版本: {Environment.Version}");
+
+                // 檢查關鍵 DLL 檔案
+                var criticalDlls = new[]
+                {
+            "OpenCvSharpExtern.dll",
+            "OpenCvSharp.dll",
+            "OpenCvSharp.Extensions.dll",
+            "msvcp140.dll",
+            "vcruntime140.dll",
+            "vcruntime140_1.dll"
+        };
+
+                foreach (var dll in criticalDlls)
+                {
+                    var dllPath = Path.Combine(currentDir, dll);
+                    var exists = File.Exists(dllPath);
+                    System.Diagnostics.Debug.WriteLine($"{dll}: {(exists ? "✅存在" : "❌缺失")}");
+
+                    if (exists)
+                    {
+                        var handle = LoadLibrary(dllPath);
+                        var error = Marshal.GetLastWin32Error();
+                        System.Diagnostics.Debug.WriteLine($"  LoadLibrary: 0x{handle.ToInt64():X}, 錯誤: {error}");
+
+                        if (handle != IntPtr.Zero)
+                        {
+                            FreeLibrary(handle);
+                        }
+                    }
+                }
+
+                // 測試不同的 Mat 建立方式
+                System.Diagnostics.Debug.WriteLine("\n=== OpenCV Mat 建立測試 ===");
+
+                // 測試 1: 預設建構函數
+                try
+                {
+                    using var emptyMat = new OpenCvSharp.Mat();
+                    System.Diagnostics.Debug.WriteLine($"空 Mat: IsContinuous={emptyMat.IsContinuous()}, Data=0x{emptyMat.Data.ToInt64():X}");
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"❌ 空 Mat 建立失敗: {ex.Message}");
+                }
+
+                // 測試 2: 有尺寸的 Mat
+                try
+                {
+                    using var sizeMat = new OpenCvSharp.Mat(100, 100, OpenCvSharp.MatType.CV_8UC3);
+                    System.Diagnostics.Debug.WriteLine($"尺寸 Mat: {sizeMat.Width}x{sizeMat.Height}, Data=0x{sizeMat.Data.ToInt64():X}");
+
+                    if (sizeMat.IsContinuous() && sizeMat.Data != IntPtr.Zero)
+                    {
+                        // 測試基本功能
+                        using var template = OpenCvSharp.Mat.Ones(20, 20, OpenCvSharp.MatType.CV_8UC3);
+                        using var result = new OpenCvSharp.Mat();
+
+                        OpenCvSharp.Cv2.MatchTemplate(sizeMat, template, result, OpenCvSharp.TemplateMatchModes.CCoeffNormed);
+                        OpenCvSharp.Cv2.MinMaxLoc(result, out var minVal, out var maxVal, out var minLoc, out var maxLoc);
+
+                        System.Diagnostics.Debug.WriteLine($"模板匹配: maxVal={maxVal:F6}");
+
+                        if (!double.IsInfinity(maxVal) && !double.IsNaN(maxVal))
+                        {
+                            System.Diagnostics.Debug.WriteLine("🎉 OpenCV 功能完全正常！");
+
+                            // ✅ 修正：安全的 UI 更新方式
+                            if (this.IsHandleCreated && !this.IsDisposed)
+                            {
+                                this.BeginInvoke(() =>
+                                {
+                                    MessageBox.Show("🎉 OpenCV 功能已恢復正常！", "測試成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                                });
+                            }
+                            return;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"❌ 尺寸 Mat 測試失敗: {ex.Message}");
+                }
+
+                System.Diagnostics.Debug.WriteLine("❌ OpenCV 初始化仍然失敗");
+
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"❌ 診斷過程失敗: {ex.Message}");
+            }
+        }
+
+        #endregion
     }
 }
+    

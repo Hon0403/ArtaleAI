@@ -32,6 +32,13 @@ namespace ArtaleAI.Config
     public class MonsterDetectionSettings
     {
         public double DefaultThreshold { get; set; }
+        public double DefaultConfidence { get; set; }
+        public int MaxDetectionResults { get; set; }
+        public bool EnableDebugOutput { get; set; }
+        public bool UseColorFilter { get; set; }
+        public double ColorTolerance { get; set; }
+
+
     }
 
     public class MinimapTemplates

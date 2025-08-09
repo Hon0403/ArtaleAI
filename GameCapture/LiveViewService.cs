@@ -115,26 +115,26 @@ namespace ArtaleAI.GameCapture
         {
             try
             {
+                // 確保在背景執行緒中執行
+                await Task.Yield();
+
                 while (!cancellationToken.IsCancellationRequested && _capturer != null)
                 {
                     using (var frame = _capturer.TryGetNextFrame())
                     {
                         if (frame != null)
                         {
-                            // 建立畫面副本以避免釋放問題
                             var frameCopy = new Bitmap(frame);
-                            _eventHandler.OnFrameAvailable(frameCopy);
+
+                            // 強制在背景執行緒中調用
+                            await Task.Run(() => _eventHandler.OnFrameAvailable(frameCopy));
                         }
                     }
 
-                    // 控制更新頻率 (約60 FPS)
                     await Task.Delay(16, cancellationToken);
                 }
             }
-            catch (TaskCanceledException)
-            {
-                // 正常的取消操作
-            }
+            catch (TaskCanceledException) { }
             catch (Exception ex)
             {
                 _eventHandler.OnError($"捕捉過程中發生錯誤: {ex.Message}");

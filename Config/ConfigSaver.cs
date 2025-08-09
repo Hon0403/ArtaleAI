@@ -12,8 +12,6 @@ namespace ArtaleAI.Config
     /// </summary>
     public static class ConfigSaver
     {
-        // ✅ 移除重複的 GetProjectConfigPath() 方法
-        // ✅ 使用統一的工具類
         private static readonly string DefaultPath = PathUtils.GetConfigFilePath();
 
         public static void SaveConfig(AppConfig config, string? path = null)

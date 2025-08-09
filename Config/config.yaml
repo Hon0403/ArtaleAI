@@ -22,6 +22,10 @@ templates:
         path: templates/minimap/bottom_left.png
       bottomRight:
         path: templates/minimap/bottom_right.png
-  # 新增的區塊
   monsterDetection:
-    defaultThreshold: 0.6
+    defaultThreshold: 0.01
+    defaultConfidence: 0.6
+    maxDetectionResults: 10
+    enableDebugOutput: false
+    useColorFilter: false      # 是否啟用顏色過濾
+    colorTolerance: 30.0     # 顏色容忍度
