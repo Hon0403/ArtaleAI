@@ -1,0 +1,129 @@
+﻿general:
+  gameWindowTitle: MapleStory Worlds-Artale (繁體中文版)
+  lastSelectedWindowName: MapleStory Worlds-Artale (繁體中文版)
+  lastSelectedProcessName: msw
+  lastSelectedProcessId: 25336
+  minimapUpscaleFactor: 4
+  zoomFactor: 15
+
+templates:
+  minimap:
+    playerThreshold: 0.6
+    cornerThreshold: 0.6
+    playerMarker:
+      path: templates/minimap/player_marker.png
+    otherPlayers:
+      path: templates/minimap/other_players.png
+    corners:
+      topLeft:
+        path: templates/minimap/topleft.png
+      topRight:
+        path: templates/minimap/topright.png
+      bottomLeft:
+        path: templates/minimap/bottom_left.png
+      bottomRight:
+        path: templates/minimap/bottom_right.png
+
+  monsterDetection:
+    defaultThreshold: 0.7
+    maxDetectionResults: 15
+    detectionMode: Color
+    occlusionHandling: DynamicThreshold
+    
+    # 多尺度匹配參數
+    multiScaleFactors: [0.9, 1.0, 1.1]
+    
+    # 形態學處理參數
+    morphologyKernelSize: 5
+    contourBlurSize: 3
+    contourThresholdLimit: 0.3
+    
+    # 動態閾值參數
+    dynamicThresholdMultiplier: 0.5
+    
+    # NMS 參數
+    nmsIouThreshold: 0.5
+    
+    # TemplateFree 模式參數
+    templateFreeKernelSize: 25
+    templateFreeOpenKernelSize: 5
+    minDetectionArea: 800
+    maxDetectionArea: 50000
+    aspectRatioLimit: 5.0
+
+# 隊友血條偵測設定
+partyRedBar:
+  # HSV 顏色範圍 (紅色)
+  lowerRedHsv: [0, 120, 120]
+  upperRedHsv: [10, 255, 255]
+  
+  # 血條尺寸限制
+  minBarHeight: 4          # 稍微降低最小高度
+  maxBarHeight: 8          # 稍微增加最大高度  
+  minBarWidth: 1
+  maxBarWidth: 60          # 增加最大寬度以支持更長的血條
+  minBarArea: 8            # 降低最小面積要求
+  minFillRate: 0.6         # 降低預設填充率要求
+  
+  # 玩家位置偏移量（相對血條位置）
+  playerOffsetX: 0
+  playerOffsetY: -30
+  
+  # UI排除設定
+  uiHeightFromBottom: 200
+
+# 辨識框視覺樣式設定
+overlayStyle:
+  monster:
+    frameColor: 255,255,0      # 怪物框線顏色 (RGB: 黃色)
+    textColor: 255,0,0         # 怪物文字顏色 (RGB: 紅色)  
+    frameThickness: 2          # 框線粗細
+    textScale: 1.2             # 文字大小倍率
+    textThickness: 2           # 文字粗細
+    showConfidence: true       # 是否顯示信心度
+    textFormat: "{0} ({1:F2})" # 文字格式: 名稱 (信心度)
+    
+  minimap:
+    frameColor: 0,255,255      # 小地圖框線顏色 (RGB: 青色)
+    textColor: 255,255,255     # 小地圖文字顏色 (RGB: 白色)
+    frameThickness: 2          # 框線粗細
+    textScale: 1.2             # 文字大小倍率
+    textThickness: 2           # 文字粗細
+    minimapDisplayName: "MINIMAP" # 小地圖顯示名稱
+
+  player:
+    frameColor: 0,255,255      # 玩家框線顏色 (RGB: 綠色)
+    textColor: 255,255,255     # 玩家文字顏色 (RGB: 黑色)
+    frameThickness: 2          # 框線粗細
+    textScale: 1.2             # 文字大小倍率  
+    textThickness: 2           # 文字粗細
+    playerDisplayName: "Player"   # 玩家顯示名稱
+
+  partyRedBar:  # ← 血條樣式
+    frameColor: 255,0,0      # 紅色框線
+    textColor: 255,255,255   # 白色文字
+    frameThickness: 2        # 框線粗細
+    textScale: 1.0           # 文字大小
+    textThickness: 2         # 文字粗細
+    redBarDisplayName: "Health"  # 顯示名稱
+
+# 怪物下載設定
+monsterDownload:
+  baseUrl: https://maplestory.io
+  defaultRegion: GMS
+  defaultVersion: 65
+  timeoutSeconds: 30
+  maxRetryAttempts: 3
+  skipDeathAnimations: true
+  outputDirectory: monster
+  replaceTransparentBackground: true
+  backgroundColor: 0,255,0
+  supportedImageFormats: [png, jpg, jpeg, bmp]
+
+# 圖像處理設定
+imageProcessing:
+  convertTransparentPixels: true
+  replacementColorBgr: 0,255,0
+  preserveAlphaChannel: true
+  outputFormat: png
+  compressionQuality: 90
