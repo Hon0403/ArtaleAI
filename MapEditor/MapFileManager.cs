@@ -1,8 +1,4 @@
-﻿using ArtaleAI.UI;
-using System;
-using System.IO;
-using System.Linq;
-using System.Windows.Forms;
+﻿using ArtaleAI.Interfaces;
 
 namespace ArtaleAI.Minimap
 {
@@ -11,7 +7,7 @@ namespace ArtaleAI.Minimap
     /// </summary>
     public class MapFileManager : IDisposable
     {
-        private readonly IMapFileEventHandler _eventHandler;
+        private readonly IMainFormEvents _eventHandler;
         private readonly ComboBox _mapFilesComboBox;
         private readonly MapEditor _mapEditor;
         private string? _currentMapFilePath;
@@ -20,7 +16,7 @@ namespace ArtaleAI.Minimap
         public bool HasCurrentMap => !string.IsNullOrEmpty(_currentMapFilePath);
         public string? CurrentMapFileName => HasCurrentMap ? Path.GetFileName(_currentMapFilePath) : null;
 
-        public MapFileManager(ComboBox mapFilesComboBox, MapEditor mapEditor, IMapFileEventHandler eventHandler)
+        public MapFileManager(ComboBox mapFilesComboBox, MapEditor mapEditor, IMainFormEvents eventHandler)
         {
             _mapFilesComboBox = mapFilesComboBox ?? throw new ArgumentNullException(nameof(mapFilesComboBox));
             _mapEditor = mapEditor ?? throw new ArgumentNullException(nameof(mapEditor));

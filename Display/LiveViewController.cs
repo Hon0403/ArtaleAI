@@ -1,22 +1,17 @@
 ﻿using ArtaleAI.Config;
-using ArtaleAI.GameWindow;
-using ArtaleAI.Player;
-using ArtaleAI.UI;
-using ArtaleAI.Utils;
+using ArtaleAI.Detection;
+using ArtaleAI.GameCapture;
+using ArtaleAI.Interfaces;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Windows.Forms;
 
-namespace ArtaleAI.GameCapture
+
+namespace ArtaleAI.Display
 {
-    public class LiveViewController : ILiveViewEventHandler, IDisposable
+    public class LiveViewController :  IDisposable
     {
         private readonly TextBox _statusTextBox;
+        private readonly IMainFormEvents _eventHandler;
         private readonly Control _parentControl;
         private readonly LiveViewService _liveViewService;
         private readonly PictureBox _displayPictureBox;
@@ -36,12 +31,12 @@ namespace ArtaleAI.GameCapture
 
         public bool IsRunning => _liveViewService.IsRunning;
 
-        public LiveViewController(TextBox statusTextBox, Control parentControl, PictureBox pictureBox)
+        public LiveViewController(TextBox statusTextBox, IMainFormEvents eventHandler, PictureBox pictureBox)
         {
             _statusTextBox = statusTextBox ?? throw new ArgumentNullException(nameof(statusTextBox));
-            _parentControl = parentControl ?? throw new ArgumentNullException(nameof(parentControl));
+            _eventHandler = eventHandler ?? throw new ArgumentNullException(nameof(eventHandler));
             _displayPictureBox = pictureBox ?? throw new ArgumentNullException(nameof(pictureBox));
-            _liveViewService = new LiveViewService(this);
+            _liveViewService = new LiveViewService(_eventHandler);
         }
 
         public void SetConfig(AppConfig config)

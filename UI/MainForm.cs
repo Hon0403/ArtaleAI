@@ -1,27 +1,16 @@
 ﻿using ArtaleAI.Config;
-using ArtaleAI.Core;
-using ArtaleAI.GameCapture;
+using ArtaleAI.Detection;
+using ArtaleAI.Display;
+using ArtaleAI.Interfaces;
 using ArtaleAI.Minimap;
-using ArtaleAI.Monster;
-using ArtaleAI.UI;
 using ArtaleAI.Utils;
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
-using System.Windows.Forms;
 using Windows.Graphics.Capture;
-using static ArtaleAI.Config.MonsterRenderInfo;
+using ArtaleAI.API;
 
 namespace ArtaleAI
 {
-    public partial class MainForm : Form,
-        IConfigEventHandler,           // 配置管理
-        IMapFileEventHandler,          // 地圖檔案管理  
-        IApplicationEventHandler       // 統一應用事件
+    public partial class MainForm : Form, IMainFormEvents
     {
 
         [DllImport("kernel32.dll", SetLastError = true)]
@@ -97,7 +86,12 @@ namespace ArtaleAI
             OnStatusMessage("背景 Timer 初始化完成");
         }
 
-
+        // 即時顯示事件
+        public void OnFrameAvailable(Bitmap frame)
+        {
+            // 直接委托給 LiveViewController
+            _liveViewController?.OnFrameAvailable(frame);
+        }
         private void BindEvents()
         {
             // UI 控制項事件綁定

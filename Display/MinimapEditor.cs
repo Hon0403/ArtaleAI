@@ -1,4 +1,5 @@
 ﻿using ArtaleAI.Config;
+using ArtaleAI.Detection;
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -6,7 +7,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using Windows.Graphics.Capture;
 
-namespace ArtaleAI.Minimap
+namespace ArtaleAI.Display
 {
     /// <summary>
     /// 編輯器小地圖服務 - 包含座標轉換和放大鏡功能

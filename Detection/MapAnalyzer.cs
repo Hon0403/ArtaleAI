@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using Windows.Graphics.Capture;
 using WinRT.Interop;
 
-namespace ArtaleAI.Minimap
+namespace ArtaleAI.Detection
 {
     /// <summary>
     /// 用於打包小地圖快照及其分析結果的資料結構。

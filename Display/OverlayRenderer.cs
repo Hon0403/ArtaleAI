@@ -5,8 +5,9 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using ArtaleAI.Config;
+using ArtaleAI.Utils;
 
-namespace ArtaleAI.Utils
+namespace ArtaleAI.Display
 {
     /// <summary>
     /// 通用的疊加層渲染器 - 支援配置化樣式

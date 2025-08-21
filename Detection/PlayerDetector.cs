@@ -7,7 +7,7 @@ using System.Linq;
 using ArtaleAI.Config;
 using ArtaleAI.Utils;
 
-namespace ArtaleAI.Player
+namespace ArtaleAI.Detection
 {
     /// <summary>
     /// 玩家位置偵測器 - 通過隊友紅色血條定位玩家位置

@@ -9,7 +9,7 @@ namespace ArtaleAI.Utils
     public static class PathUtils
     {
         /// <summary>
-        /// 獲取執行目錄（簡化版）
+        /// 獲取執行目錄
         /// </summary>
         public static string GetProjectRootDirectory() =>
             AppDomain.CurrentDomain.BaseDirectory;

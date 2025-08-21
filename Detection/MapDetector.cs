@@ -6,7 +6,7 @@ using System.IO;
 using System.Collections.Generic;
 using ArtaleAI.Utils;
 
-namespace ArtaleAI.Minimap
+namespace ArtaleAI.Detection
 {
     public class MapDetector : IDisposable
     {
@@ -130,8 +130,8 @@ namespace ArtaleAI.Minimap
 
                     if (_templates.TryGetValue("BottomRight", out var brTemplate))
                     {
-                        int width = (br.X + brTemplate.Width) - tl.X;
-                        int height = (br.Y + brTemplate.Height) - tl.Y;
+                        int width = br.X + brTemplate.Width - tl.X;
+                        int height = br.Y + brTemplate.Height - tl.Y;
                         Console.WriteLine($"📐 計算出的小地圖區域: ({tl.X}, {tl.Y}) -> {width}x{height}");
 
                         if (width > 0 && height > 0)

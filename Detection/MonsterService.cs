@@ -1,6 +1,5 @@
-﻿using ArtaleAI;
-using ArtaleAI.Config;
-using ArtaleAI.Utils;
+﻿using ArtaleAI.Config;
+using ArtaleAI.Interfaces;
 using OpenCvSharp.Extensions;
 using System;
 using System.Collections.Generic;
@@ -10,14 +9,14 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-namespace ArtaleAI.Monster
+namespace ArtaleAI.Detection
 {
     /// <summary>
     /// 統一的怪物服務 - 整合模板管理和偵測功能 (OpenCvSharp 版本)
     /// </summary>
     public class MonsterService : IDisposable
     {
-        private readonly IApplicationEventHandler _eventHandler;
+        private readonly IMainFormEvents _eventHandler;
         private readonly ComboBox _monsterComboBox;
         private List<Bitmap> _currentTemplates;
 
@@ -25,7 +24,7 @@ namespace ArtaleAI.Monster
         public bool HasTemplates => _currentTemplates.Any();
         public string? CurrentMonsterName { get; private set; }
 
-        public MonsterService(ComboBox monsterComboBox, IApplicationEventHandler eventHandler)
+        public MonsterService(ComboBox monsterComboBox, IMainFormEvents eventHandler)
         {
             _monsterComboBox = monsterComboBox ?? throw new ArgumentNullException(nameof(monsterComboBox));
             _eventHandler = eventHandler ?? throw new ArgumentNullException(nameof(eventHandler));

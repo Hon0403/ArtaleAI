@@ -1,11 +1,6 @@
 ﻿using ArtaleAI.Config;
 using ArtaleAI.GameWindow;
-using ArtaleAI.UI;
-using System;
-using System.Drawing;
-using System.Threading;
-using System.Threading.Tasks;
-using Windows.Graphics.Capture;
+using ArtaleAI.Interfaces;
 
 namespace ArtaleAI.GameCapture
 {
@@ -17,13 +12,13 @@ namespace ArtaleAI.GameCapture
         private GraphicsCapturer? _capturer;
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _captureTask;
-        private readonly ILiveViewEventHandler _eventHandler;
+        private readonly IMainFormEvents _eventHandler;
         private bool _isRunning;
         public GraphicsCapturer? Capturer => _capturer;
 
         public bool IsRunning => _isRunning;
 
-        public LiveViewService(ILiveViewEventHandler eventHandler)
+        public LiveViewService(IMainFormEvents eventHandler)
         {
             _eventHandler = eventHandler ?? throw new ArgumentNullException(nameof(eventHandler));
         }

@@ -10,7 +10,7 @@ using CvPoint = OpenCvSharp.Point;
 using SdPoint = System.Drawing.Point;
 using ArtaleAI.Utils;
 
-namespace ArtaleAI.Utils
+namespace ArtaleAI.Detection
 {
     /// <summary>
     /// 智慧模板匹配器 - 每個辨識模式自動使用最佳遮擋處理
@@ -278,7 +278,7 @@ namespace ArtaleAI.Utils
                     Position = new SdPoint(loc.X, loc.Y),
                     Size = new System.Drawing.Size(templateGray4Ch.Width, templateGray4Ch.Height),
                     Score = score,
-                    Confidence = 1.0 - (score / dynamicThreshold)
+                    Confidence = 1.0 - score / dynamicThreshold
                 });
             }
 
@@ -472,7 +472,7 @@ namespace ArtaleAI.Utils
                 for (int x = 0; x < result.Width; x++)
                 {
                     float score = result.At<float>(y, x);
-                    bool isMatch = useLessEqual ? (score <= threshold) : (score >= threshold);
+                    bool isMatch = useLessEqual ? score <= threshold : score >= threshold;
                     if (isMatch)
                     {
                         candidates.Add((new CvPoint(x, y), score));
@@ -707,7 +707,7 @@ namespace ArtaleAI.Utils
                     Position = new SdPoint(loc.X, loc.Y),
                     Size = new System.Drawing.Size(templateGray4Ch.Width, templateGray4Ch.Height),
                     Score = score,
-                    Confidence = 1.0 - (score / dynamicThreshold)
+                    Confidence = 1.0 - score / dynamicThreshold
                 });
             }
 

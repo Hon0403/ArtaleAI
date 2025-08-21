@@ -1,30 +1,25 @@
 ﻿using ArtaleAI.Config;
 using ArtaleAI.Utils;
 using OpenCvSharp;
-using OpenCvSharp.Extensions;
 using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
-using System.IO;
 using System.IO.Compression;
-using System.Linq;
-using System.Net.Http;
-using System.Threading.Tasks;
+using ArtaleAI.Interfaces;
+using ArtaleAI.API.Models;
 
-namespace ArtaleAI.Monster
+namespace ArtaleAI.API
 {
     /// <summary>
     /// 怪物模板下載器 - 從MapleStory.io API下載並處理怪物圖片 (OpenCvSharp 版本)
     /// </summary>
     public class MonsterImageFetcher : IDisposable
     {
-        private readonly IApplicationEventHandler _eventHandler;
+        private readonly IMainFormEvents _eventHandler;
         private readonly HttpClient _httpClient;
         private readonly MonsterDownloadSettings _downloadSettings;
         private readonly ImageProcessingSettings _imageSettings;
         private bool _disposed = false;
 
-        public MonsterImageFetcher(IApplicationEventHandler eventHandler)
+        public MonsterImageFetcher(IMainFormEvents eventHandler)
         {
             _eventHandler = eventHandler ?? throw new ArgumentNullException(nameof(eventHandler));
             _httpClient = new HttpClient();
@@ -43,7 +38,7 @@ namespace ArtaleAI.Monster
         }
 
         public MonsterImageFetcher(
-            IApplicationEventHandler eventHandler,
+            IMainFormEvents eventHandler,
             ImageProcessingSettings imageSettings,
             MonsterDownloadSettings downloadSettings)
         {
@@ -150,7 +145,7 @@ namespace ArtaleAI.Monster
         /// <summary>
         /// 從MapleStory API獲取所有怪物資料
         /// </summary>
-        private async Task<List<Mob>?> GetAllMobsAsync()
+        private async Task<List<ArtaleMonster>?> GetAllMobsAsync()
         {
             string url = $"{_downloadSettings.BaseUrl}/api/{_downloadSettings.DefaultRegion}/{_downloadSettings.DefaultVersion}/mob";
             _eventHandler.OnStatusMessage($"正在從以下網址獲取怪物資料: {url}");
@@ -163,7 +158,7 @@ namespace ArtaleAI.Monster
                     response.EnsureSuccessStatusCode();
 
                     string jsonContent = await response.Content.ReadAsStringAsync();
-                    var mobs = JsonConvert.DeserializeObject<List<Mob>>(jsonContent);
+                    var mobs = JsonConvert.DeserializeObject<List<ArtaleMonster>>(jsonContent);
 
                     _eventHandler.OnStatusMessage($"成功獲取 {mobs?.Count ?? 0} 個怪物資料");
                     return mobs;
@@ -192,7 +187,7 @@ namespace ArtaleAI.Monster
         /// <summary>
         /// 根據怪物名稱查找怪物ID
         /// </summary>
-        private int? FindMobId(List<Mob> allMobs, string mobName)
+        private int? FindMobId(List<ArtaleMonster> allMobs, string mobName)
         {
             if (allMobs == null) return null;
 
