@@ -33,9 +33,6 @@ namespace ArtaleAI
         private MonsterService? _monsterService;
         private MapFileManager? _mapFileManager;
 
-        private System.Threading.Timer? _backgroundMonsterTimer;
-        private bool _isMonsterDetectionRunning = false;
-        private readonly object _detectionLock = new object();
         private MonsterImageFetcher? _monsterDownloader;
 
         #endregion
@@ -47,7 +44,6 @@ namespace ArtaleAI
             InitializeComponent();
             InitializeServices();
             BindEvents();
-            InitializeTimer();
 
         }
 
@@ -63,27 +59,17 @@ namespace ArtaleAI
             _liveViewController = new LiveViewController(textBox1, this, pictureBoxLiveView);
             _liveViewController.SetConfig(_configurationManager.CurrentConfig);
 
-            // 其他服務初始化保持不變
-            _floatingMagnifier = new FloatingMagnifier(this);
+            // 🔧 只建立一次 MonsterService
             _monsterService = new MonsterService(cbo_MonsterTemplates, this);
             _monsterService.InitializeMonsterDropdown();
+            _liveViewController.SetMonsterService(_monsterService);
+
+            // 其他服務初始化
+            _floatingMagnifier = new FloatingMagnifier(this);
             _mapFileManager = new MapFileManager(cbo_MapFiles, _mapEditor, this);
             _mapFileManager.InitializeMapFilesDropdown();
             _monsterDownloader = new MonsterImageFetcher(this);
-
             InitializeDetectionModeDropdown();
-        }
-
-        private void InitializeTimer()
-        {
-            _backgroundMonsterTimer = new System.Threading.Timer(
-                ProcessMonsterDetectionBackground,
-                null,
-                Timeout.Infinite,
-                Timeout.Infinite
-            );
-
-            OnStatusMessage("背景 Timer 初始化完成");
         }
 
         // 即時顯示事件
@@ -254,7 +240,7 @@ namespace ArtaleAI
 
         #region IMapFileEventHandler 實作
 
-        public string GetMapDataDirectory() => PathUtils.GetMapDataDirectory();
+        public string GetMapDataDirectory() => common.GetMapDataDirectory();
 
         public void OnMapLoaded(string mapFileName)
         {
@@ -315,7 +301,7 @@ namespace ArtaleAI
             _editorMinimap.ConvertToImageCoordinates(pictureBoxMinimap, mouseLocation);
 
         // 怪物模板功能
-        public string GetMonstersDirectory() => PathUtils.GetMonstersDirectory();
+        public string GetMonstersDirectory() => common.GetMonstersDirectory();
 
         public void OnTemplatesLoaded(string monsterName, int templateCount)
         {
@@ -372,33 +358,124 @@ namespace ArtaleAI
 
         private async void TabControl1_SelectedIndexChanged(object? sender, EventArgs e)
         {
-            // 停止現有的即時顯示
-            if (_liveViewController != null && _liveViewController.IsRunning)
-                await _liveViewController.StopAsync();
+            // 🔧 完全停止並釋放所有分頁資源
+            await StopAndReleaseAllResources();
 
-            _backgroundMonsterTimer?.Change(Timeout.Infinite, Timeout.Infinite);
-
+            // 🔧 根據當前分頁啟動對應功能
             switch (tabControl1.SelectedIndex)
             {
-                case 1: // 路徑編輯標籤
-                    await UpdateMinimapSnapshotForPathEditingAsync();
+                case 1: // 路徑編輯
+                    await StartPathEditingModeAsync();
                     break;
-
-                case 2: // 即時顯示標籤
-                    var config = _configurationManager?.CurrentConfig ?? new AppConfig();
-
-                    // 先啟動即時顯示
-                    await _liveViewController.StartAsync(config);
-                    OnStatusMessage("即時顯示已啟動");
-
-                    await Task.Delay(1000);
-
-                    await LoadAndSetupMinimapOverlay();
-
-                    await Task.Delay(1000);
-                    _backgroundMonsterTimer?.Change(0, 16);
+                case 2: // 即時顯示
+                    await StartLiveViewModeAsync();
                     break;
             }
+        }
+
+        /// <summary>
+        /// 路徑編輯模式：只載入靜態小地圖
+        /// </summary>
+        private async Task StartPathEditingModeAsync()
+        {
+            OnStatusMessage("🗺️ 路徑編輯模式：載入靜態小地圖");
+
+            tabControl1.Enabled = false;
+            try
+            {
+                // 載入一次性的小地圖快照
+                await LoadMinimapAsync(MinimapUsage.PathEditing);
+                OnStatusMessage("✅ 路徑編輯模式就緒");
+            }
+            catch (Exception ex)
+            {
+                OnError($"路徑編輯模式啟動失敗: {ex.Message}");
+            }
+            finally
+            {
+                tabControl1.Enabled = true;
+            }
+        }
+
+        /// <summary>
+        /// 即時顯示模式：啟動所有即時處理功能
+        /// </summary>
+        private async Task StartLiveViewModeAsync()
+        {
+            OnStatusMessage("📺 即時顯示模式：啟動即時處理");
+
+            var config = _configurationManager?.CurrentConfig ?? new AppConfig();
+
+            try
+            {
+                // 1. 啟動即時視窗捕捉
+                await _liveViewController.StartAsync(config);
+                OnStatusMessage("   ✅ 即時視窗捕捉已啟動");
+
+                // 2. 設置小地圖疊加層
+                try
+                {
+                    await Task.Delay(500);
+                    await LoadAndSetupMinimapOverlay();
+                    OnStatusMessage("   ✅ 小地圖疊加層已設置");
+                }
+                catch (Exception ex)
+                {
+                    OnStatusMessage($"   ⚠️ 小地圖疊加層設置失敗: {ex.Message}");
+                }
+
+                // ❌ 刪除 Timer 啟動代碼
+                /*
+                if (_monsterService?.HasTemplates == true)
+                {
+                    await Task.Delay(500);
+                    _backgroundMonsterTimer?.Change(0, 100); // 刪除這行
+                    OnStatusMessage("   ✅ 背景偵測處理已啟動");
+                }
+                */
+
+                // ✅ 改為這樣
+                OnStatusMessage("🚀 即時顯示模式完全就緒！所有偵測在主執行緒中處理");
+            }
+            catch (Exception ex)
+            {
+                OnError($"即時顯示模式啟動失敗: {ex.Message}");
+            }
+        }
+
+
+        /// <summary>
+        /// 完全停止並釋放所有分頁處理資源
+        /// </summary>
+        private async Task StopAndReleaseAllResources()
+        {
+            OnStatusMessage("🛑 正在停止所有分頁處理並釋放資源...");
+
+            // ❌ 刪除 Timer 停止代碼
+            /*
+            if (_backgroundMonsterTimer != null)
+            {
+                _backgroundMonsterTimer.Change(Timeout.Infinite, Timeout.Infinite);
+                OnStatusMessage("   ✅ 背景怪物偵測已停止");
+            }
+            */
+
+            // ✅ 保持即時顯示服務停止
+            if (_liveViewController?.IsRunning == true)
+            {
+                await _liveViewController.StopAsync();
+                OnStatusMessage("   ✅ 即時顯示服務已停止");
+            }
+
+            // ✅ 保持其他清理代碼
+            TemplateMatcher.ClearCache();
+            OnStatusMessage("   ✅ 模板匹配器快取已清理");
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            OnStatusMessage("✅ 所有資源已完全釋放");
         }
 
         /// <summary>
@@ -477,20 +554,35 @@ namespace ArtaleAI
 
             try
             {
+                // 檢查動態辨識是否成功
+                if (!result.MinimapScreenRect.HasValue)
+                {
+                    OnError("動態小地圖位置辨識失敗，無法設置疊加層");
+                    return;
+                }
+
                 // 使用動態偵測到的玩家位置
                 Rectangle playerRect;
+                if (result.PlayerPosition.HasValue)
+                {
+                    var pos = result.PlayerPosition.Value;
+                    playerRect = new Rectangle(pos.X - 8, pos.Y - 8, 16, 16);
+                }
+                else
+                {
+                    // 如果沒有玩家位置，使用空矩形
+                    playerRect = Rectangle.Empty;
+                    OnStatusMessage("⚠️ 未檢測到玩家位置");
+                }
 
-                var pos = result.PlayerPosition.Value;
-                playerRect = new Rectangle(pos.X - 8, pos.Y - 8, 16, 16);
-
-
-                // 🔧 使用動態偵測到的小地圖螢幕位置
-                Rectangle minimapOnScreen = result.MinimapScreenRect ??
-                    new Rectangle(100, 100, 280, 280); // 最後手段
+                // 🔧 直接使用動態偵測到的小地圖螢幕位置
+                Rectangle minimapOnScreen = result.MinimapScreenRect.Value;
 
                 // 設置小地圖疊加層
                 _liveViewController.UpdateMinimapOverlay(
                     result.MinimapImage, minimapOnScreen, playerRect);
+
+                OnStatusMessage($"✅ 小地圖疊加層已設置 ({minimapOnScreen.Width}x{minimapOnScreen.Height})");
             }
             catch (Exception ex)
             {
@@ -618,142 +710,12 @@ namespace ArtaleAI
 
         #region 怪物匹配
 
-        /// <summary>
-        /// 背景怪物偵測處理
-        /// </summary>
-        private async void ProcessMonsterDetectionBackground(object? state)
-        {
-            lock (_detectionLock)
-            {
-                if (_isMonsterDetectionRunning) return;
-                _isMonsterDetectionRunning = true;
-            }
-
-            try
-            {
-                var screenCapture = _liveViewController?.GetCurrentCaptureFrame();
-
-                // 🔧 1. 血條識別 - 傳回血條矩形給UI顯示
-                if (screenCapture != null)
-                {
-                    // 獲取動態小地圖位置
-                    Rectangle? minimapRect = GetCurrentMinimapRect();
-
-                    // 傳入小地圖位置參數進行血條識別
-                    var (playerPos, redBarPos, redBarRect) = _liveViewController?.DetectPlayerPosition(
-                        screenCapture, minimapRect) ?? (null, null, null);
-
-                    // 如果找到血條，創建血條識別框
-                    if (redBarPos.HasValue && redBarRect.HasValue)
-                    {
-                        var redBarRects = new List<Rectangle> { redBarRect.Value };
-                        this.BeginInvoke(() =>
-                        {
-                            _liveViewController?.DrawPartyRedBarRectangles(redBarRects);
-                            OnStatusMessage($"🩸 找到隊友血條: ({redBarPos.Value.X}, {redBarPos.Value.Y})");
-                        });
-                    }
-                }
-
-                // 🔧 2. 怪物識別 - 現有邏輯
-                if (screenCapture != null && _monsterService?.HasTemplates == true)
-                {
-                    var config = _configurationManager?.CurrentConfig;
-                    var detectionSettings = config?.Templates?.MonsterDetection;
-                    if (detectionSettings != null)
-                    {
-                        var detectionMode = ParseDetectionMode(detectionSettings.DetectionMode);
-                        int maxAllowedResults = detectionSettings.MaxDetectionResults;
-
-                        // 🔧 使用現有的模板匹配邏輯
-                        var results = new List<MatchResult>();
-                        foreach (var template in _monsterService.CurrentTemplates)
-                        {
-                            var templateResults = TemplateMatcher.FindMonsters(
-                                screenCapture,
-                                template,
-                                detectionMode,
-                                detectionSettings.DefaultThreshold,
-                                _monsterService.CurrentMonsterName ?? "Unknown"
-                            );
-                            results.AddRange(templateResults);
-                        }
-
-                        // 處理怪物識別結果
-                        if (results.Any())
-                        {
-                            if (results.Count <= maxAllowedResults)
-                            {
-                                var renderInfos = results.Select(result => new MonsterRenderInfo
-                                {
-                                    Location = result.Position,
-                                    Size = result.Size,
-                                    MonsterName = result.Name,
-                                    Confidence = result.Confidence,
-                                    TemplateIndex = 0
-                                }).ToList();
-
-                                this.BeginInvoke(() =>
-                                {
-                                    OnStatusMessage($"🎯 找到了 {renderInfos.Count} 隻怪物！({detectionMode} 智慧模式)");
-                                    _liveViewController?.DrawMonsterRectangles(renderInfos);
-                                });
-                            }
-                            else
-                            {
-                                var limitedResults = results.Take(maxAllowedResults).Select(result => new MonsterRenderInfo
-                                {
-                                    Location = result.Position,
-                                    Size = result.Size,
-                                    MonsterName = result.Name,
-                                    Confidence = result.Confidence,
-                                    TemplateIndex = 0
-                                }).ToList();
-
-                                this.BeginInvoke(() =>
-                                {
-                                    OnStatusMessage($"⚠️ 偵測結果過多 ({results.Count})，顯示前 {maxAllowedResults} 個");
-                                    _liveViewController?.DrawMonsterRectangles(limitedResults);
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                this.BeginInvoke(() => OnError($"偵測錯誤: {ex.Message}"));
-            }
-            finally
-            {
-                lock (_detectionLock)
-                {
-                    _isMonsterDetectionRunning = false;
-                }
-            }
-        }
 
         // 獲取當前小地圖位置
         private Rectangle? GetCurrentMinimapRect()
         {
             // 從 LiveViewController 獲取動態小地圖位置
             return _liveViewController?.GetMinimapRect();
-        }
-
-        /// <summary>
-        /// 解析辨識模式字串
-        /// </summary>
-        private MonsterDetectionMode ParseDetectionMode(string modeString)
-        {
-            return modeString switch
-            {
-                "Basic" => MonsterDetectionMode.Basic,
-                "ContourOnly" => MonsterDetectionMode.ContourOnly,
-                "Grayscale" => MonsterDetectionMode.Grayscale,
-                "Color" => MonsterDetectionMode.Color,
-                "TemplateFree" => MonsterDetectionMode.TemplateFree,
-                _ => MonsterDetectionMode.Color // 預設值
-            };
         }
 
         #endregion
@@ -765,18 +727,12 @@ namespace ArtaleAI
         {
             try
             {
-                // 停止計時器
-                _backgroundMonsterTimer?.Change(Timeout.Infinite, Timeout.Infinite);
-                _backgroundMonsterTimer?.Dispose();
-
-                // 🔧 清理 TemplateMatcher 快取
                 TemplateMatcher.ClearCache();
 
                 // 清理所有資源
                 _floatingMagnifier?.Dispose();
                 _liveViewController?.Dispose();
                 _monsterService?.Dispose();
-                _mapFileManager?.Dispose();
                 _monsterDownloader?.Dispose();
                 pictureBoxMinimap.Image?.Dispose();
 

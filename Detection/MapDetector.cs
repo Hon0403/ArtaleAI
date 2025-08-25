@@ -21,7 +21,7 @@ namespace ArtaleAI.Detection
         }
 
         /// <summary>
-        /// 載入所有模板 - 四通道版本
+        /// 載入所有模板 - 三通道版本
         /// </summary>
         private void LoadAllTemplates()
         {
@@ -65,16 +65,14 @@ namespace ArtaleAI.Detection
                 {
                     try
                     {
-                        // 🔧 使用 ImageUtils 載入為四通道
                         var originalTemplate = Cv2.ImRead(templatePath, ImreadModes.Unchanged);
                         if (!originalTemplate.Empty())
                         {
-                            var template = ImageUtils.EnsureFourChannels(originalTemplate);
+                            var template = ImageUtils.EnsureThreeChannels(originalTemplate);
                             originalTemplate.Dispose();
 
                             _templates[kvp.Key] = template;
-                            ImageUtils.LogImageInfo(template, $"Template-{kvp.Key}");
-                            Console.WriteLine($"✅ 已載入四通道模板: {kvp.Key} ({template.Width}x{template.Height}, {template.Channels()} 通道)");
+                            Console.WriteLine($"✅ 已載入三通道模板: {kvp.Key} ({template.Width}x{template.Height}, {template.Channels()} 通道)");
                         }
                         else
                         {
@@ -93,11 +91,11 @@ namespace ArtaleAI.Detection
                 }
             }
 
-            Console.WriteLine($"模板載入完成，成功載入 {_templates.Count} 個四通道模板");
+            Console.WriteLine($"模板載入完成，成功載入 {_templates.Count} 個三通道模板");
         }
 
         /// <summary>
-        /// 在螢幕上尋找小地圖 - 四通道版本
+        /// 在螢幕上尋找小地圖 - 三通道版本
         /// </summary>
         public Rectangle? FindMinimapOnScreen(Bitmap fullFrameBitmap)
         {
@@ -106,21 +104,19 @@ namespace ArtaleAI.Detection
 
             try
             {
-                // 🔧 使用 ImageUtils 轉換為四通道
-                using var frameMat = ImageUtils.BitmapToFourChannelMat(fullFrameBitmap);
+                // 🔧 使用 ImageUtils 轉換為三通道
+                using var frameMat = ImageUtils.BitmapToThreeChannelMat(fullFrameBitmap);
 
                 var cornerThreshold = _config.Templates.Minimap.CornerThreshold;
-                Console.WriteLine($"🔍 開始小地圖檢測 (四通道)");
+                Console.WriteLine($"🔍 開始小地圖檢測 (三通道)");
                 Console.WriteLine($"📊 捕捉畫面大小: {fullFrameBitmap.Width}x{fullFrameBitmap.Height}");
                 Console.WriteLine($"🎯 使用閾值: {cornerThreshold}");
-
-                ImageUtils.LogImageInfo(frameMat, "FullFrame");
 
                 var topLeft = MatchTemplateInternal(frameMat, "TopLeft", cornerThreshold, true);
                 var bottomRight = MatchTemplateInternal(frameMat, "BottomRight", cornerThreshold, true);
 
-                Console.WriteLine($"🔍 TopLeft 四通道匹配結果: {(topLeft.HasValue ? $"成功 ({topLeft.Value.Location.X}, {topLeft.Value.Location.Y})" : "失敗")}");
-                Console.WriteLine($"🔍 BottomRight 四通道匹配結果: {(bottomRight.HasValue ? $"成功 ({bottomRight.Value.Location.X}, {bottomRight.Value.Location.Y})" : "失敗")}");
+                Console.WriteLine($"🔍 TopLeft 三通道匹配結果: {(topLeft.HasValue ? $"成功 ({topLeft.Value.Location.X}, {topLeft.Value.Location.Y})" : "失敗")}");
+                Console.WriteLine($"🔍 BottomRight 三通道匹配結果: {(bottomRight.HasValue ? $"成功 ({bottomRight.Value.Location.X}, {bottomRight.Value.Location.Y})" : "失敗")}");
 
                 // 🔧 確保變數名稱一致
                 if (topLeft.HasValue && bottomRight.HasValue)
@@ -136,24 +132,24 @@ namespace ArtaleAI.Detection
 
                         if (width > 0 && height > 0)
                         {
-                            Console.WriteLine($"✅ 四通道小地圖檢測成功！");
+                            Console.WriteLine($"✅ 三通道小地圖檢測成功！");
                             return new Rectangle(tl.X, tl.Y, width, height);
                         }
                     }
                 }
 
-                Console.WriteLine($"❌ 四通道小地圖檢測失敗");
+                Console.WriteLine($"❌ 三通道小地圖檢測失敗");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"💥 四通道小地圖檢測異常: {ex.Message}");
+                Console.WriteLine($"💥 三通道小地圖檢測異常: {ex.Message}");
             }
 
             return null;
         }
 
         /// <summary>
-        /// 尋找玩家位置 - 四通道版本
+        /// 尋找玩家位置 - 三通道版本
         /// </summary>
         public System.Drawing.Point? FindPlayerPosition(Bitmap minimapImage)
         {
@@ -162,10 +158,8 @@ namespace ArtaleAI.Detection
 
             try
             {
-                // 🔧 使用 ImageUtils 轉換為四通道
-                using var mat = ImageUtils.BitmapToFourChannelMat(minimapImage);
-
-                ImageUtils.LogImageInfo(mat, "MinimapForPlayer");
+                // 🔧 使用 ImageUtils 轉換為三通道
+                using var mat = ImageUtils.BitmapToThreeChannelMat(minimapImage);
 
                 var playerThreshold = _config.Templates.Minimap.PlayerThreshold;
                 var matchResult = MatchTemplateInternal(mat, "PlayerMarker", playerThreshold, false);
@@ -178,11 +172,11 @@ namespace ArtaleAI.Detection
                         loc.Y + template.Height / 2
                     );
 
-                    Console.WriteLine($"✅ 四通道玩家位置檢測成功: ({playerPos.X}, {playerPos.Y})");
+                    Console.WriteLine($"✅ 三通道玩家位置檢測成功: ({playerPos.X}, {playerPos.Y})");
                     return playerPos;
                 }
 
-                Console.WriteLine($"❌ 四通道玩家位置檢測失敗");
+                Console.WriteLine($"❌ 三通道玩家位置檢測失敗");
             }
             catch (Exception ex)
             {
@@ -193,7 +187,7 @@ namespace ArtaleAI.Detection
         }
 
         /// <summary>
-        /// 內部模板匹配方法 - 四通道版本
+        /// 內部模板匹配方法 - 三通道版本
         /// </summary>
         private (System.Drawing.Point Location, double MaxValue)? MatchTemplateInternal(
             Mat inputMat, string templateName, double threshold, bool useGrayscale)
@@ -206,10 +200,6 @@ namespace ArtaleAI.Detection
 
             try
             {
-                // 🔧 輸入已經是四通道，模板也是四通道
-                ImageUtils.LogImageInfo(inputMat, $"Input-{templateName}");
-                ImageUtils.LogImageInfo(template, $"Template-{templateName}");
-
                 // 檢查尺寸
                 if (template.Width > inputMat.Width || template.Height > inputMat.Height)
                 {
@@ -219,26 +209,20 @@ namespace ArtaleAI.Detection
 
                 using (Mat result = new Mat())
                 {
-                    // 🔧 直接使用四通道進行匹配
                     if (useGrayscale)
                     {
-                        // 如果需要灰階匹配，轉換為四通道灰階
-                        using var inputGray = new Mat();
-                        using var templateGray = new Mat();
-                        ConvertToFourChannelGrayscale(inputMat, inputGray);
-                        ConvertToFourChannelGrayscale(template, templateGray);
-
+                        using var inputGray = ImageUtils.ConvertToGrayscale(inputMat);
+                        using var templateGray = ImageUtils.ConvertToGrayscale(template);
                         Cv2.MatchTemplate(inputGray, templateGray, result, TemplateMatchModes.CCoeffNormed);
                     }
                     else
                     {
-                        // 彩色匹配，直接使用四通道
+                        // 彩色匹配，直接使用三通道
                         Cv2.MatchTemplate(inputMat, template, result, TemplateMatchModes.CCoeffNormed);
                     }
 
                     Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out OpenCvSharp.Point maxLoc);
-
-                    Console.WriteLine($"🎯 {templateName} 四通道匹配分數: {maxVal:F4} (閾值: {threshold:F4})");
+                    Console.WriteLine($"🎯 {templateName} 三通道匹配分數: {maxVal:F4} (閾值: {threshold:F4})");
 
                     if (maxVal >= threshold)
                     {
@@ -254,48 +238,10 @@ namespace ArtaleAI.Detection
             return null;
         }
 
-        /// <summary>
-        /// 將四通道圖像轉換為四通道灰階（保持 Alpha）
-        /// </summary>
-        private static void ConvertToFourChannelGrayscale(Mat source, Mat dest)
-        {
-            if (source.Channels() == 4)
-            {
-                Mat[] channels = null;
-                try
-                {
-                    channels = Cv2.Split(source);
-                    using var grayChannel = new Mat();
-                    // 使用前三個通道計算灰階
-                    Cv2.CvtColor(source, grayChannel, ColorConversionCodes.BGRA2GRAY);
-                    // 合併為四通道灰階
-                    Cv2.Merge(new[] { grayChannel, grayChannel, grayChannel, channels[3] }, dest);
-                }
-                finally
-                {
-                    if (channels != null)
-                    {
-                        foreach (var ch in channels)
-                            ch?.Dispose();
-                    }
-                }
-            }
-            else
-            {
-                // 如果不是四通道，先轉為四通道再處理
-                using var temp4Ch = ImageUtils.EnsureFourChannels(source);
-                ConvertToFourChannelGrayscale(temp4Ch, dest);
-            }
-        }
-
         public void Dispose()
         {
-            foreach (var template in _templates.Values)
-            {
-                template?.Dispose();
-            }
-            _templates.Clear();
-            Console.WriteLine("🗑️ MapDetector 四通道模板已釋放");
+            ImageUtils.SafeDispose(_templates);
+            Console.WriteLine("🗑️ MapDetector 三通道模板已釋放");
         }
     }
 }

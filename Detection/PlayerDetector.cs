@@ -12,11 +12,15 @@ namespace ArtaleAI.Detection
     /// <summary>
     /// 玩家位置偵測器 - 通過隊友紅色血條定位玩家位置
     /// </summary>
-    public class PlayerDetector : IDisposable
+    public class PlayerDetector
     {
         private readonly AppConfig _config;
         private readonly PartyRedBarSettings _settings;
+        private bool _isProcessing = false;
+        private readonly object _processingLock = new();
 
+        public event Action<List<Rectangle>>? BloodBarDetected;
+        public event Action<string>? StatusMessage;
         public PlayerDetector(AppConfig config)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
@@ -24,41 +28,31 @@ namespace ArtaleAI.Detection
         }
 
         /// <summary>
-        /// 通過隊友紅色血條獲取玩家位置 - 四通道版本
+        /// 通過隊友紅色血條獲取玩家位置 - 三通道版本
         /// </summary>
-        public (System.Drawing.Point? playerLocation, System.Drawing.Point? redBarLocation, Rectangle? redBarRect) GetPlayerLocationByPartyRedBar(
-            Bitmap frameBitmap,
-            Rectangle? minimapRect = null,
-            Rectangle? uiExcludeRect = null)
+        public (System.Drawing.Point? playerLocation, System.Drawing.Point? redBarLocation, Rectangle? redBarRect)
+            GetPlayerLocationByPartyRedBar(Bitmap frameBitmap, Rectangle? minimapRect = null, Rectangle? uiExcludeRect = null)
         {
             if (frameBitmap == null) return (null, null, null);
 
             try
             {
-                // 🔧 使用 ImageUtils 轉換為四通道
-                using var frameMat = ImageUtils.BitmapToFourChannelMat(frameBitmap);
+                // 🔧 確保每個 Mat 都在 using 中
+                using var frameMat = ImageUtils.BitmapToThreeChannelMat(frameBitmap);
 
                 // 1. 清零小地圖區域避免干擾
                 if (minimapRect.HasValue)
                 {
                     var minimapRegion = new Rect(minimapRect.Value.X, minimapRect.Value.Y,
                         minimapRect.Value.Width, minimapRect.Value.Height);
-                    frameMat[minimapRegion].SetTo(new Scalar(0, 0, 0, 255));
+                    frameMat[minimapRegion].SetTo(new Scalar(0, 0, 0));
                 }
 
-                // 2. 提取相機區域（排除UI）
+                // 2. 提取相機區域（排除UI）- 使用 using
                 using var cameraArea = ExtractCameraArea(frameMat, uiExcludeRect);
                 if (cameraArea.Empty()) return (null, null, null);
 
-                // 3. 轉換為HSV並創建紅色掩碼
-                using var bgrImage = new Mat();
-                using var hsvImage = new Mat();
-
-                // 🔧 修正：分兩步轉換
-                // 第一步：BGRA -> BGR（移除Alpha通道）
-                Cv2.CvtColor(cameraArea, bgrImage, ColorConversionCodes.BGRA2BGR);
-                // 第二步：BGR -> HSV
-                Cv2.CvtColor(bgrImage, hsvImage, ColorConversionCodes.BGR2HSV);
+                using var hsvImage = ImageUtils.ConvertToHSV(cameraArea);
 
                 var lowerRed = ToOpenCvHsv((_settings.LowerRedHsv[0], _settings.LowerRedHsv[1], _settings.LowerRedHsv[2]));
                 var upperRed = ToOpenCvHsv((_settings.UpperRedHsv[0], _settings.UpperRedHsv[1], _settings.UpperRedHsv[2]));
@@ -70,24 +64,16 @@ namespace ArtaleAI.Detection
                 var redBarLocation = FindPartyRedBar(redMask);
                 if (!redBarLocation.HasValue) return (null, null, null);
 
-                // 🔧 創建血條矩形 - 使用配置中的實際尺寸
+                // 剩餘邏輯保持不變...
                 var redBarRect = new Rectangle(
-                    redBarLocation.Value.X,
-                    redBarLocation.Value.Y,
-                    _settings.MaxBarWidth,
-                    _settings.MaxBarHeight
-                );
+                    redBarLocation.Value.X, redBarLocation.Value.Y,
+                    _settings.MaxBarWidth, _settings.MaxBarHeight);
 
-                // 5. 根據偏移量計算玩家位置
                 var playerLocation = new System.Drawing.Point(
                     redBarLocation.Value.X + _settings.PlayerOffsetX,
-                    redBarLocation.Value.Y + _settings.PlayerOffsetY
-                );
+                    redBarLocation.Value.Y + _settings.PlayerOffsetY);
 
-                System.Diagnostics.Debug.WriteLine($"🎯 找到隊友血條: ({redBarLocation.Value.X}, {redBarLocation.Value.Y})");
-                System.Diagnostics.Debug.WriteLine($"👤 計算玩家位置: ({playerLocation.X}, {playerLocation.Y})");
-
-                return (playerLocation, redBarLocation, redBarRect); // 🔧 返回血條矩形
+                return (playerLocation, redBarLocation, redBarRect);
             }
             catch (Exception ex)
             {
@@ -103,15 +89,13 @@ namespace ArtaleAI.Detection
         {
             if (uiExcludeRect.HasValue)
             {
-                // 排除指定的UI區域
                 var cameraHeight = uiExcludeRect.Value.Y;
-                return frameMat[new Rect(0, 0, frameMat.Width, cameraHeight)].Clone();
+                return frameMat[new Rect(0, 0, frameMat.Width, cameraHeight)].Clone(); // 明確 Clone
             }
             else
             {
-                // 使用配置中的預設UI高度
                 var cameraHeight = Math.Max(frameMat.Height - _settings.UiHeightFromBottom, frameMat.Height / 2);
-                return frameMat[new Rect(0, 0, frameMat.Width, cameraHeight)].Clone();
+                return frameMat[new Rect(0, 0, frameMat.Width, cameraHeight)].Clone(); // 明確 Clone
             }
         }
 
@@ -170,15 +154,51 @@ namespace ArtaleAI.Detection
             }
             finally
             {
-                // 釋放輪廓資源
-                foreach (var contour in contours)
-                {
-                    contour?.Dispose();
-                }
-                hierarchy?.Dispose();
+                ImageUtils.SafeDispose(contours);
+                hierarchy?.Dispose(); // hierarchy 不是 Mat，保持原樣
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// 新增：非同步處理幀 - 核心方法
+        /// </summary>
+        public async Task ProcessFrameAsync(Bitmap frame, Rectangle? minimapRect = null)
+        {
+            // 檢查是否正在處理
+            lock (_processingLock)
+            {
+                if (_isProcessing) return;
+                _isProcessing = true;
+            }
+
+            try
+            {
+                // 🔧 關鍵改進：直接處理原始frame，不創建副本
+                // 在背景線程處理
+                var result = await Task.Run(() =>
+                    GetPlayerLocationByPartyRedBar(frame, minimapRect));
+
+                if (result.redBarRect.HasValue)
+                {
+                    var redBarRects = new List<Rectangle> { result.redBarRect.Value };
+                    // 通知UI更新
+                    BloodBarDetected?.Invoke(redBarRects);
+                    StatusMessage?.Invoke($"🩸 血條: ({result.redBarLocation?.X}, {result.redBarLocation?.Y})");
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage?.Invoke($"❌ 血條識別失敗: {ex.Message}");
+            }
+            finally
+            {
+                lock (_processingLock)
+                {
+                    _isProcessing = false;
+                }
+            }
         }
 
         /// <summary>
@@ -187,11 +207,6 @@ namespace ArtaleAI.Detection
         private Scalar ToOpenCvHsv((int h, int s, int v) hsv)
         {
             return new Scalar(hsv.h, hsv.s, hsv.v);
-        }
-
-        public void Dispose()
-        {
-            // 清理資源
         }
     }
 }

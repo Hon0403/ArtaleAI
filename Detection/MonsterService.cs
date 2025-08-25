@@ -19,9 +19,12 @@ namespace ArtaleAI.Detection
         private readonly IMainFormEvents _eventHandler;
         private readonly ComboBox _monsterComboBox;
         private List<Bitmap> _currentTemplates;
-
+        private bool _isProcessing = false;
+        private readonly object _processingLock = new();
         public List<Bitmap> CurrentTemplates => _currentTemplates.AsReadOnly().ToList();
         public bool HasTemplates => _currentTemplates.Any();
+        public event Action<List<MonsterRenderInfo>>? MonsterDetected;
+
         public string? CurrentMonsterName { get; private set; }
 
         public MonsterService(ComboBox monsterComboBox, IMainFormEvents eventHandler)
@@ -143,6 +146,88 @@ namespace ArtaleAI.Detection
             }
             _currentTemplates.Clear();
             CurrentMonsterName = null;
+        }
+
+        /// <summary>
+        /// 新增：非同步處理幀 - 核心方法
+        /// </summary>
+        public async Task ProcessFrameAsync(Bitmap frame, AppConfig config)
+        {
+            // 檢查是否正在處理，避免堆積
+            lock (_processingLock)
+            {
+                if (_isProcessing || !HasTemplates) return;
+                _isProcessing = true;
+            }
+
+            try
+            {
+                // 在背景線程處理
+                var results = await Task.Run(() => ProcessMonsterDetection(frame, config));
+
+                if (results.Any())
+                {
+                    // 通知UI更新（在UI線程中執行）
+                    MonsterDetected?.Invoke(results);
+                    _eventHandler.OnStatusMessage($"🎯 怪物: {results.Count}個");
+                }
+            }
+            catch (Exception ex)
+            {
+                _eventHandler.OnStatusMessage($"❌ 怪物識別失敗: {ex.Message}");
+            }
+            finally
+            {
+                lock (_processingLock)
+                {
+                    _isProcessing = false;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 私有：實際的怪物識別邏輯
+        /// </summary>
+        private List<MonsterRenderInfo> ProcessMonsterDetection(Bitmap frame, AppConfig config)
+        {
+            var detectionSettings = config?.Templates?.MonsterDetection;
+            if (detectionSettings == null) return new List<MonsterRenderInfo>();
+
+            var detectionMode = ParseDetectionMode(detectionSettings.DetectionMode);
+            int maxAllowedResults = detectionSettings.MaxDetectionResults;
+
+            // 🔧 關鍵改進：直接使用原始frame，不創建副本
+            // TemplateMatcher內部會安全處理轉換
+            var results = TemplateMatcher.FindMonstersWithCache(
+                frame, // 直接使用原始frame
+                _currentTemplates,
+                detectionMode,
+                detectionSettings.DefaultThreshold,
+                CurrentMonsterName ?? "Unknown"
+            );
+
+            if (results.Count > maxAllowedResults) return new List<MonsterRenderInfo>();
+
+            return results.Select(r => new MonsterRenderInfo
+            {
+                Location = r.Position,
+                Size = r.Size,
+                MonsterName = r.Name,
+                Confidence = r.Confidence
+            }).ToList();
+        }
+
+        private MonsterDetectionMode ParseDetectionMode(string modeString)
+        {
+            return modeString switch
+            {
+                "Basic" => MonsterDetectionMode.Basic,
+                "ContourOnly" => MonsterDetectionMode.ContourOnly,
+                "Grayscale" => MonsterDetectionMode.Grayscale,
+                "Color" => MonsterDetectionMode.Color,
+                "TemplateFree" => MonsterDetectionMode.TemplateFree,
+                _ => MonsterDetectionMode.Color
+            };
         }
 
         private async void OnMonsterSelectionChanged(object? sender, EventArgs e)

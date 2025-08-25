@@ -202,7 +202,7 @@ namespace ArtaleAI.API
         private async Task<int> SaveMobAsync(int mobId, string mobName)
         {
             // 建立輸出目錄
-            string monstersDirectory = PathUtils.GetMonstersDirectory();
+            string monstersDirectory = common.GetMonstersDirectory();
             string mobFileName = string.Join("_", mobName.ToLower().Split(' '));
             string outputDir = Path.Combine(monstersDirectory, mobFileName);
             Directory.CreateDirectory(outputDir);

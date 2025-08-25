@@ -5,7 +5,7 @@ namespace ArtaleAI.Minimap
     /// <summary>
     /// 地圖檔案管理器 - 負責地圖檔案的載入、儲存和UI綁定
     /// </summary>
-    public class MapFileManager : IDisposable
+    public class MapFileManager
     {
         private readonly IMainFormEvents _eventHandler;
         private readonly ComboBox _mapFilesComboBox;
@@ -273,12 +273,6 @@ namespace ArtaleAI.Minimap
             {
                 LoadMapFile(selectedFileName);
             }
-        }
-
-        public void Dispose()
-        {
-            // 解除事件綁定
-            _mapFilesComboBox.SelectedIndexChanged -= OnMapFileSelectionChanged;
         }
     }
 }

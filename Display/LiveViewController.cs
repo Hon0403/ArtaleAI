@@ -2,33 +2,36 @@
 using ArtaleAI.Detection;
 using ArtaleAI.GameCapture;
 using ArtaleAI.Interfaces;
+using ArtaleAI.Utils;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
-
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace ArtaleAI.Display
 {
-    public class LiveViewController :  IDisposable
+    public class LiveViewController : IDisposable
     {
         private readonly TextBox _statusTextBox;
         private readonly IMainFormEvents _eventHandler;
-        private readonly Control _parentControl;
-        private readonly LiveViewService _liveViewService;
         private readonly PictureBox _displayPictureBox;
+        private readonly LiveViewService _liveViewService;
         private Mat? _currentFrameMat;
         private readonly object _frameLock = new object();
-
         private List<OverlayRenderer.MonsterRenderItem> _currentMonsterItems = new();
         private List<OverlayRenderer.MinimapRenderItem> _currentMinimapItems = new();
         private List<OverlayRenderer.PlayerRenderItem> _currentPlayerItems = new();
-        private List<OverlayRenderer.PartyRedBarRenderItem> _currentPartyRedBarItems = new(); 
+        private List<OverlayRenderer.PartyRedBarRenderItem> _currentPartyRedBarItems = new();
         private Rectangle? _currentMinimapRect;
-
-        public Rectangle? GetMinimapRect() => _currentMinimapRect;
-
         private PlayerDetector? _playerDetector;
         private AppConfig? _config;
+        private MonsterService? _monsterService;
 
+        public Rectangle? GetMinimapRect() => _currentMinimapRect;
         public bool IsRunning => _liveViewService.IsRunning;
 
         public LiveViewController(TextBox statusTextBox, IMainFormEvents eventHandler, PictureBox pictureBox)
@@ -43,6 +46,27 @@ namespace ArtaleAI.Display
         {
             _config = config;
             _playerDetector = new PlayerDetector(_config);
+
+            // 訂閱事件
+            _playerDetector.BloodBarDetected += OnBloodBarDetected;
+            _playerDetector.StatusMessage += _eventHandler.OnStatusMessage;
+        }
+
+        public void SetMonsterService(MonsterService? monsterService)
+        {
+            // 取消訂閱舊事件
+            if (_monsterService != null)
+            {
+                _monsterService.MonsterDetected -= OnMonsterDetected;
+            }
+
+            _monsterService = monsterService;
+
+            // 訂閱新事件
+            if (_monsterService != null)
+            {
+                _monsterService.MonsterDetected += OnMonsterDetected;
+            }
         }
 
         public async Task StartAsync(AppConfig config)
@@ -61,50 +85,6 @@ namespace ArtaleAI.Display
         }
 
         /// <summary>
-        /// 更新怪物辨識框 - 使用配置化樣式
-        /// </summary>
-        public void DrawMonsterRectangles(List<MonsterRenderInfo> renderInfos)
-        {
-            lock (_frameLock)
-            {
-                var monsterStyle = _config?.OverlayStyle?.Monster;
-                if (monsterStyle != null)
-                {
-                    _currentMonsterItems = OverlayRenderer.FromMonsterRenderInfos(renderInfos, monsterStyle);
-                }
-                else
-                {
-                    _currentMonsterItems.Clear();
-                }
-                RenderAllOverlays();
-            }
-        }
-
-        /// <summary>
-        /// 更新隊友血條辨識框 - 使用配置化樣式
-        /// </summary>
-        public void DrawPartyRedBarRectangles(List<Rectangle> redBarRects)
-        {
-            lock (_frameLock)
-            {
-                var redBarStyle = _config?.OverlayStyle?.PartyRedBar;
-                if (redBarStyle != null)
-                {
-                    _currentPartyRedBarItems = redBarRects?.Select(rect => new OverlayRenderer.PartyRedBarRenderItem(redBarStyle)
-                    {
-                        BoundingBox = rect
-                    }).ToList() ?? new List<OverlayRenderer.PartyRedBarRenderItem>();
-                }
-                else
-                {
-                    _currentPartyRedBarItems.Clear();
-                }
-
-                RenderAllOverlays();
-            }
-        }
-
-        /// <summary>
         /// 更新小地圖疊加層 - 使用配置化樣式
         /// </summary>
         public void UpdateMinimapOverlay(Bitmap minimap, Rectangle minimapOnScreenRect, Rectangle playerRectInMinimap)
@@ -112,7 +92,6 @@ namespace ArtaleAI.Display
             lock (_frameLock)
             {
                 _currentMinimapRect = minimapOnScreenRect;
-
                 var minimapStyle = _config?.OverlayStyle?.Minimap;
                 var playerStyle = _config?.OverlayStyle?.Player;
 
@@ -159,8 +138,7 @@ namespace ArtaleAI.Display
             if (_currentFrameMat != null && !_currentFrameMat.IsDisposed)
             {
                 var baseBitmap = _currentFrameMat.ToBitmap();
-
-                // 🔧 檢查是否有任何疊加層需要渲染（包含血條）
+                // 檢查是否有任何疊加層需要渲染
                 if (_currentMonsterItems.Any() || _currentMinimapItems.Any() ||
                     _currentPlayerItems.Any() || _currentPartyRedBarItems.Any())
                 {
@@ -169,7 +147,7 @@ namespace ArtaleAI.Display
                         _currentMonsterItems,
                         _currentMinimapItems,
                         _currentPlayerItems,
-                        _currentPartyRedBarItems // 🔧 新增血條渲染
+                        _currentPartyRedBarItems
                     );
                     UpdateDisplaySafely(bitmap);
                     baseBitmap.Dispose();
@@ -181,32 +159,132 @@ namespace ArtaleAI.Display
             }
         }
 
-        #region ILiveViewEventHandler 實作
-
         public void OnFrameAvailable(Bitmap frame)
         {
+            if (frame == null) return;
+
             try
             {
+                // ✅ 立即更新顯示（創建顯示副本）
+                var displayFrame = new Bitmap(frame);
+                UpdateDisplaySafely(displayFrame);
+
+                // ✅ 更新內部Mat（用於疊加層渲染）
                 lock (_frameLock)
                 {
-                    // 轉換為 Mat 格式
                     _currentFrameMat?.Dispose();
-                    _currentFrameMat = frame.ToMat();
+                    using var tempMat = ImageUtils.BitmapToThreeChannelMat(frame);
+                    _currentFrameMat = tempMat.Clone();
                 }
 
-                // 🔧 每次新幀都重新渲染所有疊加層
-                if (_currentFrameMat != null)
+                // ✅ 保持並行處理，直接傳入原始frame
+                if (_config != null)
                 {
-                    RenderAllOverlays();
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            // 🔧 關鍵：直接傳入原始frame，不創建副本
+                            await _playerDetector?.ProcessFrameAsync(frame, _currentMinimapRect);
+                        }
+                        catch (Exception ex)
+                        {
+                            OnError($"血條檢測錯誤: {ex.Message}");
+                        }
+                    });
+
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            // 🔧 關鍵：直接傳入原始frame，不創建副本
+                            await _monsterService?.ProcessFrameAsync(frame, _config);
+                        }
+                        catch (Exception ex)
+                        {
+                            OnError($"怪物檢測錯誤: {ex.Message}");
+                        }
+                    });
                 }
             }
             catch (Exception ex)
             {
-                OnError($"顯示幀時發生錯誤: {ex.Message}");
+                OnError($"幀處理錯誤: {ex.Message}");
             }
-            finally
+
+            // 🔧 不要在這裡釋放原始frame，讓調用者處理
+        }
+
+        /// <summary>
+        /// 解析辨識模式字串
+        /// </summary>
+        private MonsterDetectionMode ParseDetectionMode(string modeString)
+        {
+            return modeString switch
             {
-                frame?.Dispose();
+                "Basic" => MonsterDetectionMode.Basic,
+                "ContourOnly" => MonsterDetectionMode.ContourOnly,
+                "Grayscale" => MonsterDetectionMode.Grayscale,
+                "Color" => MonsterDetectionMode.Color,
+                "TemplateFree" => MonsterDetectionMode.TemplateFree,
+                _ => MonsterDetectionMode.Color // 預設值
+            };
+        }
+
+
+        /// <summary>
+        /// 事件處理：怪物識別結果
+        /// </summary>
+        private void OnMonsterDetected(List<MonsterRenderInfo> renderInfos)
+        {
+            if (_displayPictureBox.InvokeRequired)
+            {
+                _displayPictureBox.BeginInvoke(() => OnMonsterDetected(renderInfos));
+                return;
+            }
+
+            lock (_frameLock)
+            {
+                var monsterStyle = _config?.OverlayStyle?.Monster;
+                if (monsterStyle != null)
+                {
+                    _currentMonsterItems = OverlayRenderer.FromMonsterRenderInfos(renderInfos, monsterStyle);
+                }
+                else
+                {
+                    _currentMonsterItems.Clear();
+                }
+                RenderAllOverlays();
+            }
+        }
+
+        /// <summary>
+        /// 事件處理：血條識別結果
+        /// </summary>
+        private void OnBloodBarDetected(List<Rectangle> redBarRects)
+        {
+            if (_displayPictureBox.InvokeRequired)
+            {
+                _displayPictureBox.BeginInvoke(() => OnBloodBarDetected(redBarRects));
+                return;
+            }
+
+            lock (_frameLock)
+            {
+                var redBarStyle = _config?.OverlayStyle?.PartyRedBar;
+                if (redBarStyle != null)
+                {
+                    _currentPartyRedBarItems = redBarRects.Select(rect =>
+                        new OverlayRenderer.PartyRedBarRenderItem(redBarStyle)
+                        {
+                            BoundingBox = rect
+                        }).ToList();
+                }
+                else
+                {
+                    _currentPartyRedBarItems.Clear();
+                }
+                RenderAllOverlays();
             }
         }
 
@@ -230,9 +308,9 @@ namespace ArtaleAI.Display
         {
             try
             {
-                if (_parentControl.InvokeRequired)
+                if (_displayPictureBox.InvokeRequired)
                 {
-                    _parentControl.Invoke(new Action<string>(ShowErrorMessage), errorMessage);
+                    _displayPictureBox.Invoke(new Action<string>(ShowErrorMessage), errorMessage);
                 }
                 else
                 {
@@ -242,28 +320,16 @@ namespace ArtaleAI.Display
             catch (Exception) { }
         }
 
-        #endregion
-
         public Bitmap? GetCurrentCaptureFrame()
         {
             Mat? frameCopy = null;
             lock (_frameLock)
             {
-                // 只在鎖內複製引用，最小化鎖時間
                 frameCopy = _currentFrameMat?.Clone();
             }
 
+            // 🔧 確保返回的是三通道處理後的結果
             return frameCopy?.ToBitmap();
-        }
-
-        public (System.Drawing.Point? playerLocation, System.Drawing.Point? redBarLocation, Rectangle? redBarRect) DetectPlayerPosition(Bitmap? frame, Rectangle? minimapRect = null)
-        {
-            if (_playerDetector == null || frame == null)
-                return (null, null, null);
-
-            var actualMinimapRect = minimapRect ?? _currentMinimapRect;
-
-            return _playerDetector.GetPlayerLocationByPartyRedBar(frame, actualMinimapRect);
         }
 
         /// <summary>
@@ -273,7 +339,7 @@ namespace ArtaleAI.Display
         {
             if (_displayPictureBox.InvokeRequired)
             {
-                _displayPictureBox.Invoke(() =>
+                _displayPictureBox.BeginInvoke(() =>
                 {
                     if (!_displayPictureBox.IsDisposed)
                     {
@@ -317,12 +383,22 @@ namespace ArtaleAI.Display
 
         public void Dispose()
         {
+            // 取消事件訂閱
+            if (_playerDetector != null)
+            {
+                _playerDetector.BloodBarDetected -= OnBloodBarDetected;
+                _playerDetector.StatusMessage -= _eventHandler.OnStatusMessage;
+            }
+
+            if (_monsterService != null)
+            {
+                _monsterService.MonsterDetected -= OnMonsterDetected;
+            }
+
             lock (_frameLock)
             {
                 _currentFrameMat?.Dispose();
             }
-
-            _playerDetector?.Dispose();
             _liveViewService?.Dispose();
         }
     }

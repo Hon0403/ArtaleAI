@@ -1,4 +1,5 @@
 ﻿using ArtaleAI.Interfaces;
+using ArtaleAI.Utils;
 using System.Text;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -8,8 +9,7 @@ namespace ArtaleAI.Config
     public class ConfigManager
     {
         private readonly IMainFormEvents _eventHandler;
-        private static readonly string DefaultPath = Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory, "Config/config.yaml");
+        private static readonly string DefaultPath = common.GetConfigFilePath();
 
         public AppConfig? CurrentConfig { get; private set; }
 

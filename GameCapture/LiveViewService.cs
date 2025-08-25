@@ -1,6 +1,10 @@
 ﻿using ArtaleAI.Config;
 using ArtaleAI.GameWindow;
 using ArtaleAI.Interfaces;
+using System;
+using System.Drawing;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ArtaleAI.GameCapture
 {
@@ -14,8 +18,8 @@ namespace ArtaleAI.GameCapture
         private Task? _captureTask;
         private readonly IMainFormEvents _eventHandler;
         private bool _isRunning;
-        public GraphicsCapturer? Capturer => _capturer;
 
+        public GraphicsCapturer? Capturer => _capturer;
         public bool IsRunning => _isRunning;
 
         public LiveViewService(IMainFormEvents eventHandler)
@@ -120,13 +124,11 @@ namespace ArtaleAI.GameCapture
                         if (frame != null)
                         {
                             var frameCopy = new Bitmap(frame);
-
                             // 強制在背景執行緒中調用
                             await Task.Run(() => _eventHandler.OnFrameAvailable(frameCopy));
                         }
                     }
-
-                    await Task.Delay(16, cancellationToken);
+                    await Task.Delay(16, cancellationToken); // ~60 FPS
                 }
             }
             catch (TaskCanceledException) { }

@@ -122,22 +122,18 @@ namespace ArtaleAI.Display
         }
 
         /// <summary>
-        /// 通用的疊加層渲染方法 - 四通道版本
+        /// 通用的疊加層渲染方法 - 三通道版本
         /// </summary>
         public static Bitmap RenderOverlays(Bitmap baseBitmap, params IEnumerable<IRenderItem>[] itemGroups)
         {
             if (baseBitmap == null) return null;
 
-            // 合併所有渲染項目
             var allItems = itemGroups.SelectMany(group => group ?? Enumerable.Empty<IRenderItem>()).ToList();
             if (!allItems.Any()) return new Bitmap(baseBitmap);
 
-            // 🔧 使用 ImageUtils 轉換為四通道
-            using var mat = ImageUtils.BitmapToFourChannelMat(baseBitmap);
-            using var drawFrame = mat.Clone();
-
-            ImageUtils.LogImageInfo(mat, "RenderOverlays-Input");
-            ImageUtils.LogImageInfo(drawFrame, "RenderOverlays-DrawFrame");
+            // 🔧 使用 using 確保資源釋放
+            using var mat = ImageUtils.BitmapToThreeChannelMat(baseBitmap);
+            using var drawFrame = mat.Clone(); // 明確 Clone
 
             foreach (var item in allItems)
             {
@@ -148,36 +144,30 @@ namespace ArtaleAI.Display
         }
 
         /// <summary>
-        /// 渲染單個項目 - 四通道版本
+        /// 渲染單個項目 - 三通道版本
         /// </summary>
         private static void RenderSingleItem(Mat drawFrame, IRenderItem item)
         {
             var rect = new Rect(item.BoundingBox.X, item.BoundingBox.Y,
                 item.BoundingBox.Width, item.BoundingBox.Height);
 
-            // 🔧 確保顏色轉換正確 (BGRA 格式)
-            var frameColor = new Scalar(item.FrameColor.B, item.FrameColor.G, item.FrameColor.R, 255);
+            // 🔧 三通道 BGR 格式（不包含 Alpha）
+            var frameColor = new Scalar(item.FrameColor.B, item.FrameColor.G, item.FrameColor.R);
             Cv2.Rectangle(drawFrame, rect, frameColor, item.FrameThickness);
 
-            // 繪製文字（如果有）
             if (!string.IsNullOrEmpty(item.DisplayText))
             {
                 var textLocation = new OpenCvSharp.Point(rect.X, rect.Y - 10);
-                var textColor = new Scalar(item.TextColor.B, item.TextColor.G, item.TextColor.R, 255);
+                var textColor = new Scalar(item.TextColor.B, item.TextColor.G, item.TextColor.R);
 
-                // 繪製文字背景
+                // 文字背景 - 三通道黑色
                 var textSize = Cv2.GetTextSize(item.DisplayText, HersheyFonts.HersheyPlain,
                     item.TextScale, item.TextThickness, out _);
                 var textBgRect = new Rect(rect.X, rect.Y - 25, textSize.Width + 10, 20);
+                Cv2.Rectangle(drawFrame, textBgRect, new Scalar(0, 0, 0), -1); // 三通道黑色
 
-                // 🔧 黑色背景也要四通道
-                Cv2.Rectangle(drawFrame, textBgRect, new Scalar(0, 0, 0, 255), -1);
-
-                // 繪製文字
                 Cv2.PutText(drawFrame, item.DisplayText, textLocation,
                     HersheyFonts.HersheyPlain, item.TextScale, textColor, item.TextThickness);
-
-                System.Diagnostics.Debug.WriteLine($"🎨 渲染項目: {item.DisplayText} at ({rect.X}, {rect.Y})");
             }
         }
 
@@ -204,10 +194,7 @@ namespace ArtaleAI.Display
             try
             {
                 if (string.IsNullOrWhiteSpace(colorString))
-                {
-                    // 從全域設定讀取預設顏色，而非硬編碼
-                    return GetDefaultColor();
-                }
+                    return Color.Yellow; // 簡單的預設值即可
 
                 var parts = colorString.Split(',');
                 if (parts.Length >= 3)
@@ -225,15 +212,7 @@ namespace ArtaleAI.Display
                 System.Diagnostics.Debug.WriteLine($"顏色解析失敗: {colorString} - {ex.Message}");
             }
 
-            return GetDefaultColor();
-        }
-
-        private static Color GetDefaultColor()
-        {
-            // 可以通過依賴注入或全域設定存取
-            // 或拋出異常強制提供有效顏色設定
-            throw new InvalidOperationException(
-                "顏色設定無效，請檢查 config.yaml 中的顏色格式 (R,G,B)");
+            return Color.Yellow; // 簡化，不需要複雜邏輯
         }
 
     }

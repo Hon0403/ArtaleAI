@@ -1,11 +1,5 @@
 ﻿using ArtaleAI.Config;
 using OpenCvSharp;
-using OpenCvSharp.Extensions;
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
-using static ArtaleAI.Config.MonsterRenderInfo;
 using CvPoint = OpenCvSharp.Point;
 using SdPoint = System.Drawing.Point;
 using ArtaleAI.Utils;
@@ -41,7 +35,7 @@ namespace ArtaleAI.Detection
         public static void Initialize(MonsterDetectionSettings? settings)
         {
             _settings = settings ?? new MonsterDetectionSettings();
-            System.Diagnostics.Debug.WriteLine($"✅ TemplateMatcher 已初始化 (智慧模式 - 四通道)");
+            System.Diagnostics.Debug.WriteLine($"✅ TemplateMatcher 已初始化 (智慧模式 - 三通道)");
             System.Diagnostics.Debug.WriteLine($" 預設閾值: {_settings.DefaultThreshold}");
             System.Diagnostics.Debug.WriteLine($" 最大結果數: {_settings.MaxDetectionResults}");
         }
@@ -100,13 +94,12 @@ namespace ArtaleAI.Detection
                 if (sourceBitmap == null) return results;
                 if (mode != MonsterDetectionMode.TemplateFree && templateBitmap == null) return results;
 
-                // 🔧 使用 ImageUtils 轉換為四通道
-                using var sourceImg = ImageUtils.BitmapToFourChannelMat(sourceBitmap);
+                using var sourceImg = ImageUtils.BitmapToThreeChannelMat(sourceBitmap);
                 Mat? templateImg = null;
 
                 if (templateBitmap != null)
                 {
-                    templateImg = ImageUtils.BitmapToFourChannelMat(templateBitmap);
+                    templateImg = ImageUtils.BitmapToThreeChannelMat(templateBitmap);
                 }
 
                 try
@@ -126,7 +119,7 @@ namespace ArtaleAI.Detection
                         _ => new List<MatchResult>()
                     };
 
-                    System.Diagnostics.Debug.WriteLine($"✅ {mode} 模式找到 {results.Count} 個怪物 (四通道)");
+                    System.Diagnostics.Debug.WriteLine($"✅ {mode} 模式找到 {results.Count} 個怪物 (三通道)");
                 }
                 finally
                 {
@@ -142,19 +135,15 @@ namespace ArtaleAI.Detection
             }
         }
 
-        #region 各模式的最佳化實作 - 四通道版本
+        #region 各模式的最佳化實作 - 三通道版本
 
         /// <summary>
-        /// Basic 模式：無遮擋處理，追求速度 - 四通道版本
+        /// Basic 模式：無遮擋處理，追求速度 - 三通道版本
         /// </summary>
         private static List<MatchResult> ProcessBasicMode(
             Mat sourceImg, Mat templateImg, double threshold, string monsterName)
         {
             var results = new List<MatchResult>();
-
-            // 🔧 確保都是四通道（輸入已經是四通道，這裡直接使用）
-            ImageUtils.LogImageInfo(sourceImg, "Basic-Source");
-            ImageUtils.LogImageInfo(templateImg, "Basic-Template");
 
             using var result = new Mat();
             Cv2.MatchTemplate(sourceImg, templateImg, result, TemplateMatchModes.CCoeffNormed);
@@ -176,7 +165,7 @@ namespace ArtaleAI.Detection
         }
 
         /// <summary>
-        /// ContourOnly 模式：形態學修復輪廓斷裂 - 四通道版本
+        /// ContourOnly 模式：形態學修復輪廓斷裂 - 三通道版本
         /// </summary>
         private static List<MatchResult> ProcessContourMode(
             Mat sourceImg, Mat templateImg, double threshold, string monsterName, Rectangle? characterBox)
@@ -244,20 +233,17 @@ namespace ArtaleAI.Detection
         }
 
         /// <summary>
-        /// Grayscale 模式：動態閾值適應光照變化 - 四通道版本
+        /// Grayscale 模式：動態閾值適應光照變化 - 三通道版本
         /// </summary>
         private static List<MatchResult> ProcessGrayscaleMode(
             Mat sourceImg, Mat templateImg, double threshold, string monsterName, Rectangle? characterBox)
         {
             var results = new List<MatchResult>();
 
-            using var sourceGray4Ch = new Mat();
-            using var templateGray4Ch = new Mat();
+            using var sourceGray4Ch = ImageUtils.ConvertToGrayscale(sourceImg);
+            using var templateGray4Ch = ImageUtils.ConvertToGrayscale(templateImg);
 
-            ConvertToFourChannelGrayscale(sourceImg, sourceGray4Ch);
-            ConvertToFourChannelGrayscale(templateImg, templateGray4Ch);
-
-            using var templateMask = ImageUtils.CreateFourChannelTemplateMask(templateGray4Ch);
+            using var templateMask = ImageUtils.CreateThreeChannelTemplateMask(templateGray4Ch);
             using var result = new Mat();
             Cv2.MatchTemplate(sourceGray4Ch, templateGray4Ch, result, TemplateMatchModes.SqDiffNormed, templateMask);
 
@@ -286,13 +272,13 @@ namespace ArtaleAI.Detection
         }
 
         /// <summary>
-        /// Color 模式：多尺度匹配抗遮擋 - 四通道版本
+        /// Color 模式：多尺度匹配抗遮擋 - 三通道版本
         /// </summary>
         private static List<MatchResult> ProcessColorMode(
             Mat sourceImg, Mat templateImg, double threshold, string monsterName, Rectangle? characterBox)
         {
             var results = new List<MatchResult>();
-            using var templateMask = ImageUtils.CreateFourChannelTemplateMask(templateImg);
+            using var templateMask = ImageUtils.CreateThreeChannelTemplateMask(templateImg);
 
             var scales = _settings.MultiScaleFactors;
 
@@ -326,7 +312,7 @@ namespace ArtaleAI.Detection
         }
 
         /// <summary>
-        /// TemplateFree 模式：形態學修復 + 連通元件分析 - 四通道版本
+        /// TemplateFree 模式：形態學修復 + 連通元件分析 - 三通道版本
         /// </summary>
         private static List<MatchResult> ProcessTemplateFreeMode(Mat sourceImg, Rectangle? characterBox)
         {
@@ -393,40 +379,6 @@ namespace ArtaleAI.Detection
         #region 工具方法
 
         /// <summary>
-        /// 將四通道圖像轉換為四通道灰階（保持 Alpha）
-        /// </summary>
-        private static void ConvertToFourChannelGrayscale(Mat source, Mat dest)
-        {
-            if (source.Channels() == 4)
-            {
-                Mat[] channels = null;
-                try
-                {
-                    channels = Cv2.Split(source);
-                    using var grayChannel = new Mat();
-                    // 使用前三個通道計算灰階
-                    Cv2.CvtColor(source, grayChannel, ColorConversionCodes.BGRA2GRAY);
-                    // 合併為四通道灰階
-                    Cv2.Merge(new[] { grayChannel, grayChannel, grayChannel, channels[3] }, dest);
-                }
-                finally
-                {
-                    if (channels != null)
-                    {
-                        foreach (var ch in channels)
-                            ch?.Dispose();
-                    }
-                }
-            }
-            else
-            {
-                // 如果不是四通道，先轉為四通道再處理
-                using var temp4Ch = ImageUtils.EnsureFourChannels(source);
-                ConvertToFourChannelGrayscale(temp4Ch, dest);
-            }
-        }
-
-        /// <summary>
         /// 簡單的非極大值抑制
         /// </summary>
         private static List<MatchResult> ApplySimpleNMS(List<MatchResult> results, double iouThreshold = 0.3)
@@ -449,7 +401,7 @@ namespace ArtaleAI.Detection
                 {
                     var candidateRect = new Rectangle(candidate.Position.X, candidate.Position.Y,
                         candidate.Size.Width, candidate.Size.Height);
-                    return MathUtils.CalculateIoU(bestRect, candidateRect) > iouThreshold;
+                    return common.CalculateIoU(bestRect, candidateRect) > iouThreshold;
                 });
             }
 
@@ -526,11 +478,10 @@ namespace ArtaleAI.Detection
         private static Mat GetOrCreateCachedSourceMat(Bitmap sourceBitmap)
         {
             var currentHash = $"{sourceBitmap.Width}x{sourceBitmap.Height}_{sourceBitmap.GetHashCode()}";
-
             if (_cachedSourceMat == null || _lastFrameHash != currentHash)
             {
                 _cachedSourceMat?.Dispose();
-                _cachedSourceMat = ImageUtils.BitmapToFourChannelMat(sourceBitmap);
+                _cachedSourceMat = ImageUtils.BitmapToThreeChannelMat(sourceBitmap);
                 _lastFrameHash = currentHash;
             }
 
@@ -541,7 +492,7 @@ namespace ArtaleAI.Detection
         {
             if (!_templateCache.TryGetValue(key, out var cachedTemplate))
             {
-                cachedTemplate = ImageUtils.BitmapToFourChannelMat(template);
+                cachedTemplate = ImageUtils.BitmapToThreeChannelMat(template);
                 _templateCache[key] = cachedTemplate;
             }
 
@@ -580,9 +531,6 @@ namespace ArtaleAI.Detection
             Mat sourceImg, Mat templateImg, double threshold, string monsterName)
         {
             var results = new List<MatchResult>();
-
-            ImageUtils.LogImageInfo(sourceImg, "BasicCache-Source");
-            ImageUtils.LogImageInfo(templateImg, "BasicCache-Template");
 
             using var result = new Mat();
             Cv2.MatchTemplate(sourceImg, templateImg, result, TemplateMatchModes.CCoeffNormed);
@@ -680,12 +628,10 @@ namespace ArtaleAI.Detection
         {
             var results = new List<MatchResult>();
 
-            using var sourceGray4Ch = new Mat();
-            using var templateGray4Ch = new Mat();
-            ConvertToFourChannelGrayscale(sourceImg, sourceGray4Ch);
-            ConvertToFourChannelGrayscale(templateImg, templateGray4Ch);
+            using var sourceGray4Ch = ImageUtils.ConvertToGrayscale(sourceImg);
+            using var templateGray4Ch = ImageUtils.ConvertToGrayscale(templateImg);
 
-            using var templateMask = ImageUtils.CreateFourChannelTemplateMask(templateGray4Ch);
+            using var templateMask = ImageUtils.CreateThreeChannelTemplateMask(templateGray4Ch);
             using var result = new Mat();
             Cv2.MatchTemplate(sourceGray4Ch, templateGray4Ch, result, TemplateMatchModes.SqDiffNormed, templateMask);
 
@@ -721,7 +667,7 @@ namespace ArtaleAI.Detection
             Mat sourceImg, Mat templateImg, double threshold, string monsterName, Rectangle? characterBox)
         {
             var results = new List<MatchResult>();
-            using var templateMask = ImageUtils.CreateFourChannelTemplateMask(templateImg);
+            using var templateMask = ImageUtils.CreateThreeChannelTemplateMask(templateImg);
 
             // 🔧 使用設定檔中的多尺度參數
             var scales = _settings.MultiScaleFactors;
@@ -789,9 +735,10 @@ namespace ArtaleAI.Detection
         /// </summary>
         public static void Dispose()
         {
-            ClearCache();
-            _settings = null;
-            System.Diagnostics.Debug.WriteLine("🗑️ TemplateMatcher 資源已釋放");
+            ImageUtils.SafeDispose(ref _cachedSourceMat);
+            ImageUtils.SafeDispose(_templateCache);
+            _lastFrameHash = null;
+            System.Diagnostics.Debug.WriteLine("🧹 TemplateMatcher 快取已清理");
         }
 
         #endregion
