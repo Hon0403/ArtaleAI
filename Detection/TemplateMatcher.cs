@@ -3,6 +3,7 @@ using OpenCvSharp;
 using CvPoint = OpenCvSharp.Point;
 using SdPoint = System.Drawing.Point;
 using ArtaleAI.Utils;
+using ArtaleAI.Models;
 
 namespace ArtaleAI.Detection
 {
@@ -12,30 +13,23 @@ namespace ArtaleAI.Detection
     public static class TemplateMatcher
     {
         private static MonsterDetectionSettings? _settings;
+        private static TemplateMatchingSettings? _templateMatchingSettings;
+        private static AppConfig? _currentConfig;
 
         private static Mat? _cachedSourceMat;
         private static string? _lastFrameHash;
         private static readonly Dictionary<string, Mat> _templateCache = new();
 
         /// <summary>
-        /// 辨識模式與最佳遮擋處理的配對表
-        /// </summary>
-        private static readonly Dictionary<MonsterDetectionMode, OcclusionHandling> OptimalPairings = new()
-        {
-            { MonsterDetectionMode.Basic, OcclusionHandling.None },
-            { MonsterDetectionMode.ContourOnly, OcclusionHandling.MorphologyRepair },
-            { MonsterDetectionMode.Grayscale, OcclusionHandling.DynamicThreshold },
-            { MonsterDetectionMode.Color, OcclusionHandling.MultiScale },
-            { MonsterDetectionMode.TemplateFree, OcclusionHandling.MorphologyRepair }
-        };
-
-        /// <summary>
         /// 初始化模板匹配器
         /// </summary>
-        public static void Initialize(MonsterDetectionSettings? settings)
+        public static void Initialize(MonsterDetectionSettings? settings, TemplateMatchingSettings? templateMatchingSettings = null, AppConfig? config = null)
         {
             _settings = settings ?? new MonsterDetectionSettings();
-            System.Diagnostics.Debug.WriteLine($"✅ TemplateMatcher 已初始化 (智慧模式 - 三通道)");
+            _templateMatchingSettings = templateMatchingSettings ?? new TemplateMatchingSettings();
+            _currentConfig = config; //  儲存配置用於遮擋處理查找
+
+            System.Diagnostics.Debug.WriteLine($" TemplateMatcher 已初始化 (統一配置版本)");
             System.Diagnostics.Debug.WriteLine($" 預設閾值: {_settings.DefaultThreshold}");
             System.Diagnostics.Debug.WriteLine($" 最大結果數: {_settings.MaxDetectionResults}");
         }
@@ -52,9 +46,10 @@ namespace ArtaleAI.Detection
             Rectangle? characterBox = null)
         {
             EnsureInitialized();
-            // 自動選擇最佳遮擋處理
-            var optimalOcclusionHandling = GetOptimalOcclusionHandling(mode);
-            System.Diagnostics.Debug.WriteLine($"🎯 {mode} 模式自動使用 {optimalOcclusionHandling} 遮擋處理");
+
+            //  使用設定檔查找最佳遮擋處理
+            var optimalOcclusionHandling = GetOptimalOcclusionHandlingFromConfig(mode);
+            System.Diagnostics.Debug.WriteLine($"🎯 {mode} 模式自動使用 {optimalOcclusionHandling} 遮擋處理 (來自設定檔)");
 
             return FindMonstersWithOcclusionHandling(
                 sourceBitmap,
@@ -67,13 +62,22 @@ namespace ArtaleAI.Detection
         }
 
         /// <summary>
-        /// 獲取指定辨識模式的最佳遮擋處理
+        /// 從設定檔獲取最佳遮擋處理 - 完全基於配置
         /// </summary>
-        private static OcclusionHandling GetOptimalOcclusionHandling(MonsterDetectionMode mode)
+        private static OcclusionHandling GetOptimalOcclusionHandlingFromConfig(MonsterDetectionMode mode)
         {
-            return OptimalPairings.TryGetValue(mode, out var handling)
-                ? handling
-                : OcclusionHandling.None;
+            var occlusionMappings = _currentConfig?.DetectionModes?.OcclusionMappings;
+            var modeString = mode.ToString();
+
+            if (occlusionMappings?.TryGetValue(modeString, out var occlusionString) == true)
+            {
+                return Enum.TryParse<OcclusionHandling>(occlusionString, out var result)
+                    ? result
+                    : OcclusionHandling.None;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"⚠️ 警告：找不到模式 '{modeString}' 的遮擋處理設定，使用預設值");
+            return OcclusionHandling.None;
         }
 
         /// <summary>
@@ -119,7 +123,7 @@ namespace ArtaleAI.Detection
                         _ => new List<MatchResult>()
                     };
 
-                    System.Diagnostics.Debug.WriteLine($"✅ {mode} 模式找到 {results.Count} 個怪物 (三通道)");
+                    System.Diagnostics.Debug.WriteLine($" {mode} 模式找到 {results.Count} 個怪物 (三通道)");
                 }
                 finally
                 {
@@ -160,8 +164,8 @@ namespace ArtaleAI.Detection
                     Score = score
                 });
             }
-
-            return ApplySimpleNMS(results, 0.5);
+            double defaultNmsThreshold = _templateMatchingSettings.BasicModeNmsThreshold;
+            return ApplySimpleNMS(results, defaultNmsThreshold);
         }
 
         /// <summary>
@@ -196,7 +200,11 @@ namespace ArtaleAI.Detection
             Cv2.MorphologyEx(sourceMask, processedSourceMask, MorphTypes.Close, kernel);
             Cv2.MorphologyEx(templateMask, processedTemplateMask, MorphTypes.Close, kernel);
 
-            if (processedTemplateMask.CountNonZero() < 100 || processedSourceMask.CountNonZero() < 100)
+            int minContourPixels = _templateMatchingSettings.MinContourPixels;
+
+            int minProcessedMaskPixels = _templateMatchingSettings.MinContourPixels;
+            if (processedTemplateMask.CountNonZero() < minProcessedMaskPixels ||
+                processedSourceMask.CountNonZero() < minProcessedMaskPixels)
             {
                 return results;
             }
@@ -242,19 +250,21 @@ namespace ArtaleAI.Detection
 
             using var sourceGray4Ch = ImageUtils.ConvertToGrayscale(sourceImg);
             using var templateGray4Ch = ImageUtils.ConvertToGrayscale(templateImg);
-
             using var templateMask = ImageUtils.CreateThreeChannelTemplateMask(templateGray4Ch);
             using var result = new Mat();
-            Cv2.MatchTemplate(sourceGray4Ch, templateGray4Ch, result, TemplateMatchModes.SqDiffNormed, templateMask);
 
+            Cv2.MatchTemplate(sourceGray4Ch, templateGray4Ch, result, TemplateMatchModes.SqDiffNormed, templateMask);
             Cv2.MinMaxLoc(result, out double minVal, out double maxVal, out _, out _);
             Cv2.MeanStdDev(result, out Scalar mean, out Scalar stddev);
 
             double multiplier = _settings.DynamicThresholdMultiplier;
             double dynamicThreshold = Math.Min(threshold, mean.Val0 - stddev.Val0 * multiplier);
-            dynamicThreshold = Math.Max(dynamicThreshold, threshold * 0.8);
+
+            double confidenceThreshold = _templateMatchingSettings?.ConfidenceThreshold ?? 0.8;
+            dynamicThreshold = Math.Max(dynamicThreshold, threshold * confidenceThreshold);
 
             var locations = GetMatchingLocations(result, dynamicThreshold, true);
+
             foreach (var loc in locations)
             {
                 double score = result.At<float>(loc.Y, loc.X);
@@ -326,7 +336,6 @@ namespace ArtaleAI.Detection
                 blackMask[charRect].SetTo(new Scalar(0));
             }
 
-            // ✅ 從設定讀取 TemplateFree 參數
             int kernelSize = _settings.TemplateFreeKernelSize;
             int openKernelSize = _settings.TemplateFreeOpenKernelSize;
             int minArea = _settings.MinDetectionArea;
@@ -385,8 +394,13 @@ namespace ArtaleAI.Detection
         {
             if (results.Count <= 1) return results;
 
+            if (iouThreshold < 0)
+            {
+                iouThreshold = _templateMatchingSettings?.DefaultIouThreshold ?? 0.3;
+            }
+
             var nmsResults = new List<MatchResult>();
-            var sortedResults = results.OrderBy(r => r.Score).ToList(); // SqDiffNormed: 越小越好
+            var sortedResults = results.OrderBy(r => r.Score).ToList();
 
             while (sortedResults.Any())
             {
@@ -395,12 +409,12 @@ namespace ArtaleAI.Detection
                 sortedResults.RemoveAt(0);
 
                 var bestRect = new Rectangle(best.Position.X, best.Position.Y,
-                    best.Size.Width, best.Size.Height);
+                                           best.Size.Width, best.Size.Height);
 
                 sortedResults.RemoveAll(candidate =>
                 {
                     var candidateRect = new Rectangle(candidate.Position.X, candidate.Position.Y,
-                        candidate.Size.Width, candidate.Size.Height);
+                                                    candidate.Size.Width, candidate.Size.Height);
                     return common.CalculateIoU(bestRect, candidateRect) > iouThreshold;
                 });
             }
@@ -466,7 +480,7 @@ namespace ArtaleAI.Detection
                 // 獲取或創建快取的模板 Mat
                 using var templateMat = GetOrCreateCachedTemplate(templateKey, template);
 
-                // 🔧 重要：使用現有的完整模式處理邏輯，不簡化
+                // 使用現有的完整模式處理邏輯，不簡化
                 var results = ProcessSingleTemplateWithSharedMats(
                     sharedSource, templateMat, mode, threshold, monsterName, characterBox);
                 allResults.AddRange(results);
@@ -506,7 +520,7 @@ namespace ArtaleAI.Detection
             Mat sharedSource, Mat templateMat, MonsterDetectionMode mode,
             double threshold, string monsterName, Rectangle? characterBox)
         {
-            // 🔧 關鍵：調用現有的完整模式處理邏輯
+            //  關鍵：調用現有的完整模式處理邏輯
             // 不重新實作，只是傳入已轉換的 Mat
             return mode switch
             {
@@ -519,7 +533,7 @@ namespace ArtaleAI.Detection
                 MonsterDetectionMode.Color =>
                     ProcessColorModeWithSharedMats(sharedSource, templateMat, threshold, monsterName, characterBox),
                 MonsterDetectionMode.TemplateFree =>
-                    ProcessTemplateFreeMode(sharedSource, characterBox), // 這個不需要模板
+                    ProcessTemplateFreeMode(sharedSource, characterBox),
                 _ => new List<MatchResult>()
             };
         }
@@ -548,7 +562,6 @@ namespace ArtaleAI.Detection
                 });
             }
 
-            // 🔧 使用設定檔中的 NMS 參數
             return ApplySimpleNMS(results, _settings.NmsIouThreshold);
         }
 
@@ -573,7 +586,7 @@ namespace ArtaleAI.Detection
                 sourceMask[charRect].SetTo(new Scalar(0));
             }
 
-            // 🔧 使用設定檔參數，不寫死
+            //  使用設定檔參數，不寫死
             int kernelSize = _settings.MorphologyKernelSize;
             int blurSize = _settings.ContourBlurSize;
             double adjustedThreshold = Math.Min(threshold, _settings.ContourThresholdLimit);
@@ -616,7 +629,6 @@ namespace ArtaleAI.Detection
                 }
             }
 
-            // 🔧 使用設定檔中的 NMS 閾值
             return ApplySimpleNMS(results, _settings.NmsIouThreshold);
         }
 
@@ -638,10 +650,11 @@ namespace ArtaleAI.Detection
             Cv2.MinMaxLoc(result, out double minVal, out double maxVal, out _, out _);
             Cv2.MeanStdDev(result, out Scalar mean, out Scalar stddev);
 
-            // 🔧 使用設定檔中的動態閾值參數
             double multiplier = _settings.DynamicThresholdMultiplier;
             double dynamicThreshold = Math.Min(threshold, mean.Val0 - stddev.Val0 * multiplier);
-            dynamicThreshold = Math.Max(dynamicThreshold, threshold * 0.8);
+
+            double confidenceMultiplier = _templateMatchingSettings.GrayscaleConfidenceMultiplier;
+            dynamicThreshold = Math.Max(dynamicThreshold, threshold * confidenceMultiplier);
 
             var locations = GetMatchingLocations(result, dynamicThreshold, true);
             foreach (var loc in locations)
@@ -669,7 +682,6 @@ namespace ArtaleAI.Detection
             var results = new List<MatchResult>();
             using var templateMask = ImageUtils.CreateThreeChannelTemplateMask(templateImg);
 
-            // 🔧 使用設定檔中的多尺度參數
             var scales = _settings.MultiScaleFactors;
 
             foreach (var scale in scales)

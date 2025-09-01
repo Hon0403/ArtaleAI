@@ -23,7 +23,6 @@ namespace ArtaleAI.API.Models
         public bool Success { get; set; }
         public string MonsterName { get; set; } = string.Empty;
         public int DownloadedCount { get; set; }
-        public int SkippedCount { get; set; }
         public string ErrorMessage { get; set; } = string.Empty;
         public List<string> ProcessedFiles { get; set; } = new List<string>();
         public TimeSpan DownloadDuration { get; set; }

@@ -88,10 +88,6 @@ namespace ArtaleAI.Config
         #endregion
 
         #region 配置操作
-        public object? GetValue(Func<AppConfig, object?> getter)
-        {
-            return CurrentConfig == null ? null : getter(CurrentConfig);
-        }
 
         public void SetValue(Action<AppConfig> setter, bool autoSave = false)
         {

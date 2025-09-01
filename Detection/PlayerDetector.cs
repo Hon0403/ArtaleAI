@@ -16,28 +16,31 @@ namespace ArtaleAI.Detection
     {
         private readonly AppConfig _config;
         private readonly PartyRedBarSettings _settings;
+        private readonly PlayerDetectionSettings? _playerSettings;
         private bool _isProcessing = false;
         private readonly object _processingLock = new();
 
         public event Action<List<Rectangle>>? BloodBarDetected;
         public event Action<string>? StatusMessage;
+
         public PlayerDetector(AppConfig config)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _settings = config.PartyRedBar ?? new PartyRedBarSettings();
+            _playerSettings = config.PlayerDetection;
+
         }
 
-        /// <summary>
-        /// 通過隊友紅色血條獲取玩家位置 - 三通道版本
-        /// </summary>
+        ///
+        /// 通過隊友紅色血條獲取玩家位置 - 修復版本
+        ///
         public (System.Drawing.Point? playerLocation, System.Drawing.Point? redBarLocation, Rectangle? redBarRect)
-            GetPlayerLocationByPartyRedBar(Bitmap frameBitmap, Rectangle? minimapRect = null, Rectangle? uiExcludeRect = null)
+        GetPlayerLocationByPartyRedBar(Bitmap frameBitmap, Rectangle? minimapRect = null, Rectangle? uiExcludeRect = null)
         {
             if (frameBitmap == null) return (null, null, null);
 
             try
             {
-                // 🔧 確保每個 Mat 都在 using 中
                 using var frameMat = ImageUtils.BitmapToThreeChannelMat(frameBitmap);
 
                 // 1. 清零小地圖區域避免干擾
@@ -48,30 +51,24 @@ namespace ArtaleAI.Detection
                     frameMat[minimapRegion].SetTo(new Scalar(0, 0, 0));
                 }
 
-                // 2. 提取相機區域（排除UI）- 使用 using
+                // 2. 提取相機區域（排除UI）
                 using var cameraArea = ExtractCameraArea(frameMat, uiExcludeRect);
                 if (cameraArea.Empty()) return (null, null, null);
 
                 using var hsvImage = ImageUtils.ConvertToHSV(cameraArea);
-
                 var lowerRed = ToOpenCvHsv((_settings.LowerRedHsv[0], _settings.LowerRedHsv[1], _settings.LowerRedHsv[2]));
                 var upperRed = ToOpenCvHsv((_settings.UpperRedHsv[0], _settings.UpperRedHsv[1], _settings.UpperRedHsv[2]));
 
                 using var redMask = new Mat();
                 Cv2.InRange(hsvImage, lowerRed, upperRed, redMask);
 
-                // 4. 尋找符合血條特徵的輪廓
-                var redBarLocation = FindPartyRedBar(redMask);
-                if (!redBarLocation.HasValue) return (null, null, null);
+                var redBarResult = FindPartyRedBarWithSize(redMask);
+                if (!redBarResult.HasValue) return (null, null, null);
 
-                // 剩餘邏輯保持不變...
-                var redBarRect = new Rectangle(
-                    redBarLocation.Value.X, redBarLocation.Value.Y,
-                    _settings.MaxBarWidth, _settings.MaxBarHeight);
-
+                var (redBarLocation, redBarRect) = redBarResult.Value;
                 var playerLocation = new System.Drawing.Point(
-                    redBarLocation.Value.X + _settings.PlayerOffsetX,
-                    redBarLocation.Value.Y + _settings.PlayerOffsetY);
+                    redBarLocation.X + _settings.PlayerOffsetX,
+                    redBarLocation.Y + _settings.PlayerOffsetY);
 
                 return (playerLocation, redBarLocation, redBarRect);
             }
@@ -80,6 +77,69 @@ namespace ArtaleAI.Detection
                 System.Diagnostics.Debug.WriteLine($"❌ 血條定位失敗: {ex.Message}");
                 return (null, null, null);
             }
+        }
+
+        /// <summary>
+        /// 使用設定檔的動態填充率參數
+        /// </summary>
+        private (System.Drawing.Point location, Rectangle rect)? FindPartyRedBarWithSize(Mat redMask)
+        {
+            var contours = new Mat[0];
+            var hierarchy = new Mat();
+            Cv2.FindContours(redMask, out contours, hierarchy, RetrievalModes.External, ContourApproximationModes.ApproxSimple);
+
+            var candidates = new List<(System.Drawing.Point location, Rectangle rect, int area)>();
+
+            try
+            {
+                foreach (var contour in contours)
+                {
+                    var boundingRect = Cv2.BoundingRect(contour);
+                    var area = (int)Cv2.ContourArea(contour);
+                    var fillRate = (double)area / (boundingRect.Width * boundingRect.Height);
+
+                    int smallWidthLimit = _playerSettings.SmallBarWidthLimit;
+                    int mediumWidthLimit = _playerSettings.MediumBarWidthLimit;
+
+                    double minFillRateThreshold;
+                    if (boundingRect.Width <= smallWidthLimit)
+                        minFillRateThreshold = _settings.DynamicFillRateSmall;
+                    else if (boundingRect.Width <= mediumWidthLimit)
+                        minFillRateThreshold = _settings.DynamicFillRateMedium;
+                    else
+                        minFillRateThreshold = _settings.MinFillRate;
+
+                    if (boundingRect.Height >= _settings.MinBarHeight &&
+                        boundingRect.Height <= _settings.MaxBarHeight &&
+                        boundingRect.Width >= _settings.MinBarWidth &&
+                        boundingRect.Width <= _settings.MaxBarWidth &&
+                        area >= _settings.MinBarArea &&
+                        fillRate >= minFillRateThreshold)
+                    {
+                        var realRect = new Rectangle(
+                            boundingRect.X, boundingRect.Y,
+                            boundingRect.Width, boundingRect.Height);
+
+                        candidates.Add((
+                            new System.Drawing.Point(boundingRect.X, boundingRect.Y),
+                            realRect,
+                            area));
+                    }
+                }
+
+                if (candidates.Any())
+                {
+                    var bestCandidate = candidates.OrderByDescending(c => c.area).First();
+                    return (bestCandidate.location, bestCandidate.rect);
+                }
+            }
+            finally
+            {
+                ImageUtils.SafeDispose(contours);
+                hierarchy?.Dispose();
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -100,73 +160,10 @@ namespace ArtaleAI.Detection
         }
 
         /// <summary>
-        /// 尋找符合隊友血條特徵的區域
-        /// </summary>
-        private System.Drawing.Point? FindPartyRedBar(Mat redMask)
-        {
-            // 尋找輪廓
-            var contours = new Mat[0];
-            var hierarchy = new Mat();
-            Cv2.FindContours(redMask, out contours, hierarchy, RetrievalModes.External, ContourApproximationModes.ApproxSimple);
-
-            var candidates = new List<(System.Drawing.Point location, int area)>();
-
-            try
-            {
-                foreach (var contour in contours)
-                {
-                    var boundingRect = Cv2.BoundingRect(contour);
-                    var area = (int)Cv2.ContourArea(contour);
-                    var fillRate = (double)area / (boundingRect.Width * boundingRect.Height);
-
-                    // 🔧 動態調整填充率要求
-                    double minFillRateThreshold;
-                    if (boundingRect.Width <= 10)  // 很短的血條
-                    {
-                        minFillRateThreshold = 0.2;  // 降低到20%
-                    }
-                    else if (boundingRect.Width <= 25)  // 中等長度血條
-                    {
-                        minFillRateThreshold = 0.4;  // 40%
-                    }
-                    else
-                    {
-                        minFillRateThreshold = _settings.MinFillRate;  // 使用原始設定
-                    }
-
-                    if (boundingRect.Height >= _settings.MinBarHeight &&
-                        boundingRect.Height <= _settings.MaxBarHeight &&
-                        boundingRect.Width >= _settings.MinBarWidth &&
-                        boundingRect.Width <= _settings.MaxBarWidth &&
-                        area >= _settings.MinBarArea &&
-                        fillRate >= minFillRateThreshold)  // 使用動態閾值
-                    {
-                        candidates.Add((new System.Drawing.Point(boundingRect.X, boundingRect.Y), area));
-                    }
-                }
-
-                // 選擇面積最大的候選者
-                if (candidates.Any())
-                {
-                    var bestCandidate = candidates.OrderByDescending(c => c.area).First();
-                    return bestCandidate.location;
-                }
-            }
-            finally
-            {
-                ImageUtils.SafeDispose(contours);
-                hierarchy?.Dispose(); // hierarchy 不是 Mat，保持原樣
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// 新增：非同步處理幀 - 核心方法
+        /// 非同步處理幀 - 核心方法
         /// </summary>
         public async Task ProcessFrameAsync(Bitmap frame, Rectangle? minimapRect = null)
         {
-            // 檢查是否正在處理
             lock (_processingLock)
             {
                 if (_isProcessing) return;
@@ -175,17 +172,13 @@ namespace ArtaleAI.Detection
 
             try
             {
-                // 🔧 關鍵改進：直接處理原始frame，不創建副本
-                // 在背景線程處理
                 var result = await Task.Run(() =>
                     GetPlayerLocationByPartyRedBar(frame, minimapRect));
 
                 if (result.redBarRect.HasValue)
                 {
                     var redBarRects = new List<Rectangle> { result.redBarRect.Value };
-                    // 通知UI更新
                     BloodBarDetected?.Invoke(redBarRects);
-                    StatusMessage?.Invoke($"🩸 血條: ({result.redBarLocation?.X}, {result.redBarLocation?.Y})");
                 }
             }
             catch (Exception ex)

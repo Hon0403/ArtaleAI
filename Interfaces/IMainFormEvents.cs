@@ -16,6 +16,9 @@ namespace ArtaleAI.Interfaces
         void OnConfigLoaded(AppConfig config);
         void OnConfigSaved(AppConfig config);
         void OnConfigError(string errorMessage);
+
+        ConfigManager? ConfigurationManager { get; }
+
         #endregion
 
         #region 即時顯示事件

@@ -1,4 +1,5 @@
-﻿using ArtaleAI.Interfaces;
+﻿using ArtaleAI.Config;
+using ArtaleAI.Interfaces;
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -12,15 +13,17 @@ namespace ArtaleAI.Display
     public class FloatingMagnifier : IDisposable
     {
         private readonly IMainFormEvents _eventHandler;
+        private readonly UiSettings? _uiSettings;
         private Form? _zoomWindow;
         private PictureBox? _floatingZoomBox;
         private bool _isVisible;
 
         public bool IsVisible => _isVisible;
 
-        public FloatingMagnifier(IMainFormEvents eventHandler)
+        public FloatingMagnifier(IMainFormEvents eventHandler, UiSettings? uiSettings = null)
         {
             _eventHandler = eventHandler ?? throw new ArgumentNullException(nameof(eventHandler));
+            _uiSettings = uiSettings;
             InitializeMagnifier();
         }
 
@@ -29,12 +32,14 @@ namespace ArtaleAI.Display
         /// </summary>
         private void InitializeMagnifier()
         {
+            int magnifierSize = _uiSettings.MagnifierSize;
+
             _zoomWindow = new Form
             {
                 FormBorderStyle = FormBorderStyle.None,
                 TopMost = true,
                 ShowInTaskbar = false,
-                Size = new Size(150, 150),
+                Size = new Size(magnifierSize, magnifierSize),
                 BackColor = Color.White,
                 Visible = false
             };
@@ -150,20 +155,22 @@ namespace ArtaleAI.Display
         {
             if (_zoomWindow == null) return screenPoint;
 
+            int offset = _uiSettings.MagnifierOffset; //  使用設定檔參數
+
             var magnifierPosition = new Point(
-                screenPoint.X + 20,
-                screenPoint.Y + 20
+                screenPoint.X + offset,
+                screenPoint.Y + offset
             );
 
             var screen = Screen.FromPoint(screenPoint);
 
             // 避免超出右邊界
             if (magnifierPosition.X + _zoomWindow.Width > screen.WorkingArea.Right)
-                magnifierPosition.X = screenPoint.X - _zoomWindow.Width - 20;
+                magnifierPosition.X = screenPoint.X - _zoomWindow.Width - offset;
 
-            // 避免超出下邊界
+            // 避免超出下邊界  
             if (magnifierPosition.Y + _zoomWindow.Height > screen.WorkingArea.Bottom)
-                magnifierPosition.Y = screenPoint.Y - _zoomWindow.Height - 20;
+                magnifierPosition.Y = screenPoint.Y - _zoomWindow.Height - offset;
 
             return magnifierPosition;
         }
@@ -192,8 +199,10 @@ namespace ArtaleAI.Display
             int w = _floatingZoomBox.Width;
             int h = _floatingZoomBox.Height;
 
+            int crosshairSize = _uiSettings.CrosshairSize; //  使用設定檔參數
+
             // 繪製十字線
-            using (var pen = new Pen(Color.Red, 2))
+            using (var pen = new Pen(Color.Red, crosshairSize))
             {
                 g.DrawLine(pen, w / 2, 0, w / 2, h);
                 g.DrawLine(pen, 0, h / 2, w, h / 2);

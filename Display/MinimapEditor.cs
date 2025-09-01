@@ -1,5 +1,6 @@
 ﻿using ArtaleAI.Config;
 using ArtaleAI.Detection;
+using ArtaleAI.Models;
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

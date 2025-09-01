@@ -92,7 +92,7 @@ namespace ArtaleAI.API
                 result.DownloadedCount = processedCount;
                 result.DownloadDuration = DateTime.Now - startTime;
 
-                _eventHandler.OnStatusMessage($"✅ 成功下載 {processedCount} 個 '{monsterName}' 模板");
+                _eventHandler.OnStatusMessage($" 成功下載 {processedCount} 個 '{monsterName}' 模板");
                 return result;
             }
             catch (Exception ex)
@@ -129,7 +129,7 @@ namespace ArtaleAI.API
                 result.DownloadedCount = processedCount;
                 result.DownloadDuration = DateTime.Now - startTime;
 
-                _eventHandler.OnStatusMessage($"✅ 成功下載 {processedCount} 個 '{monsterName}' 模板");
+                _eventHandler.OnStatusMessage($" 成功下載 {processedCount} 個 '{monsterName}' 模板");
                 return result;
             }
             catch (Exception ex)

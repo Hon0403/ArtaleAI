@@ -70,35 +70,46 @@ namespace ArtaleAI.Utils
             return gray3ChMat;
         }
 
-        /// <summary>
-        /// 執行緒安全的 Bitmap 轉三通道 Mat
-        /// </summary>
-        public static Mat BitmapToThreeChannelMat(Bitmap bitmap)
-        {
-            if (bitmap == null)
-                throw new ArgumentNullException(nameof(bitmap));
+		/// <summary>
+		/// 執行緒安全的 Bitmap 轉三通道 Mat
+		/// </summary>
+		public static Mat BitmapToThreeChannelMat(Bitmap bitmap)
+		{
+			if (bitmap == null)
+				throw new ArgumentNullException(nameof(bitmap));
 
-            lock (_conversionLock) // 🔧 關鍵：序列化轉換操作
-            {
-                try
-                {
-                    using var originalMat = bitmap.ToMat();
-                    return EnsureThreeChannels(originalMat);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"轉換失敗: {ex.Message}");
-                    throw new InvalidOperationException($"安全轉換失敗: {ex.Message}", ex);
-                }
-            }
-        }
+			lock (_conversionLock)
+			{
+				try
+				{
+					// 🔧 額外保護：創建完全獨立的副本再轉換
+					using var safeCopy = new Bitmap(bitmap.Width, bitmap.Height, bitmap.PixelFormat);
+					using (var g = Graphics.FromImage(safeCopy))
+					{
+						// 鎖定來源 bitmap 避免併發讀取
+						lock (bitmap)
+						{
+							g.DrawImage(bitmap, 0, 0);
+						}
+					}
 
-        /// <summary>
-        /// 創建三通道模板遮罩
-        /// </summary>
-        /// <param name="templateImg">模板圖像</param>
-        /// <returns>遮罩 Mat</returns>
-        public static Mat CreateThreeChannelTemplateMask(Mat templateImg)
+					using var originalMat = safeCopy.ToMat();
+					return EnsureThreeChannels(originalMat);
+				}
+				catch (Exception ex)
+				{
+					System.Diagnostics.Debug.WriteLine($"轉換失敗: {ex.Message}");
+					throw new InvalidOperationException($"安全轉換失敗: {ex.Message}", ex);
+				}
+			}
+		}
+
+		/// <summary>
+		/// 創建三通道模板遮罩
+		/// </summary>
+		/// <param name="templateImg">模板圖像</param>
+		/// <returns>遮罩 Mat</returns>
+		public static Mat CreateThreeChannelTemplateMask(Mat templateImg)
         {
             if (templateImg?.Empty() == true)
                 throw new ArgumentException("模板圖像為空", nameof(templateImg));

@@ -11,7 +11,6 @@ namespace ArtaleAI.Minimap
     {
         public List<MapPath> WaypointPaths { get; set; } = new List<MapPath>();
         public List<MapArea> SafeZone { get; set; } = new List<MapArea>();
-        public List<MapArea> ForbiddenAreas { get; set; } = new List<MapArea>();
         public List<Rope> Ropes { get; set; } = new List<Rope>();
 
         // 用來儲存單點的「禁止區域」標記

@@ -7,6 +7,7 @@ using ArtaleAI.Utils;
 using System.Runtime.InteropServices;
 using Windows.Graphics.Capture;
 using ArtaleAI.API;
+using ArtaleAI.Models;
 
 namespace ArtaleAI
 {
@@ -26,7 +27,7 @@ namespace ArtaleAI
 
         private readonly MinimapEditor _editorMinimap = new();
         private GraphicsCaptureItem? _selectedCaptureItem;
-        private readonly MapEditor _mapEditor = new();
+        private MapEditor? _mapEditor = new();
         private readonly MapData _mapData = new();
         private LiveViewController? _liveViewController;
         private FloatingMagnifier? _floatingMagnifier;
@@ -54,20 +55,29 @@ namespace ArtaleAI
             _configurationManager.Load();
 
             var detectionSettings = _configurationManager?.CurrentConfig?.Templates?.MonsterDetection;
-            TemplateMatcher.Initialize(detectionSettings);
+            var templateMatchingSettings = _configurationManager?.CurrentConfig?.TemplateMatching;
+
+            // 傳入模板匹配設定
+            TemplateMatcher.Initialize(detectionSettings, templateMatchingSettings, _configurationManager?.CurrentConfig);
 
             _liveViewController = new LiveViewController(textBox1, this, pictureBoxLiveView);
             _liveViewController.SetConfig(_configurationManager.CurrentConfig);
 
-            // 🔧 只建立一次 MonsterService
+            var mapEditorSettings = _configurationManager?.CurrentConfig?.MapEditor;
+            _mapEditor = new MapEditor(mapEditorSettings);
+
+            // 只建立一次 MonsterService
             _monsterService = new MonsterService(cbo_MonsterTemplates, this);
             _monsterService.InitializeMonsterDropdown();
             _liveViewController.SetMonsterService(_monsterService);
 
-            // 其他服務初始化
-            _floatingMagnifier = new FloatingMagnifier(this);
+            // 傳入 UI 設定
+            var uiSettings = _configurationManager?.CurrentConfig?.Ui;
+            _floatingMagnifier = new FloatingMagnifier(this, uiSettings);
+
             _mapFileManager = new MapFileManager(cbo_MapFiles, _mapEditor, this);
             _mapFileManager.InitializeMapFilesDropdown();
+
             _monsterDownloader = new MonsterImageFetcher(this);
             InitializeDetectionModeDropdown();
         }
@@ -147,24 +157,44 @@ namespace ArtaleAI
         private void InitializeDetectionModeDropdown()
         {
             cbo_DetectMode.Items.Clear();
-            cbo_DetectMode.Items.Add("⚡ Basic - 基本匹配（最快）");
-            cbo_DetectMode.Items.Add("🖼️ ContourOnly - 輪廓匹配（速度快）");
-            cbo_DetectMode.Items.Add("⚖️ Grayscale - 灰階匹配（平衡）");
-            cbo_DetectMode.Items.Add("🎯 Color - 彩色匹配（推薦）");
-            cbo_DetectMode.Items.Add("🔍 TemplateFree - 自由偵測（無需模板）");
 
-            // 從設定檔載入預設值
-            var config = _configurationManager?.CurrentConfig;
-            var detectionMode = config?.Templates?.MonsterDetection?.DetectionMode ?? "Color";
+            var config = _configurationManager.CurrentConfig;
+            var detectionModes = config.DetectionModes;
 
-            // 映射到UI顯示
-            var displayText = GetDisplayTextForMode(detectionMode);
-            cbo_DetectMode.SelectedItem = displayText;
+            if (detectionModes?.DisplayOrder != null && detectionModes.DisplayNames != null)
+            {
+                try
+                {
+                    // 按設定檔順序添加項目
+                    foreach (var mode in detectionModes.DisplayOrder)
+                    {
+                        if (detectionModes.DisplayNames.TryGetValue(mode, out var displayName))
+                        {
+                            cbo_DetectMode.Items.Add(displayName);
+                        }
+                    }
+
+                    // 設置預設選擇
+                    var defaultMode = detectionModes.DefaultMode;
+                    if (detectionModes.DisplayNames.TryGetValue(defaultMode, out var defaultDisplay))
+                    {
+                        cbo_DetectMode.SelectedItem = defaultDisplay;
+                    }
+
+                    OnStatusMessage($"智慧辨識模式初始化完成，預設：{defaultMode}");
+                }
+                catch (Exception ex)
+                {
+                    OnError($"辨識模式設定檔格式錯誤: {ex.Message}");
+                }
+            }
+            else
+            {
+                OnError("辨識模式設定檔缺少必要配置，使用預設模式");
+            }
 
             // 綁定事件
             cbo_DetectMode.SelectedIndexChanged += OnDetectionModeChanged;
-
-            OnStatusMessage($"智慧辨識模式初始化完成，預設：{detectionMode}");
         }
 
         /// <summary>
@@ -192,48 +222,44 @@ namespace ArtaleAI
         }
 
         /// <summary>
-        /// 獲取模式的顯示文字
-        /// </summary>
-        private string GetDisplayTextForMode(string mode)
-        {
-            return mode switch
-            {
-                "Basic" => "⚡ Basic - 基本匹配（最快）",
-                "ContourOnly" => "🖼️ ContourOnly - 輪廓匹配（速度快）",
-                "Grayscale" => "⚖️ Grayscale - 灰階匹配（平衡）",
-                "Color" => "🎯 Color - 彩色匹配（推薦）",
-                "TemplateFree" => "🔍 TemplateFree - 自由偵測（無需模板）",
-                _ => "🎯 Color - 彩色匹配（推薦）"
-            };
-        }
-
-        /// <summary>
         /// 從顯示文字提取模式
         /// </summary>
         private string ExtractModeFromDisplayText(string displayText)
         {
-            if (displayText.Contains("Basic")) return "Basic";
-            if (displayText.Contains("ContourOnly")) return "ContourOnly";
-            if (displayText.Contains("Grayscale")) return "Grayscale";
-            if (displayText.Contains("Color")) return "Color";
-            if (displayText.Contains("TemplateFree")) return "TemplateFree";
-            return "Color";
+            var config = _configurationManager.CurrentConfig;
+            var detectionModes = config.DetectionModes;
+
+            //  優先使用設定檔映射
+            if (detectionModes?.DisplayNames != null)
+            {
+                var mode = detectionModes.DisplayNames.FirstOrDefault(kvp => kvp.Value == displayText).Key;
+                if (!string.IsNullOrEmpty(mode))
+                {
+                    return mode;
+                }
+            }
+
+            OnError($"辨識模式設定檔讀取失敗或格式錯誤：'{displayText}'");
+            return config.DetectionModes.DefaultMode;
         }
 
         /// <summary>
-        /// 獲取模式的最佳遮擋處理
+        /// 獲取模式的最佳遮擋處理 - 基於設定檔
         /// </summary>
         private OcclusionHandling GetOptimalOcclusionForMode(string mode)
         {
-            return mode switch
+            var config = _configurationManager?.CurrentConfig;
+            var occlusionMappings = config?.DetectionModes?.OcclusionMappings;
+
+            if (occlusionMappings?.TryGetValue(mode, out var occlusionString) == true)
             {
-                "Basic" => OcclusionHandling.None,
-                "ContourOnly" => OcclusionHandling.MorphologyRepair,
-                "Grayscale" => OcclusionHandling.DynamicThreshold,
-                "Color" => OcclusionHandling.MultiScale,
-                "TemplateFree" => OcclusionHandling.MorphologyRepair,
-                _ => OcclusionHandling.None
-            };
+                return Enum.TryParse<OcclusionHandling>(occlusionString, out var result)
+                    ? result
+                    : OcclusionHandling.None;
+            }
+
+            OnError($"找不到模式 '{mode}' 的遮擋處理設定");
+            return OcclusionHandling.None;
         }
 
         #endregion
@@ -358,10 +384,10 @@ namespace ArtaleAI
 
         private async void TabControl1_SelectedIndexChanged(object? sender, EventArgs e)
         {
-            // 🔧 完全停止並釋放所有分頁資源
+            //  完全停止並釋放所有分頁資源
             await StopAndReleaseAllResources();
 
-            // 🔧 根據當前分頁啟動對應功能
+            //  根據當前分頁啟動對應功能
             switch (tabControl1.SelectedIndex)
             {
                 case 1: // 路徑編輯
@@ -385,7 +411,7 @@ namespace ArtaleAI
             {
                 // 載入一次性的小地圖快照
                 await LoadMinimapAsync(MinimapUsage.PathEditing);
-                OnStatusMessage("✅ 路徑編輯模式就緒");
+                OnStatusMessage(" 路徑編輯模式就緒");
             }
             catch (Exception ex)
             {
@@ -410,14 +436,14 @@ namespace ArtaleAI
             {
                 // 1. 啟動即時視窗捕捉
                 await _liveViewController.StartAsync(config);
-                OnStatusMessage("   ✅ 即時視窗捕捉已啟動");
+                OnStatusMessage("    即時視窗捕捉已啟動");
 
                 // 2. 設置小地圖疊加層
                 try
                 {
                     await Task.Delay(500);
                     await LoadAndSetupMinimapOverlay();
-                    OnStatusMessage("   ✅ 小地圖疊加層已設置");
+                    OnStatusMessage("    小地圖疊加層已設置");
                 }
                 catch (Exception ex)
                 {
@@ -430,11 +456,11 @@ namespace ArtaleAI
                 {
                     await Task.Delay(500);
                     _backgroundMonsterTimer?.Change(0, 100); // 刪除這行
-                    OnStatusMessage("   ✅ 背景偵測處理已啟動");
+                    OnStatusMessage("    背景偵測處理已啟動");
                 }
                 */
 
-                // ✅ 改為這樣
+                //  改為這樣
                 OnStatusMessage("🚀 即時顯示模式完全就緒！所有偵測在主執行緒中處理");
             }
             catch (Exception ex)
@@ -456,26 +482,26 @@ namespace ArtaleAI
             if (_backgroundMonsterTimer != null)
             {
                 _backgroundMonsterTimer.Change(Timeout.Infinite, Timeout.Infinite);
-                OnStatusMessage("   ✅ 背景怪物偵測已停止");
+                OnStatusMessage("    背景怪物偵測已停止");
             }
             */
 
-            // ✅ 保持即時顯示服務停止
+            //  保持即時顯示服務停止
             if (_liveViewController?.IsRunning == true)
             {
                 await _liveViewController.StopAsync();
-                OnStatusMessage("   ✅ 即時顯示服務已停止");
+                OnStatusMessage("    即時顯示服務已停止");
             }
 
-            // ✅ 保持其他清理代碼
+            //  保持其他清理代碼
             TemplateMatcher.ClearCache();
-            OnStatusMessage("   ✅ 模板匹配器快取已清理");
+            OnStatusMessage("    模板匹配器快取已清理");
 
             GC.Collect();
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
-            OnStatusMessage("✅ 所有資源已完全釋放");
+            OnStatusMessage(" 所有資源已完全釋放");
         }
 
         /// <summary>
@@ -529,12 +555,12 @@ namespace ArtaleAI
                         pictureBoxMinimap.Image?.Dispose();
                         pictureBoxMinimap.Image = result.MinimapImage;
                         _selectedCaptureItem = result.CaptureItem;
-                        OnStatusMessage("✅ 路徑編輯小地圖載入完成");
+                        OnStatusMessage(" 路徑編輯小地圖載入完成");
                         break;
 
                     case MinimapUsage.LiveViewOverlay:
                         SetupLiveViewOverlay(result);
-                        OnStatusMessage("✅ 即時顯示小地圖疊加層設置完成");
+                        OnStatusMessage(" 即時顯示小地圖疊加層設置完成");
                         break;
                 }
 
@@ -575,14 +601,14 @@ namespace ArtaleAI
                     OnStatusMessage("⚠️ 未檢測到玩家位置");
                 }
 
-                // 🔧 直接使用動態偵測到的小地圖螢幕位置
+                //  直接使用動態偵測到的小地圖螢幕位置
                 Rectangle minimapOnScreen = result.MinimapScreenRect.Value;
 
                 // 設置小地圖疊加層
                 _liveViewController.UpdateMinimapOverlay(
                     result.MinimapImage, minimapOnScreen, playerRect);
 
-                OnStatusMessage($"✅ 小地圖疊加層已設置 ({minimapOnScreen.Width}x{minimapOnScreen.Height})");
+                OnStatusMessage($" 小地圖疊加層已設置 ({minimapOnScreen.Width}x{minimapOnScreen.Height})");
             }
             catch (Exception ex)
             {

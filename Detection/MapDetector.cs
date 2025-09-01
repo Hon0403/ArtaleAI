@@ -72,7 +72,7 @@ namespace ArtaleAI.Detection
                             originalTemplate.Dispose();
 
                             _templates[kvp.Key] = template;
-                            Console.WriteLine($"✅ 已載入三通道模板: {kvp.Key} ({template.Width}x{template.Height}, {template.Channels()} 通道)");
+                            Console.WriteLine($" 已載入三通道模板: {kvp.Key} ({template.Width}x{template.Height}, {template.Channels()} 通道)");
                         }
                         else
                         {
@@ -104,7 +104,6 @@ namespace ArtaleAI.Detection
 
             try
             {
-                // 🔧 使用 ImageUtils 轉換為三通道
                 using var frameMat = ImageUtils.BitmapToThreeChannelMat(fullFrameBitmap);
 
                 var cornerThreshold = _config.Templates.Minimap.CornerThreshold;
@@ -118,7 +117,6 @@ namespace ArtaleAI.Detection
                 Console.WriteLine($"🔍 TopLeft 三通道匹配結果: {(topLeft.HasValue ? $"成功 ({topLeft.Value.Location.X}, {topLeft.Value.Location.Y})" : "失敗")}");
                 Console.WriteLine($"🔍 BottomRight 三通道匹配結果: {(bottomRight.HasValue ? $"成功 ({bottomRight.Value.Location.X}, {bottomRight.Value.Location.Y})" : "失敗")}");
 
-                // 🔧 確保變數名稱一致
                 if (topLeft.HasValue && bottomRight.HasValue)
                 {
                     var tl = topLeft.Value.Location;
@@ -132,7 +130,7 @@ namespace ArtaleAI.Detection
 
                         if (width > 0 && height > 0)
                         {
-                            Console.WriteLine($"✅ 三通道小地圖檢測成功！");
+                            Console.WriteLine($" 三通道小地圖檢測成功！");
                             return new Rectangle(tl.X, tl.Y, width, height);
                         }
                     }
@@ -158,7 +156,7 @@ namespace ArtaleAI.Detection
 
             try
             {
-                // 🔧 使用 ImageUtils 轉換為三通道
+                //  使用 ImageUtils 轉換為三通道
                 using var mat = ImageUtils.BitmapToThreeChannelMat(minimapImage);
 
                 var playerThreshold = _config.Templates.Minimap.PlayerThreshold;
@@ -172,7 +170,7 @@ namespace ArtaleAI.Detection
                         loc.Y + template.Height / 2
                     );
 
-                    Console.WriteLine($"✅ 三通道玩家位置檢測成功: ({playerPos.X}, {playerPos.Y})");
+                    Console.WriteLine($" 三通道玩家位置檢測成功: ({playerPos.X}, {playerPos.Y})");
                     return playerPos;
                 }
 

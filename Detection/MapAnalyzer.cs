@@ -1,26 +1,12 @@
 ﻿using ArtaleAI.GameWindow;
 using ArtaleAI.Config;
-using System;
 using System.Diagnostics;
-using System.Drawing;
-using System.Linq;
-using System.Threading.Tasks;
 using Windows.Graphics.Capture;
 using WinRT.Interop;
+using ArtaleAI.Models;
 
 namespace ArtaleAI.Detection
 {
-    /// <summary>
-    /// 用於打包小地圖快照及其分析結果的資料結構。
-    /// </summary>
-    public class MinimapSnapshotResult
-    {
-        public Bitmap? MinimapImage { get; set; }
-        public Point? PlayerPosition { get; set; }
-        public GraphicsCaptureItem? CaptureItem { get; set; }
-        public Rectangle? MinimapScreenRect { get; set; }
-
-    }
 
     /// <summary>
     /// 提供與小地圖相關的服務，例如擷取快照並分析。

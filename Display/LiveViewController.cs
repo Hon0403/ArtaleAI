@@ -2,15 +2,11 @@
 using ArtaleAI.Detection;
 using ArtaleAI.GameCapture;
 using ArtaleAI.Interfaces;
+using ArtaleAI.Models;
 using ArtaleAI.Utils;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Windows.Forms;
+using static ArtaleAI.Display.OverlayRenderer;
 
 namespace ArtaleAI.Display
 {
@@ -20,12 +16,17 @@ namespace ArtaleAI.Display
         private readonly IMainFormEvents _eventHandler;
         private readonly PictureBox _displayPictureBox;
         private readonly LiveViewService _liveViewService;
+
         private Mat? _currentFrameMat;
         private readonly object _frameLock = new object();
+
         private List<OverlayRenderer.MonsterRenderItem> _currentMonsterItems = new();
         private List<OverlayRenderer.MinimapRenderItem> _currentMinimapItems = new();
         private List<OverlayRenderer.PlayerRenderItem> _currentPlayerItems = new();
         private List<OverlayRenderer.PartyRedBarRenderItem> _currentPartyRedBarItems = new();
+        private List<DetectionBoxRenderItem> _currentDetectionBoxItems = new();
+        private List<Rectangle> _currentDetectionBoxes = new();
+
         private Rectangle? _currentMinimapRect;
         private PlayerDetector? _playerDetector;
         private AppConfig? _config;
@@ -130,62 +131,47 @@ namespace ArtaleAI.Display
             }
         }
 
-        /// <summary>
-        /// 渲染所有疊加層 - 統一處理
-        /// </summary>
-        private void RenderAllOverlays()
-        {
-            if (_currentFrameMat != null && !_currentFrameMat.IsDisposed)
-            {
-                var baseBitmap = _currentFrameMat.ToBitmap();
-                // 檢查是否有任何疊加層需要渲染
-                if (_currentMonsterItems.Any() || _currentMinimapItems.Any() ||
-                    _currentPlayerItems.Any() || _currentPartyRedBarItems.Any())
-                {
-                    var bitmap = OverlayRenderer.RenderOverlays(
-                        baseBitmap,
-                        _currentMonsterItems,
-                        _currentMinimapItems,
-                        _currentPlayerItems,
-                        _currentPartyRedBarItems
-                    );
-                    UpdateDisplaySafely(bitmap);
-                    baseBitmap.Dispose();
-                }
-                else
-                {
-                    UpdateDisplaySafely(baseBitmap);
-                }
-            }
-        }
-
         public void OnFrameAvailable(Bitmap frame)
         {
             if (frame == null) return;
 
             try
             {
-                // ✅ 立即更新顯示（創建顯示副本）
-                var displayFrame = new Bitmap(frame);
+                // 🔧 關鍵修復：在方法開始就創建所有需要的副本
+                Bitmap displayFrame, matFrame, playerFrame, monsterFrame;
+
+                // 使用 lock 確保副本創建過程的執行緒安全
+                lock (frame)
+                {
+                    displayFrame = new Bitmap(frame);
+                    matFrame = new Bitmap(frame);
+                    playerFrame = new Bitmap(frame);
+                    monsterFrame = new Bitmap(frame);
+                }
+
+                // 立即處理顯示
                 UpdateDisplaySafely(displayFrame);
 
-                // ✅ 更新內部Mat（用於疊加層渲染）
+                // 處理 Mat 轉換
                 lock (_frameLock)
                 {
                     _currentFrameMat?.Dispose();
-                    using var tempMat = ImageUtils.BitmapToThreeChannelMat(frame);
+                    using var tempMat = ImageUtils.BitmapToThreeChannelMat(matFrame);
                     _currentFrameMat = tempMat.Clone();
                 }
+                matFrame.Dispose(); // 立即釋放
 
-                // ✅ 保持並行處理，直接傳入原始frame
                 if (_config != null)
                 {
+                    // 血條檢測 - 使用已創建的副本
                     _ = Task.Run(async () =>
                     {
                         try
                         {
-                            // 🔧 關鍵：直接傳入原始frame，不創建副本
-                            await _playerDetector?.ProcessFrameAsync(frame, _currentMinimapRect);
+                            using (playerFrame)
+                            {
+                                await _playerDetector?.ProcessFrameAsync(playerFrame, _currentMinimapRect);
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -193,12 +179,16 @@ namespace ArtaleAI.Display
                         }
                     });
 
+                    // 怪物檢測 - 使用已創建的副本
                     _ = Task.Run(async () =>
                     {
                         try
                         {
-                            // 🔧 關鍵：直接傳入原始frame，不創建副本
-                            await _monsterService?.ProcessFrameAsync(frame, _config);
+                            using (monsterFrame)
+                            {
+                                var detectionBoxes = GetCurrentDetectionBoxes();
+                                await _monsterService?.ProcessFrameAsync(monsterFrame, _config, detectionBoxes);
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -206,34 +196,78 @@ namespace ArtaleAI.Display
                         }
                     });
                 }
+                else
+                {
+                    // 如果不需要處理，記得釋放副本
+                    playerFrame?.Dispose();
+                    monsterFrame?.Dispose();
+                }
             }
             catch (Exception ex)
             {
                 OnError($"幀處理錯誤: {ex.Message}");
             }
-
-            // 🔧 不要在這裡釋放原始frame，讓調用者處理
-        }
-
-        /// <summary>
-        /// 解析辨識模式字串
-        /// </summary>
-        private MonsterDetectionMode ParseDetectionMode(string modeString)
-        {
-            return modeString switch
+            finally
             {
-                "Basic" => MonsterDetectionMode.Basic,
-                "ContourOnly" => MonsterDetectionMode.ContourOnly,
-                "Grayscale" => MonsterDetectionMode.Grayscale,
-                "Color" => MonsterDetectionMode.Color,
-                "TemplateFree" => MonsterDetectionMode.TemplateFree,
-                _ => MonsterDetectionMode.Color // 預設值
-            };
+                // 🔧 重要：釋放原始 frame
+                frame?.Dispose();
+            }
         }
 
+        /// <summary>
+        /// 渲染所有疊加層 - 統一處理
+        /// </summary>
+        private void RenderAllOverlays()
+        {
+            Mat? frameMatCopy = null;
+
+            lock (_frameLock)
+            {
+                if (_currentFrameMat != null && !_currentFrameMat.IsDisposed)
+                {
+                    frameMatCopy = _currentFrameMat.Clone(); // 創建安全副本
+                }
+            }
+
+            if (frameMatCopy != null)
+            {
+                try
+                {
+                    using (frameMatCopy)
+                    {
+                        var baseBitmap = frameMatCopy.ToBitmap();
+
+                        if (_currentMonsterItems.Any() || _currentMinimapItems.Any() ||
+                            _currentPlayerItems.Any() || _currentPartyRedBarItems.Any() ||
+                            _currentDetectionBoxItems.Any())
+                        {
+                            var bitmap = OverlayRenderer.RenderOverlays(
+                                baseBitmap,
+                                _currentMonsterItems,
+                                _currentMinimapItems,
+                                _currentPlayerItems,
+                                _currentPartyRedBarItems,
+                                _currentDetectionBoxItems
+                            );
+
+                            UpdateDisplaySafely(bitmap);
+                            baseBitmap.Dispose();
+                        }
+                        else
+                        {
+                            UpdateDisplaySafely(baseBitmap);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    OnError($"渲染疊加層失敗: {ex.Message}");
+                }
+            }
+        }
 
         /// <summary>
-        /// 事件處理：怪物識別結果
+        /// 怪物識別結果
         /// </summary>
         private void OnMonsterDetected(List<MonsterRenderInfo> renderInfos)
         {
@@ -254,13 +288,14 @@ namespace ArtaleAI.Display
                 {
                     _currentMonsterItems.Clear();
                 }
-                RenderAllOverlays();
             }
+
+            RenderAllOverlays();
         }
 
-        /// <summary>
-        /// 事件處理：血條識別結果
-        /// </summary>
+        ///
+        /// 血條識別結果
+        ///
         private void OnBloodBarDetected(List<Rectangle> redBarRects)
         {
             if (_displayPictureBox.InvokeRequired)
@@ -272,19 +307,60 @@ namespace ArtaleAI.Display
             lock (_frameLock)
             {
                 var redBarStyle = _config?.OverlayStyle?.PartyRedBar;
-                if (redBarStyle != null)
+                var detectionBoxStyle = _config?.OverlayStyle?.DetectionBox;
+
+                if (redBarStyle != null && detectionBoxStyle != null)
                 {
+                    // 創建血條框線
                     _currentPartyRedBarItems = redBarRects.Select(rect =>
                         new OverlayRenderer.PartyRedBarRenderItem(redBarStyle)
                         {
                             BoundingBox = rect
                         }).ToList();
+
+                    // 🆕 創建檢測框並保存位置
+                    _currentDetectionBoxes.Clear(); // 清空舊的檢測框
+                    _currentDetectionBoxItems = redBarRects.Select(rect =>
+                    {
+                        var dotCenterX = rect.X + rect.Width / 2;
+                        var dotCenterY = rect.Y + rect.Height + (_config?.PartyRedBar?.DotOffsetY ?? 10);
+                        var boxWidth = _config?.PartyRedBar?.DetectionBoxWidth ?? 100;
+                        var boxHeight = _config?.PartyRedBar?.DetectionBoxHeight ?? 80;
+
+                        var detectionBox = new Rectangle(
+                            dotCenterX - boxWidth / 2,
+                            dotCenterY - boxHeight / 2,
+                            boxWidth,
+                            boxHeight);
+
+                        // 🆕 保存檢測框位置供怪物辨識使用
+                        _currentDetectionBoxes.Add(detectionBox);
+
+                        return new OverlayRenderer.DetectionBoxRenderItem(detectionBoxStyle)
+                        {
+                            BoundingBox = detectionBox
+                        };
+                    }).ToList();
                 }
                 else
                 {
                     _currentPartyRedBarItems.Clear();
+                    _currentDetectionBoxItems.Clear();
+                    _currentDetectionBoxes.Clear(); // 🆕
                 }
-                RenderAllOverlays();
+            }
+
+            RenderAllOverlays();
+        }
+
+        /// <summary>
+        /// 🆕 獲取當前檢測框列表
+        /// </summary>
+        public List<Rectangle> GetCurrentDetectionBoxes()
+        {
+            lock (_frameLock)
+            {
+                return _currentDetectionBoxes.ToList();
             }
         }
 
@@ -328,7 +404,6 @@ namespace ArtaleAI.Display
                 frameCopy = _currentFrameMat?.Clone();
             }
 
-            // 🔧 確保返回的是三通道處理後的結果
             return frameCopy?.ToBitmap();
         }
 
@@ -399,6 +474,7 @@ namespace ArtaleAI.Display
             {
                 _currentFrameMat?.Dispose();
             }
+
             _liveViewService?.Dispose();
         }
     }

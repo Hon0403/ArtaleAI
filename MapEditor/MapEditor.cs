@@ -1,4 +1,5 @@
-﻿using System;
+﻿using ArtaleAI.Config;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -13,11 +14,16 @@ namespace ArtaleAI.Minimap
     {
         private MapData _currentMapData = new MapData();
         private EditMode _currentEditMode = EditMode.None;
+        private readonly MapEditorSettings? _settings;
 
         // 狀態變數，用來記錄第一次點擊的位置
         private MapPath? _activePath = null;
         private PointF? _firstClickPoint = null;
         private PointF? _previewPoint = null;
+        public MapEditor(MapEditorSettings? settings = null)
+        {
+            _settings = settings;
+        }
 
         public void LoadMapData(MapData data)
         {
@@ -206,7 +212,7 @@ namespace ArtaleAI.Minimap
 
         private void HandleDeleteAction(PointF clickPosition)
         {
-            const float deletionRadius = 10.0f;
+            float deletionRadius = _settings.DeletionRadius;
 
             // 刪除單個的路徑點
             foreach (var path in _currentMapData.WaypointPaths.ToList())

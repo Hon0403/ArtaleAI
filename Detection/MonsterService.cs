@@ -1,13 +1,7 @@
 ﻿using ArtaleAI.Config;
 using ArtaleAI.Interfaces;
-using OpenCvSharp.Extensions;
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Windows.Forms;
+using ArtaleAI.Models;
+
 
 namespace ArtaleAI.Detection
 {
@@ -151,7 +145,7 @@ namespace ArtaleAI.Detection
         /// <summary>
         /// 新增：非同步處理幀 - 核心方法
         /// </summary>
-        public async Task ProcessFrameAsync(Bitmap frame, AppConfig config)
+        public async Task ProcessFrameAsync(Bitmap frame, AppConfig config, List<Rectangle>? detectionBoxes = null)
         {
             // 檢查是否正在處理，避免堆積
             lock (_processingLock)
@@ -163,8 +157,7 @@ namespace ArtaleAI.Detection
             try
             {
                 // 在背景線程處理
-                var results = await Task.Run(() => ProcessMonsterDetection(frame, config));
-
+                var results = await Task.Run(() => ProcessMonsterDetection(frame, config, detectionBoxes));
                 if (results.Any())
                 {
                     // 通知UI更新（在UI線程中執行）
@@ -186,29 +179,61 @@ namespace ArtaleAI.Detection
         }
 
         /// <summary>
-        /// 私有：實際的怪物識別邏輯
+        /// 🆕 修改：實際的怪物識別邏輯 - 支援檢測框限制
         /// </summary>
-        private List<MonsterRenderInfo> ProcessMonsterDetection(Bitmap frame, AppConfig config)
+        private List<MonsterRenderInfo> ProcessMonsterDetection(Bitmap frame, AppConfig config, List<Rectangle>? detectionBoxes = null)
         {
             var detectionSettings = config?.Templates?.MonsterDetection;
             if (detectionSettings == null) return new List<MonsterRenderInfo>();
 
             var detectionMode = ParseDetectionMode(detectionSettings.DetectionMode);
             int maxAllowedResults = detectionSettings.MaxDetectionResults;
+            var allResults = new List<MatchResult>();
 
-            // 🔧 關鍵改進：直接使用原始frame，不創建副本
-            // TemplateMatcher內部會安全處理轉換
-            var results = TemplateMatcher.FindMonstersWithCache(
-                frame, // 直接使用原始frame
-                _currentTemplates,
-                detectionMode,
-                detectionSettings.DefaultThreshold,
-                CurrentMonsterName ?? "Unknown"
-            );
+            // 🆕 如果有檢測框，只在框內辨識
+            if (detectionBoxes?.Any() == true)
+            {
+                foreach (var detectionBox in detectionBoxes)
+                {
+                    // 裁切檢測框區域
+                    using var croppedFrame = CropFrame(frame, detectionBox);
+                    if (croppedFrame == null) continue;
 
-            if (results.Count > maxAllowedResults) return new List<MonsterRenderInfo>();
+                    var results = TemplateMatcher.FindMonstersWithCache(
+                        croppedFrame,
+                        _currentTemplates,
+                        detectionMode,
+                        detectionSettings.DefaultThreshold,
+                        CurrentMonsterName ?? "Unknown"
+                    );
 
-            return results.Select(r => new MonsterRenderInfo
+                    // 🆕 調整座標：將相對於裁切區域的座標轉換為螢幕座標
+                    foreach (var result in results)
+                    {
+                        result.Position = new System.Drawing.Point(
+                            result.Position.X + detectionBox.X,
+                            result.Position.Y + detectionBox.Y
+                        );
+                    }
+
+                    allResults.AddRange(results);
+                }
+            }
+            else
+            {
+                // 原本的全螢幕辨識（向下相容）
+                allResults = TemplateMatcher.FindMonstersWithCache(
+                    frame,
+                    _currentTemplates,
+                    detectionMode,
+                    detectionSettings.DefaultThreshold,
+                    CurrentMonsterName ?? "Unknown"
+                );
+            }
+
+            if (allResults.Count > maxAllowedResults) return new List<MonsterRenderInfo>();
+
+            return allResults.Select(r => new MonsterRenderInfo
             {
                 Location = r.Position,
                 Size = r.Size,
@@ -219,15 +244,22 @@ namespace ArtaleAI.Detection
 
         private MonsterDetectionMode ParseDetectionMode(string modeString)
         {
-            return modeString switch
+            // 從設定檔獲取映射
+            var config = _eventHandler.ConfigurationManager.CurrentConfig;
+            var modeMapping = config?.DetectionModes?.ModeMapping;
+
+            if (modeMapping?.TryGetValue(modeString, out var mappedMode) == true)
             {
-                "Basic" => MonsterDetectionMode.Basic,
-                "ContourOnly" => MonsterDetectionMode.ContourOnly,
-                "Grayscale" => MonsterDetectionMode.Grayscale,
-                "Color" => MonsterDetectionMode.Color,
-                "TemplateFree" => MonsterDetectionMode.TemplateFree,
-                _ => MonsterDetectionMode.Color
-            };
+                return Enum.TryParse<MonsterDetectionMode>(mappedMode, out var result)
+                    ? result
+                    : MonsterDetectionMode.Color;
+            }
+
+            // 回退到預設模式
+            var defaultMode = config.DetectionModes.DefaultMode;
+            return Enum.TryParse<MonsterDetectionMode>(defaultMode, out var defaultResult)
+                ? defaultResult
+                : MonsterDetectionMode.Color;
         }
 
         private async void OnMonsterSelectionChanged(object? sender, EventArgs e)
@@ -246,6 +278,27 @@ namespace ArtaleAI.Detection
             _monsterComboBox.SelectedIndexChanged -= OnMonsterSelectionChanged;
             ClearCurrentTemplates();
             TemplateMatcher.Dispose();
+        }
+
+        /// <summary>
+        /// 🆕 裁切幀到指定矩形區域
+        /// </summary>
+        private Bitmap? CropFrame(Bitmap originalFrame, Rectangle cropRect)
+        {
+            try
+            {
+                // 確保裁切區域在圖像範圍內
+                var validRect = Rectangle.Intersect(cropRect, new Rectangle(0, 0, originalFrame.Width, originalFrame.Height));
+                if (validRect.IsEmpty || validRect.Width < 10 || validRect.Height < 10)
+                    return null;
+
+                return originalFrame.Clone(validRect, originalFrame.PixelFormat);
+            }
+            catch (Exception ex)
+            {
+                _eventHandler.OnStatusMessage($"裁切幀失敗: {ex.Message}");
+                return null;
+            }
         }
     }
 }

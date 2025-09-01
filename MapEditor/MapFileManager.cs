@@ -40,7 +40,7 @@ namespace ArtaleAI.Minimap
                 if (!Directory.Exists(mapDataDirectory))
                 {
                     Directory.CreateDirectory(mapDataDirectory);
-                    _eventHandler.OnStatusMessage($"✅ 已建立地圖資料夾: {mapDataDirectory}");
+                    _eventHandler.OnStatusMessage($" 已建立地圖資料夾: {mapDataDirectory}");
                 }
 
                 // 載入所有地圖檔案
@@ -57,7 +57,7 @@ namespace ArtaleAI.Minimap
                     _mapFilesComboBox.Items.Add(Path.GetFileName(file));
                 }
 
-                _eventHandler.OnStatusMessage($"✅ 成功載入 {mapFiles.Length} 個地圖檔案選項");
+                _eventHandler.OnStatusMessage($" 成功載入 {mapFiles.Length} 個地圖檔案選項");
             }
             catch (Exception ex)
             {
@@ -98,7 +98,7 @@ namespace ArtaleAI.Minimap
                     _eventHandler.UpdateWindowTitle($"地圖編輯器 - {fileName}");
                     _eventHandler.RefreshMinimap();
 
-                    _eventHandler.OnStatusMessage($"✅ 成功載入地圖: {fileName}");
+                    _eventHandler.OnStatusMessage($" 成功載入地圖: {fileName}");
                 }
                 else
                 {
@@ -125,7 +125,7 @@ namespace ArtaleAI.Minimap
                     currentMapData.SaveToFile(_currentMapFilePath!);
 
                     _eventHandler.OnMapSaved(CurrentMapFileName!, false);
-                    _eventHandler.OnStatusMessage($"✅ 地圖儲存成功: {CurrentMapFileName}");
+                    _eventHandler.OnStatusMessage($" 地圖儲存成功: {CurrentMapFileName}");
                 }
                 else
                 {
@@ -166,7 +166,7 @@ namespace ArtaleAI.Minimap
 
                         _eventHandler.OnMapSaved(fileName, true);
                         _eventHandler.UpdateWindowTitle($"地圖編輯器 - {fileName}");
-                        _eventHandler.OnStatusMessage($"✅ 新地圖儲存成功: {fileName}");
+                        _eventHandler.OnStatusMessage($" 新地圖儲存成功: {fileName}");
                     }
                 }
             }
@@ -196,7 +196,7 @@ namespace ArtaleAI.Minimap
                 _eventHandler.UpdateWindowTitle("地圖編輯器 - (新地圖)");
                 _eventHandler.RefreshMinimap();
 
-                _eventHandler.OnStatusMessage("✅ 已建立新地圖");
+                _eventHandler.OnStatusMessage(" 已建立新地圖");
             }
             catch (Exception ex)
             {

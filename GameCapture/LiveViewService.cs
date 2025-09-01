@@ -50,7 +50,7 @@ namespace ArtaleAI.GameCapture
                     return;
                 }
 
-                _eventHandler.OnStatusMessage("✅ 成功找到遊戲視窗");
+                _eventHandler.OnStatusMessage(" 成功找到遊戲視窗");
 
                 // 建立捕捉器
                 _capturer = new GraphicsCapturer(captureItem);
@@ -107,38 +107,48 @@ namespace ArtaleAI.GameCapture
             }
         }
 
-        /// <summary>
-        /// 捕捉循環的核心邏輯
-        /// </summary>
-        private async Task CaptureLoopAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                // 確保在背景執行緒中執行
-                await Task.Yield();
+		/// <summary>
+		/// 捕捉循環的核心邏輯
+		/// </summary>
+		private async Task CaptureLoopAsync(CancellationToken cancellationToken)
+		{
+			try
+			{
+				await Task.Yield();
+				while (!cancellationToken.IsCancellationRequested && _capturer != null)
+				{
+					using (var frame = _capturer.TryGetNextFrame())
+					{
+						if (frame != null)
+						{
+							// 🔧 在這裡創建一個安全的副本
+							Bitmap safeCopy;
+							try
+							{
+								safeCopy = new Bitmap(frame);
+							}
+							catch (Exception ex)
+							{
+								System.Diagnostics.Debug.WriteLine($"創建 frame 副本失敗: {ex.Message}");
+								continue;
+							}
 
-                while (!cancellationToken.IsCancellationRequested && _capturer != null)
-                {
-                    using (var frame = _capturer.TryGetNextFrame())
-                    {
-                        if (frame != null)
-                        {
-                            var frameCopy = new Bitmap(frame);
-                            // 強制在背景執行緒中調用
-                            await Task.Run(() => _eventHandler.OnFrameAvailable(frameCopy));
-                        }
-                    }
-                    await Task.Delay(16, cancellationToken); // ~60 FPS
-                }
-            }
-            catch (TaskCanceledException) { }
-            catch (Exception ex)
-            {
-                _eventHandler.OnError($"捕捉過程中發生錯誤: {ex.Message}");
-            }
-        }
+							// 在背景執行緒中調用，傳入安全副本
+							// 注意：OnFrameAvailable 會負責釋放 safeCopy
+							_ = Task.Run(() => _eventHandler.OnFrameAvailable(safeCopy));
+						}
+					}
+					await Task.Delay(16, cancellationToken); // ~60 FPS
+				}
+			}
+			catch (TaskCanceledException) { }
+			catch (Exception ex)
+			{
+				_eventHandler.OnError($"捕捉過程中發生錯誤: {ex.Message}");
+			}
+		}
 
-        public void Dispose()
+		public void Dispose()
         {
             StopAsync().Wait(5000); // 最多等待5秒
             _capturer?.Dispose();
