@@ -1,6 +1,9 @@
 ﻿using ArtaleAI.Config;
 using ArtaleAI.Interfaces;
+using System;
+using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Windows.Forms;
 
 namespace ArtaleAI.Display
 {

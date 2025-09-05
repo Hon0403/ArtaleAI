@@ -4,6 +4,7 @@ using ArtaleAI.Models;
 using ArtaleAI.Utils;
 using OpenCvSharp;
 
+
 namespace ArtaleAI.Detection
 {
     /// <summary>
@@ -23,6 +24,8 @@ namespace ArtaleAI.Detection
 
         public List<Bitmap> CurrentTemplates => _currentTemplates.AsReadOnly().ToList();
         public bool HasTemplates => _currentTemplates.Any();
+        public event Action<List<MonsterRenderInfo>>? MonsterDetected;
+
         public string? CurrentMonsterName { get; private set; }
 
         public MonsterService(ComboBox monsterComboBox, IMainFormEvents eventHandler)
@@ -34,6 +37,7 @@ namespace ArtaleAI.Detection
             _playerSettings = _config.PlayerDetection;
 
             _currentTemplates = new List<Bitmap>();
+
             _monsterComboBox.SelectedIndexChanged += OnMonsterSelectionChanged;
         }
 
@@ -84,6 +88,7 @@ namespace ArtaleAI.Detection
             try
             {
                 ClearCurrentTemplates();
+                string monsterFolderPath = Path.Combine(_eventHandler.GetMonstersDirectory(), monsterName);
 
                 string monsterFolderPath = Path.Combine(_eventHandler.GetMonstersDirectory(), monsterName);
                 if (!Directory.Exists(monsterFolderPath))
@@ -95,6 +100,7 @@ namespace ArtaleAI.Detection
                 _eventHandler.OnStatusMessage($"正在從 '{monsterName}' 載入怪物模板...");
 
                 var templateFiles = await Task.Run(() => Directory.GetFiles(monsterFolderPath, "*.png"));
+
                 if (!templateFiles.Any())
                 {
                     _eventHandler.OnStatusMessage($"在 '{monsterName}' 資料夾中未找到任何PNG模板檔案");
@@ -130,6 +136,14 @@ namespace ArtaleAI.Detection
             {
                 _eventHandler.OnError($"載入怪物模板時發生錯誤: {ex.Message}");
             }
+        }
+
+        public Bitmap? GetTemplate(int index)
+        {
+            if (index < 0 || index >= _currentTemplates.Count)
+                return null;
+
+            return _currentTemplates[index];
         }
 
         private void ClearCurrentTemplates()
@@ -344,6 +358,8 @@ namespace ArtaleAI.Detection
 
                 if (results.Any())
                 {
+                    // 通知UI更新（在UI線程中執行）
+                    MonsterDetected?.Invoke(results);
                     _eventHandler.OnStatusMessage($"🎯 怪物: {results.Count}個");
                 }
 
@@ -381,6 +397,7 @@ namespace ArtaleAI.Detection
             {
                 foreach (var detectionBox in detectionBoxes)
                 {
+                    // 裁切檢測框區域
                     using var croppedFrame = CropFrame(frame, detectionBox);
                     if (croppedFrame == null) continue;
 
@@ -447,6 +464,24 @@ namespace ArtaleAI.Detection
             return Enum.TryParse<MonsterDetectionMode>(defaultMode, out var defaultResult)
                 ? defaultResult
                 : MonsterDetectionMode.Color;
+        }
+
+        private async void OnMonsterSelectionChanged(object? sender, EventArgs e)
+        {
+            if (_monsterComboBox.SelectedItem == null) return;
+
+            string selectedMonster = _monsterComboBox.SelectedItem.ToString() ?? string.Empty;
+            if (!string.IsNullOrEmpty(selectedMonster))
+            {
+                await LoadMonsterTemplates(selectedMonster);
+            }
+        }
+
+        public void Dispose()
+        {
+            _monsterComboBox.SelectedIndexChanged -= OnMonsterSelectionChanged;
+            ClearCurrentTemplates();
+            TemplateMatcher.Dispose();
         }
 
         /// <summary>

@@ -1,5 +1,8 @@
 ﻿using SharpDX;
 using SharpDX.Direct3D11;
+using SharpDX.DXGI;
+using System;
+using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using Windows.Graphics;
@@ -50,6 +53,7 @@ namespace ArtaleAI.GameWindow
             _session.StartCapture();
         }
 
+
         public Bitmap? TryGetNextFrame()
         {
             using var frame = _framePool.TryGetNextFrame();
@@ -83,6 +87,7 @@ namespace ArtaleAI.GameWindow
             _device.ImmediateContext.CopyResource(sourceTexture, stagingTexture);
 
             var dataBox = _device.ImmediateContext.MapSubresource(stagingTexture, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
+
             var bitmap = new Bitmap(desc.Width, desc.Height, PixelFormat.Format32bppArgb);
             var boundsRect = new Rectangle(0, 0, desc.Width, desc.Height);
             var mapDest = bitmap.LockBits(boundsRect, ImageLockMode.WriteOnly, bitmap.PixelFormat);

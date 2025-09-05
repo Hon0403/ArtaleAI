@@ -1,4 +1,7 @@
-﻿namespace ArtaleAI
+﻿using System;
+using System.Windows.Forms;
+
+namespace ArtaleAI
 {
     static class Program
     {

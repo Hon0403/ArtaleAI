@@ -4,6 +4,8 @@ using ArtaleAI.Utils;
 using OpenCvSharp;
 using CvPoint = OpenCvSharp.Point;
 using SdPoint = System.Drawing.Point;
+using ArtaleAI.Utils;
+using ArtaleAI.Models;
 
 namespace ArtaleAI.Detection
 {
@@ -15,6 +17,10 @@ namespace ArtaleAI.Detection
         private static MonsterDetectionSettings? _settings;
         private static TemplateMatchingSettings? _templateMatchingSettings;
         private static AppConfig? _currentConfig;
+
+        private static Mat? _cachedSourceMat;
+        private static string? _lastFrameHash;
+        private static readonly Dictionary<string, Mat> _templateCache = new();
 
         /// <summary>
         /// 初始化模板匹配器
@@ -297,18 +303,20 @@ namespace ArtaleAI.Detection
             {
                 // ✅ 修正：直接創建遮罩，不再檢查通道數
                 using var templateMask = UtilityHelper.CreateThreeChannelTemplateMask(templateImg);
-                var scales = _settings.MultiScaleFactors;
+            var scales = _settings.MultiScaleFactors;
 
                 Console.WriteLine($"📏 尺度數: {scales?.Length ?? 0}");
 
-                foreach (var scale in scales)
-                {
+            foreach (var scale in scales)
+            {
                     Console.WriteLine($"🔍 處理尺度: {scale}");
-                    using var scaledTemplate = new Mat();
-                    var newSize = new OpenCvSharp.Size((int)(templateImg.Width * scale), (int)(templateImg.Height * scale));
-                    Cv2.Resize(templateImg, scaledTemplate, newSize);
+                using var scaledTemplate = new Mat();
+                using var scaledMask = new Mat();
+                var newSize = new OpenCvSharp.Size((int)(templateImg.Width * scale), (int)(templateImg.Height * scale));
+                Cv2.Resize(templateImg, scaledTemplate, newSize);
+                Cv2.Resize(templateMask, scaledMask, newSize);
 
-                    using var result = new Mat();
+                using var result = new Mat();
                     using var scaledMask = new Mat();
                     Cv2.Resize(templateMask, scaledMask, newSize);
 
@@ -318,23 +326,23 @@ namespace ArtaleAI.Detection
                     var locations = GetMatchingLocations(result, threshold, false);
                     Console.WriteLine($"✅ 尺度 {scale} 找到 {locations.Count} 個候選");
 
-                    foreach (var loc in locations)
-                    {
+                foreach (var loc in locations)
+                {
                         float score = result.At<float>(loc.Y, loc.X);
-                        results.Add(new MatchResult
-                        {
-                            Name = monsterName,
-                            Position = new SdPoint(loc.X, loc.Y),
-                            Size = new System.Drawing.Size(scaledTemplate.Width, scaledTemplate.Height),
-                            Score = score,
+                    results.Add(new MatchResult
+                    {
+                        Name = monsterName,
+                        Position = new SdPoint(loc.X, loc.Y),
+                        Size = new System.Drawing.Size(scaledTemplate.Width, scaledTemplate.Height),
+                        Score = score,
                             Confidence = score
-                        });
-                    }
+                    });
                 }
+            }
 
                 Console.WriteLine($"🎨 Color 模式處理完成，總共找到 {results.Count} 個結果");
                 return ApplySimpleNMS(results, _settings.NmsIouThreshold, lowerIsBetter: false);
-            }
+        }
             catch (Exception ex)
             {
                 Console.WriteLine($"❌ Color 模式處理失敗: {ex.Message}");
@@ -424,6 +432,7 @@ namespace ArtaleAI.Detection
             }
 
             var nmsResults = new List<MatchResult>();
+            var sortedResults = results.OrderBy(r => r.Score).ToList();
 
             var sortedResults = lowerIsBetter
                 ? results.OrderBy(r => r.Score).ToList()      // SqDiffNormed：小分數更好
@@ -436,12 +445,12 @@ namespace ArtaleAI.Detection
                 sortedResults.RemoveAt(0);
 
                 var bestRect = new Rectangle(best.Position.X, best.Position.Y,
-                    best.Size.Width, best.Size.Height);
+                                           best.Size.Width, best.Size.Height);
 
                 sortedResults.RemoveAll(candidate =>
                 {
                     var candidateRect = new Rectangle(candidate.Position.X, candidate.Position.Y,
-                        candidate.Size.Width, candidate.Size.Height);
+                                                    candidate.Size.Width, candidate.Size.Height);
                     return UtilityHelper.CalculateIoU(bestRect, candidateRect) > iouThreshold;
                 });
             }
@@ -513,7 +522,7 @@ namespace ArtaleAI.Detection
             }
 
             if (sourceBitmap == null)
-            {
+        {
                 Console.WriteLine("❌ 源圖像為空，無法進行匹配");
                 return new List<MatchResult>();
             }
@@ -521,29 +530,31 @@ namespace ArtaleAI.Detection
             var allResults = new List<MatchResult>();
 
             for (int i = 0; i < templates.Count; i++)
-            {
+        {
                 var template = templates[i];
                 try
-                {
+            {
                     Console.WriteLine($"🔍 處理模板 {i + 1}/{templates.Count}");
 
                     if (template == null)
-                    {
+        {
                         Console.WriteLine($"⚠️ 模板 {i + 1} 為空，跳過");
                         continue;
-                    }
+        }
 
                     var results = FindMonsters(sourceBitmap, template, mode, threshold, monsterName, characterBox);
                     Console.WriteLine($"✅ 模板 {i + 1} 匹配完成，找到 {results.Count} 個結果");
                     allResults.AddRange(results);
-                }
+        }
                 catch (Exception ex)
-                {
+                    {
                     Console.WriteLine($"❌ 模板 {i + 1} 匹配失敗: {ex.Message}");
                     Console.WriteLine($"🔍 詳細錯誤: {ex.StackTrace}");
                     continue; // 繼續處理下一個模板
-                }
             }
+
+            return ApplySimpleNMS(results, _settings.NmsIouThreshold);
+        }
 
             Console.WriteLine($"🏁 所有模板處理完成，總結果: {allResults.Count}");
             return allResults;
@@ -559,6 +570,17 @@ namespace ArtaleAI.Detection
                 throw new InvalidOperationException(
                     "TemplateMatcher 未初始化！請先呼叫 Initialize() 並傳入有效的 MonsterDetectionSettings");
             }
+        }
+
+        /// <summary>
+        /// 清理資源
+        /// </summary>
+        public static void Dispose()
+        {
+            ImageUtils.SafeDispose(ref _cachedSourceMat);
+            ImageUtils.SafeDispose(_templateCache);
+            _lastFrameHash = null;
+            System.Diagnostics.Debug.WriteLine("🧹 TemplateMatcher 快取已清理");
         }
 
         #endregion

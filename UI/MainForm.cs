@@ -6,7 +6,10 @@ using ArtaleAI.Interfaces;
 using ArtaleAI.Minimap;
 using ArtaleAI.Models;
 using ArtaleAI.Utils;
+using System.Runtime.InteropServices;
 using Windows.Graphics.Capture;
+using ArtaleAI.API;
+using ArtaleAI.Models;
 
 namespace ArtaleAI
 {
@@ -26,6 +29,7 @@ namespace ArtaleAI
         // LiveViewService 相關
         private LiveViewService? _liveViewService;
         private MonsterService? _monsterService;
+        private MapFileManager? _mapFileManager;
 
         // 檢測狀態管理
         private Rectangle? _currentMinimapRect;
@@ -65,6 +69,8 @@ namespace ArtaleAI
             // 初始化檢測服務
             var detectionSettings = _configurationManager?.CurrentConfig?.Templates?.MonsterDetection;
             var templateMatchingSettings = _configurationManager?.CurrentConfig?.TemplateMatching;
+
+            // 傳入模板匹配設定
             TemplateMatcher.Initialize(detectionSettings, templateMatchingSettings, _configurationManager?.CurrentConfig);
 
             _mapDetector = new MapDetector(_configurationManager?.CurrentConfig ?? new AppConfig());
@@ -72,12 +78,15 @@ namespace ArtaleAI
             _liveViewService = new LiveViewService(this);
             _monsterService = new MonsterService(cbo_MonsterTemplates, this);
             _monsterService.InitializeMonsterDropdown();
+            _liveViewController.SetMonsterService(_monsterService);
 
             // 其他服務
             var uiSettings = _configurationManager?.CurrentConfig?.Ui;
             _floatingMagnifier = new FloatingMagnifier(this, uiSettings);
+
             _mapFileManager = new MapFileManager(cbo_MapFiles, _mapEditor, this);
             _mapFileManager.InitializeMapFilesDropdown();
+
             _monsterDownloader = new MonsterImageFetcher(this);
 
             InitializeDetectionModeDropdown();
@@ -379,7 +388,7 @@ namespace ArtaleAI
                     oldImage?.Dispose();
                 }
                 if (oldFrame != newFrame)
-                {
+        {
                     oldFrame?.Dispose();
                 }
             }
@@ -753,6 +762,13 @@ namespace ArtaleAI
 
             try
             {
+                // 1. 啟動即時視窗捕捉
+                await _liveViewController.StartAsync(config);
+                OnStatusMessage("    即時視窗捕捉已啟動");
+
+                // 2. 設置小地圖疊加層
+                try
+                {
                 // ✅ 直接使用 LiveViewService
                 await _liveViewService.StartAsync(config);
                 OnStatusMessage("✅ 即時顯示模式就緒");
@@ -841,11 +857,13 @@ namespace ArtaleAI
                         _selectedCaptureItem = result.CaptureItem;
                         OnStatusMessage("✅ 路徑編輯小地圖載入完成");
                         break;
+
                     case MinimapUsage.LiveViewOverlay:
                         SetupLiveViewOverlay(result);
                         OnStatusMessage("✅ 即時顯示小地圖疊加層設置完成");
                         break;
                 }
+
                 return new MinimapLoadResult(result.MinimapImage, result.CaptureItem);
             }
 
@@ -886,6 +904,9 @@ namespace ArtaleAI
                 //  直接使用動態偵測到的小地圖螢幕位置
                 Rectangle minimapOnScreen = result.MinimapScreenRect.Value;
 
+                // 設置小地圖疊加層
+                _liveViewController.UpdateMinimapOverlay(
+                    result.MinimapImage, minimapOnScreen, playerRect);
 
                 OnStatusMessage($" 小地圖疊加層已設置 ({minimapOnScreen.Width}x{minimapOnScreen.Height})");
             }
@@ -1014,6 +1035,13 @@ namespace ArtaleAI
         #region 怪物匹配
 
 
+        // 獲取當前小地圖位置
+        private Rectangle? GetCurrentMinimapRect()
+        {
+            // 從 LiveViewController 獲取動態小地圖位置
+            return _liveViewController?.GetMinimapRect();
+        }
+
         #endregion
 
         #region 清理與釋放
@@ -1106,4 +1134,4 @@ namespace ArtaleAI
         }
     }
 }
-
+    

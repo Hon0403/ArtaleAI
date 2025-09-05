@@ -1,6 +1,7 @@
 ﻿using ArtaleAI.API.Models;
 using ArtaleAI.Interfaces;
 using ArtaleAI.Utils;
+using OpenCvSharp;
 using Newtonsoft.Json;
 using OpenCvSharp;
 using System.IO.Compression;

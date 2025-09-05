@@ -39,6 +39,28 @@ namespace ArtaleAI.Config
         public ArtaleAI.Models.MonsterDetectionSettings MonsterDetection { get; set; }
     }
 
+    /// <summary>
+    /// 怪物偵測設定
+    /// </summary>
+    public class MonsterDetectionSettings
+    {
+        public double DefaultThreshold { get; set; }
+        public int MaxDetectionResults { get; set; }
+        public string DetectionMode { get; set; }
+        public string OcclusionHandling { get; set; }
+        public double[] MultiScaleFactors { get; set; }
+        public int MorphologyKernelSize { get; set; }
+        public int ContourBlurSize { get; set; }
+        public double ContourThresholdLimit { get; set; }
+        public double DynamicThresholdMultiplier { get; set; }
+        public double NmsIouThreshold { get; set; }
+        public int TemplateFreeKernelSize { get; set; }
+        public int TemplateFreeOpenKernelSize { get; set; }
+        public int MinDetectionArea { get; set; }
+        public int MaxDetectionArea { get; set; }
+        public double AspectRatioLimit { get; set; }
+    }
+
     public class MinimapTemplates
     {
         public double PlayerThreshold { get; set; }
@@ -61,6 +83,9 @@ namespace ArtaleAI.Config
         public string Path { get; set; }
     }
 
+    /// <summary>
+    /// 辨識框視覺樣式設定
+    /// </summary>
     public class OverlayStyleSettings
     {
         public MonsterOverlayStyle Monster { get; set; } = new();
@@ -70,6 +95,9 @@ namespace ArtaleAI.Config
         public DetectionBoxOverlayStyle DetectionBox { get; set; } = new();
     }
 
+    /// <summary>
+    /// 怪物辨識框樣式
+    /// </summary>
     public class MonsterOverlayStyle
     {
         public string FrameColor { get; set; }
@@ -81,6 +109,9 @@ namespace ArtaleAI.Config
         public string TextFormat { get; set; }
     }
 
+    /// <summary>
+    /// 小地圖辨識框樣式
+    /// </summary>
     public class MinimapOverlayStyle
     {
         public string FrameColor { get; set; }
@@ -91,6 +122,9 @@ namespace ArtaleAI.Config
         public string MinimapDisplayName { get; set; }
     }
 
+    /// <summary>
+    /// 玩家位置辨識框樣式
+    /// </summary>
     public class PlayerOverlayStyle
     {
         public string FrameColor { get; set; }
@@ -101,6 +135,36 @@ namespace ArtaleAI.Config
         public string PlayerDisplayName { get; set; }
     }
 
+    /// <summary>
+    /// 隊友紅色血條偵測設定
+    /// </summary>
+    public class PartyRedBarSettings
+    {
+        // HSV 顏色範圍
+        public int[] LowerRedHsv { get; set; }
+        public int[] UpperRedHsv { get; set; }
+        // 血條尺寸限制
+        public int MinBarHeight { get; set; }
+        public int MaxBarHeight { get; set; }
+        public int MinBarWidth { get; set; }
+        public int MaxBarWidth { get; set; }
+        public int MinBarArea { get; set; }
+        public double MinFillRate { get; set; }
+        // 玩家位置偏移量
+        public int PlayerOffsetX { get; set; }
+        public int PlayerOffsetY { get; set; }
+        // UI排除設定
+        public int UiHeightFromBottom { get; set; }
+        public int DotOffsetY { get; set; } // 向下5像素
+        public int DetectionBoxWidth { get; set; }
+        public int DetectionBoxHeight { get; set; }
+        public double DynamicFillRateSmall { get; set; }
+        public double DynamicFillRateMedium { get; set; }
+    }
+
+    /// <summary>
+    ///  檢測框樣式
+    /// </summary>
     public class DetectionBoxOverlayStyle
     {
         public string FrameColor { get; set; }
@@ -111,6 +175,9 @@ namespace ArtaleAI.Config
         public string BoxDisplayName { get; set; }
     }
 
+    /// <summary>
+    /// 隊友血條辨識框樣式
+    /// </summary>
     public class PartyRedBarOverlayStyle
     {
         public string FrameColor { get; set; }
@@ -121,21 +188,48 @@ namespace ArtaleAI.Config
         public string RedBarDisplayName { get; set; }
     }
 
+    /// <summary>
+    /// 模板匹配參數
+    /// </summary>
+    public class TemplateMatchingSettings
+    {
+        public double DefaultNmsThreshold { get; set; }
+        public int MinContourPixels { get; set; }
+        public double ConfidenceThreshold { get; set; }
+        public double DefaultIouThreshold { get; set; }
+        public double GrayscaleConfidenceMultiplier { get; set; }
+        public double BasicModeNmsThreshold { get; set; }
+        public int MinTemplateWidth { get; set; }
+        public int MinTemplateHeight { get; set; }
+        public int MaxTemplateRatio { get; set; }
+        public int ProcessedMaskMinPixels { get; set; }
+        public double BasicModeDefaultNmsThreshold { get; set; }
+    }
+
+    /// <summary>
+    /// 地圖編輯器配置
+    /// </summary>
     public class MapEditorSettings
     {
+        //  滑鼠操作參數
         public float DeletionRadius { get; set; }
         public int WaypointCircleRadius { get; set; }
         public int PreviewLineWidth { get; set; }
+        //  顏色配置
         public string WaypointColor { get; set; }
         public string SafeZoneColor { get; set; }
         public string RestrictedZoneColor { get; set; }
         public string RopeColor { get; set; }
         public string PreviewColor { get; set; }
+        //  繪製樣式
         public float WaypointLineWidth { get; set; }
         public float SafeZoneLineWidth { get; set; }
         public float RopeLineWidth { get; set; }
     }
 
+    /// <summary>
+    /// UI 參數設定
+    /// </summary>
     public class UiSettings
     {
         public int MagnifierSize { get; set; }
@@ -143,18 +237,43 @@ namespace ArtaleAI.Config
         public int CrosshairSize { get; set; }
     }
 
+    /// <summary>
+    /// 視窗捕捉配置 - 新增
+    /// </summary>
     public class WindowCaptureSettings
     {
+        //  捕捉性能參數
         public int CaptureFrameRate { get; set; }
         public int CaptureDelayMs { get; set; }
         public int FramePoolSize { get; set; }
+        //  穩定化參數
         public int InitialDelayMs { get; set; }
         public int RetryAttempts { get; set; }
         public int RetryDelayMs { get; set; }
+        //  記憶體管理
         public bool EnableMultiThreadProtection { get; set; }
         public int MaxCacheFrames { get; set; }
     }
 
+    /// <summary>
+    /// 玩家偵測配置擴展
+    /// </summary>
+    public class PlayerDetectionSettings
+    {
+        //  血條寬度分級閾值（目前硬編碼在程式中）
+        public int SmallBarWidthLimit { get; set; } = 10;
+        public int MediumBarWidthLimit { get; set; } = 25;
+        //  處理性能參數
+        public bool EnableAsyncProcessing { get; set; } = true;
+        public int ProcessingTimeoutMs { get; set; } = 1000;
+        //  偵測品質參數
+        public double MinAspectRatio { get; set; } = 0.1; // 最小長寬比
+        public double MaxAspectRatio { get; set; } = 10.0; // 最大長寬比
+    }
+
+    /// <summary>
+    /// 辨識模式配置設定
+    /// </summary>
     public class DetectionModeSettings
     {
         public Dictionary<string, string> ModeMapping { get; set; }

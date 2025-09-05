@@ -1,4 +1,7 @@
-﻿using ArtaleAI.Config;
+﻿using OpenCvSharp;
+using OpenCvSharp.Extensions;
+using System.Drawing;
+using ArtaleAI.Config;
 using ArtaleAI.GameWindow;
 using ArtaleAI.Models;
 using ArtaleAI.Utils;
@@ -30,6 +33,7 @@ namespace ArtaleAI.Detection
         {
             var minimap = _config.Templates?.Minimap;
             var corners = minimap?.Corners;
+
             if (minimap == null)
             {
                 Console.WriteLine("⚠️ Minimap 配置為空，跳過模板載入");
@@ -72,6 +76,7 @@ namespace ArtaleAI.Detection
                         {
                             var template = UtilityHelper.EnsureThreeChannels(originalTemplate);
                             originalTemplate.Dispose();
+
                             _templates[kvp.Key] = template;
                             Console.WriteLine($"✅ 已載入三通道模板: {kvp.Key} ({template.Width}x{template.Height}, {template.Channels()} 通道)");
                         }
@@ -112,6 +117,7 @@ namespace ArtaleAI.Detection
                 using var frameMat = UtilityHelper.BitmapToThreeChannelMat(fullFrameBitmap);
                 var cornerThreshold = _config.Templates?.Minimap?.CornerThreshold ?? 0.6;
 
+                var cornerThreshold = _config.Templates.Minimap.CornerThreshold;
                 Console.WriteLine($"🔍 開始小地圖檢測 (三通道)");
                 Console.WriteLine($"📊 捕捉畫面大小: {fullFrameBitmap.Width}x{fullFrameBitmap.Height}");
                 Console.WriteLine($"🎯 使用閾值: {cornerThreshold}");
@@ -166,7 +172,9 @@ namespace ArtaleAI.Detection
                 using var mat = UtilityHelper.BitmapToThreeChannelMat(minimapImage);
                 var playerThreshold = _config.Templates?.Minimap?.PlayerThreshold ?? 0.6;
 
+                var playerThreshold = _config.Templates.Minimap.PlayerThreshold;
                 var matchResult = MatchTemplateInternal(mat, "PlayerMarker", playerThreshold, false);
+
                 if (matchResult.HasValue && _templates.TryGetValue("PlayerMarker", out var template))
                 {
                     var loc = matchResult.Value.Location;
@@ -276,8 +284,8 @@ namespace ArtaleAI.Detection
                 if (selectedItem == null)
                 {
                     progressReporter?.Invoke("未選擇視窗");
-                    return null;
-                }
+            return null;
+        }
 
                 // 2. 建立捕捉器並抓取一幀
                 capturer = new GraphicsCapturer(selectedItem);

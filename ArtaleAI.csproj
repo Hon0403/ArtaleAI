@@ -88,5 +88,6 @@
   <ItemGroup>
     <Folder Include="MapData\" />
     <Folder Include="Templates\" />
+    <Folder Include="Config\" />
   </ItemGroup>
 </Project>
