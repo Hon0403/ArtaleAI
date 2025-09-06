@@ -1,6 +1,6 @@
-﻿using System.Text.Json;
+﻿using ArtaleAI.Config;
+using System.Text.Json;
 using Windows.Graphics.Capture;
-using ArtaleAI.Config;
 
 namespace ArtaleAI.Models
 {
@@ -19,6 +19,17 @@ namespace ArtaleAI.Models
     #endregion
 
     #region 地圖編輯相關枚舉和介面
+
+    /// <summary>
+    /// 小地圖的使用情境模式
+    /// </summary>
+    public enum MinimapUsage
+    {
+        /// <summary>路徑編輯模式 - 靜態小地圖用於編輯</summary>
+        PathEditing,
+        /// <summary>即時顯示模式 - 動態疊加層用於即時偵測</summary>
+        LiveViewOverlay
+    }
 
     ///
     /// 定義了所有編輯模式的種類。
@@ -203,6 +214,18 @@ namespace ArtaleAI.Models
     #endregion
 
     #region 檢測結果模型
+
+    /// <summary>
+    /// 模板資料傳遞類別 - 用於跨執行緒傳遞UI資料
+    /// </summary>
+    public class TemplateData
+    {
+        public string SelectedMonsterName { get; set; } = "";
+        public List<Bitmap> Templates { get; set; } = new();
+        public string DetectionMode { get; set; } = "";
+        public double Threshold { get; set; } = 0.7;
+        public int TemplateCount { get; set; } = 0;
+    }
 
     public class MatchResult
     {

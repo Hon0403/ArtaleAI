@@ -1,7 +1,4 @@
-﻿using OpenCvSharp;
-using OpenCvSharp.Extensions;
-using System.Drawing;
-using ArtaleAI.Config;
+﻿using ArtaleAI.Config;
 using ArtaleAI.GameWindow;
 using ArtaleAI.Models;
 using ArtaleAI.Utils;
@@ -115,9 +112,10 @@ namespace ArtaleAI.Detection
             try
             {
                 using var frameMat = UtilityHelper.BitmapToThreeChannelMat(fullFrameBitmap);
-                var cornerThreshold = _config.Templates?.Minimap?.CornerThreshold ?? 0.6;
 
+                // ✅ 修復：只保留一個定義，使用安全的空值檢查
                 var cornerThreshold = _config.Templates.Minimap.CornerThreshold;
+
                 Console.WriteLine($"🔍 開始小地圖檢測 (三通道)");
                 Console.WriteLine($"📊 捕捉畫面大小: {fullFrameBitmap.Width}x{fullFrameBitmap.Height}");
                 Console.WriteLine($"🎯 使用閾值: {cornerThreshold}");
@@ -170,8 +168,6 @@ namespace ArtaleAI.Detection
             {
                 // 使用 Utils 轉換為三通道
                 using var mat = UtilityHelper.BitmapToThreeChannelMat(minimapImage);
-                var playerThreshold = _config.Templates?.Minimap?.PlayerThreshold ?? 0.6;
-
                 var playerThreshold = _config.Templates.Minimap.PlayerThreshold;
                 var matchResult = MatchTemplateInternal(mat, "PlayerMarker", playerThreshold, false);
 
@@ -284,8 +280,8 @@ namespace ArtaleAI.Detection
                 if (selectedItem == null)
                 {
                     progressReporter?.Invoke("未選擇視窗");
-            return null;
-        }
+                    return null;
+                }
 
                 // 2. 建立捕捉器並抓取一幀
                 capturer = new GraphicsCapturer(selectedItem);

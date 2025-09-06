@@ -254,4 +254,64 @@ namespace ArtaleAI.Utils
 
         #endregion
     }
+
+    public static class ControlExtensions
+    {
+        /// <summary>
+        /// WinForms 非同步 Invoke 擴展方法 (.NET Framework 相容版本)
+        /// </summary>
+        public static Task InvokeAsync(this Control control, Action action)
+        {
+            if (control.InvokeRequired)
+            {
+                var tcs = new TaskCompletionSource<bool>();
+                control.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        action();
+                        tcs.SetResult(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        tcs.SetException(ex);
+                    }
+                }));
+                return tcs.Task;
+            }
+            else
+            {
+                action();
+                return Task.CompletedTask;
+            }
+        }
+
+        /// <summary>
+        /// 帶返回值的非同步 Invoke
+        /// </summary>
+        public static Task<T> InvokeAsync<T>(this Control control, Func<T> func)
+        {
+            if (control.InvokeRequired)
+            {
+                var tcs = new TaskCompletionSource<T>();
+                control.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        var result = func();
+                        tcs.SetResult(result);
+                    }
+                    catch (Exception ex)
+                    {
+                        tcs.SetException(ex);
+                    }
+                }));
+                return tcs.Task;
+            }
+            else
+            {
+                return Task.FromResult(func());
+            }
+        }
+    }
 }

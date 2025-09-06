@@ -1,5 +1,4 @@
-﻿using ArtaleAI.Interfaces;
-using ArtaleAI.Utils;
+﻿using ArtaleAI.Utils;
 using System.Text;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -8,14 +7,14 @@ namespace ArtaleAI.Config
 {
     public class ConfigManager
     {
-        private readonly IMainFormEvents _eventHandler;
+        private readonly MainForm _mainForm;
         private static readonly string DefaultPath = UtilityHelper.GetConfigFilePath();
 
         public AppConfig? CurrentConfig { get; private set; }
 
-        public ConfigManager(IMainFormEvents eventHandler)
+        public ConfigManager(MainForm mainForm)
         {
-            _eventHandler = eventHandler;
+            _mainForm = mainForm;
         }
 
         #region 載入配置
@@ -24,11 +23,11 @@ namespace ArtaleAI.Config
             try
             {
                 CurrentConfig = LoadFromFile(path);
-                _eventHandler.OnConfigLoaded(CurrentConfig!);
+                _mainForm.OnConfigLoaded(CurrentConfig!);
             }
             catch (Exception ex)
             {
-                _eventHandler.OnConfigError($"讀取設定檔失敗: {ex.Message}");
+                _mainForm.OnConfigError($"讀取設定檔失敗: {ex.Message}");
             }
         }
 
@@ -58,12 +57,12 @@ namespace ArtaleAI.Config
                 if (CurrentConfig != null)
                 {
                     SaveToFile(CurrentConfig, path);
-                    _eventHandler.OnConfigSaved(CurrentConfig);
+                    _mainForm.OnConfigSaved(CurrentConfig);
                 }
             }
             catch (Exception ex)
             {
-                _eventHandler.OnConfigError($"儲存設定檔失敗: {ex.Message}");
+                _mainForm.OnConfigError($"儲存設定檔失敗: {ex.Message}");
             }
         }
 

@@ -1,9 +1,5 @@
 ﻿using ArtaleAI.Config;
-using ArtaleAI.Interfaces;
-using System;
-using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.Windows.Forms;
 
 namespace ArtaleAI.Display
 {
@@ -12,7 +8,7 @@ namespace ArtaleAI.Display
     /// </summary>
     public class FloatingMagnifier : IDisposable
     {
-        private readonly IMainFormEvents _eventHandler;
+        private readonly MainForm _mainForm;
         private readonly UiSettings? _uiSettings;
         private Form? _zoomWindow;
         private PictureBox? _floatingZoomBox;
@@ -20,9 +16,9 @@ namespace ArtaleAI.Display
 
         public bool IsVisible => _isVisible;
 
-        public FloatingMagnifier(IMainFormEvents eventHandler, UiSettings? uiSettings = null)
+        public FloatingMagnifier(MainForm eventHandler, UiSettings? uiSettings = null)
         {
-            _eventHandler = eventHandler ?? throw new ArgumentNullException(nameof(eventHandler));
+            _mainForm = eventHandler ?? throw new ArgumentNullException(nameof(eventHandler));
             _uiSettings = uiSettings;
             InitializeMagnifier();
         }
@@ -66,7 +62,7 @@ namespace ArtaleAI.Display
                 return;
             }
 
-            var sourceImage = _eventHandler.GetSourceImage();
+            var sourceImage = _mainForm.GetSourceImage();
             if (sourceImage == null)
             {
                 Hide();
@@ -117,10 +113,10 @@ namespace ArtaleAI.Display
         {
             if (sourceImage == null) return null;
 
-            var imagePoint = _eventHandler.ConvertToImageCoordinates(mouseLocation);
+            var imagePoint = _mainForm.ConvertToImageCoordinates(mouseLocation);
             if (!imagePoint.HasValue) return null;
 
-            var zoomFactor = _eventHandler.GetZoomFactor();
+            var zoomFactor = _mainForm.GetZoomFactor();
             if (zoomFactor <= 0) return null;
 
             var magnifierSize = _floatingZoomBox!.Size;

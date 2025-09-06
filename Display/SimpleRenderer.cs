@@ -1,5 +1,4 @@
 ﻿using ArtaleAI.Models;
-using ArtaleAI.Config;
 
 namespace ArtaleAI.Display
 {
@@ -81,31 +80,6 @@ namespace ArtaleAI.Display
             {
                 System.Diagnostics.Debug.WriteLine($"繪製項目失敗: {ex.Message}");
             }
-        }
-
-        // 統一的顏色解析方法
-        public static Color ParseColor(string colorString)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(colorString))
-                    return Color.Yellow;
-
-                var parts = colorString.Split(',');
-                if (parts.Length >= 3)
-                {
-                    int r = int.Parse(parts[0].Trim());
-                    int g = int.Parse(parts[1].Trim());
-                    int b = int.Parse(parts[2].Trim());
-                    if (r >= 0 && r <= 255 && g >= 0 && g <= 255 && b >= 0 && b <= 255)
-                        return Color.FromArgb(r, g, b);
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"顏色解析失敗: {colorString} - {ex.Message}");
-            }
-            return Color.Yellow;
         }
     }
 }

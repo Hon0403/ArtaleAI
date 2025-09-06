@@ -26,7 +26,7 @@ templates:
 
   monsterDetection:
     defaultThreshold: 0.3
-    maxDetectionResults: 15
+    maxDetectionResults: 5
     detectionMode: Color
     occlusionHandling: DynamicThreshold
     
@@ -42,7 +42,7 @@ templates:
     dynamicThresholdMultiplier: 0.5
     
     # NMS 參數
-    nmsIouThreshold: 0.1
+    nmsIouThreshold: 0.6
     
     # TemplateFree 模式參數
     templateFreeKernelSize: 25
@@ -83,11 +83,17 @@ mapEditor:
   safeZoneLineWidth: 2.0
   ropeLineWidth: 3.0
 
+# 檢測性能控制
+detectionPerformance:
+  bloodBarDetectIntervalMs: 150    # 血條檢測間隔 (毫秒)
+  monsterDetectIntervalMs: 300     # 怪物檢測間隔 (毫秒)
+  enableAdaptiveInterval: false     # 啟用自適應間隔
+  maxDetectionSkipFrames: 5        # 最大跳過幀數
+
 #  視窗捕捉配置
 windowCapture:
   # 捕捉性能參數
   captureFrameRate: 15
-  captureDelayMs: 67
   framePoolSize: 3
   
   # 穩定化參數

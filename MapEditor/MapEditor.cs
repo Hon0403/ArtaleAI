@@ -1,9 +1,6 @@
 ﻿using ArtaleAI.Config;
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Drawing2D;
 using ArtaleAI.Models;
+using System.Drawing.Drawing2D;
 
 
 namespace ArtaleAI.Minimap
@@ -52,7 +49,7 @@ namespace ArtaleAI.Minimap
         }
 
         /// <summary>
-        /// [修改] 處理滑鼠單次點擊事件。所有標記的建立邏輯都集中於此。
+        /// 處理滑鼠單次點擊事件。所有標記的建立邏輯都集中於此。
         /// </summary>
         public void HandleMouseClick(PointF imagePoint)
         {
@@ -90,7 +87,6 @@ namespace ArtaleAI.Minimap
             DrawPreviewShapes(g, convertToDisplay);
         }
 
-        // --- 私有輔助方法 ---
 
         /// <summary>
         /// 處理需要兩次點擊（起點和終點）的繪圖模式。

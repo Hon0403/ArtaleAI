@@ -1,11 +1,8 @@
 ﻿using ArtaleAI.API.Models;
-using ArtaleAI.Interfaces;
 using ArtaleAI.Utils;
-using OpenCvSharp;
 using Newtonsoft.Json;
 using OpenCvSharp;
 using System.IO.Compression;
-using ArtaleAI.Config;
 
 
 namespace ArtaleAI.API
@@ -15,15 +12,15 @@ namespace ArtaleAI.API
     /// </summary>
     public class MonsterImageFetcher : IDisposable
     {
-        private readonly IMainFormEvents _eventHandler;
+        private readonly MainForm _mainForm;
         private readonly HttpClient _httpClient;
         private readonly MonsterDownloadSettings _downloadSettings;
         private readonly ImageProcessingSettings _imageSettings;
         private bool _disposed = false;
 
-        public MonsterImageFetcher(IMainFormEvents eventHandler)
+        public MonsterImageFetcher(MainForm eventHandler)
         {
-            _eventHandler = eventHandler ?? throw new ArgumentNullException(nameof(eventHandler));
+            _mainForm = eventHandler ?? throw new ArgumentNullException(nameof(eventHandler));
             _httpClient = new HttpClient();
 
             var config = (eventHandler as MainForm)?.ConfigurationManager?.CurrentConfig;
@@ -40,11 +37,11 @@ namespace ArtaleAI.API
         }
 
         public MonsterImageFetcher(
-            IMainFormEvents eventHandler,
+            MainForm eventHandler,
             ImageProcessingSettings imageSettings,
             MonsterDownloadSettings downloadSettings)
         {
-            _eventHandler = eventHandler ?? throw new ArgumentNullException(nameof(eventHandler));
+            _mainForm = eventHandler ?? throw new ArgumentNullException(nameof(eventHandler));
             _imageSettings = imageSettings ?? throw new ArgumentNullException(nameof(imageSettings));
             _downloadSettings = downloadSettings ?? throw new ArgumentNullException(nameof(downloadSettings));
 
@@ -69,7 +66,7 @@ namespace ArtaleAI.API
 
             try
             {
-                _eventHandler.OnStatusMessage($"開始下載怪物模板: {monsterName}");
+                _mainForm.OnStatusMessage($"開始下載怪物模板: {monsterName}");
 
                 // 1. 獲取所有怪物資料
                 var mobs = await GetAllMobsAsync();
@@ -94,7 +91,7 @@ namespace ArtaleAI.API
                 result.DownloadedCount = processedCount;
                 result.DownloadDuration = DateTime.Now - startTime;
 
-                _eventHandler.OnStatusMessage($" 成功下載 {processedCount} 個 '{monsterName}' 模板");
+                _mainForm.OnStatusMessage($" 成功下載 {processedCount} 個 '{monsterName}' 模板");
                 return result;
             }
             catch (Exception ex)
@@ -102,7 +99,7 @@ namespace ArtaleAI.API
                 result.Success = false;
                 result.ErrorMessage = ex.Message;
                 result.DownloadDuration = DateTime.Now - startTime;
-                _eventHandler.OnError($"下載怪物模板失敗: {ex.Message}");
+                _mainForm.OnError($"下載怪物模板失敗: {ex.Message}");
                 return result;
             }
         }
@@ -122,7 +119,7 @@ namespace ArtaleAI.API
 
             try
             {
-                _eventHandler.OnStatusMessage($"開始下載怪物模板: {monsterName} (ID: {monsterId})");
+                _mainForm.OnStatusMessage($"開始下載怪物模板: {monsterName} (ID: {monsterId})");
 
                 // 直接使用提供的 ID 下載
                 var processedCount = await SaveMobAsync(monsterId, monsterName);
@@ -131,7 +128,7 @@ namespace ArtaleAI.API
                 result.DownloadedCount = processedCount;
                 result.DownloadDuration = DateTime.Now - startTime;
 
-                _eventHandler.OnStatusMessage($" 成功下載 {processedCount} 個 '{monsterName}' 模板");
+                _mainForm.OnStatusMessage($" 成功下載 {processedCount} 個 '{monsterName}' 模板");
                 return result;
             }
             catch (Exception ex)
@@ -139,7 +136,7 @@ namespace ArtaleAI.API
                 result.Success = false;
                 result.ErrorMessage = ex.Message;
                 result.DownloadDuration = DateTime.Now - startTime;
-                _eventHandler.OnError($"下載怪物模板失敗: {ex.Message}");
+                _mainForm.OnError($"下載怪物模板失敗: {ex.Message}");
                 return result;
             }
         }
@@ -150,7 +147,7 @@ namespace ArtaleAI.API
         private async Task<List<ArtaleMonster>?> GetAllMobsAsync()
         {
             string url = $"{_downloadSettings.BaseUrl}/api/{_downloadSettings.DefaultRegion}/{_downloadSettings.DefaultVersion}/mob";
-            _eventHandler.OnStatusMessage($"正在從以下網址獲取怪物資料: {url}");
+            _mainForm.OnStatusMessage($"正在從以下網址獲取怪物資料: {url}");
 
             for (int attempt = 1; attempt <= _downloadSettings.MaxRetryAttempts; attempt++)
             {
@@ -162,17 +159,17 @@ namespace ArtaleAI.API
                     string jsonContent = await response.Content.ReadAsStringAsync();
                     var mobs = JsonConvert.DeserializeObject<List<ArtaleMonster>>(jsonContent);
 
-                    _eventHandler.OnStatusMessage($"成功獲取 {mobs?.Count ?? 0} 個怪物資料");
+                    _mainForm.OnStatusMessage($"成功獲取 {mobs.Count} 個怪物資料");
                     return mobs;
                 }
                 catch (HttpRequestException ex)
                 {
-                    _eventHandler.OnStatusMessage($"HTTP錯誤 (嘗試 {attempt}/{_downloadSettings.MaxRetryAttempts}): {ex.Message}");
+                    _mainForm.OnStatusMessage($"HTTP錯誤 (嘗試 {attempt}/{_downloadSettings.MaxRetryAttempts}): {ex.Message}");
                     if (attempt == _downloadSettings.MaxRetryAttempts) throw;
                 }
                 catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
                 {
-                    _eventHandler.OnStatusMessage($"請求超時 (嘗試 {attempt}/{_downloadSettings.MaxRetryAttempts})");
+                    _mainForm.OnStatusMessage($"請求超時 (嘗試 {attempt}/{_downloadSettings.MaxRetryAttempts})");
                     if (attempt == _downloadSettings.MaxRetryAttempts) throw;
                 }
 
@@ -211,7 +208,7 @@ namespace ArtaleAI.API
 
             // 建構下載URL
             string downloadUrl = $"{_downloadSettings.BaseUrl}/api/{_downloadSettings.DefaultRegion}/{_downloadSettings.DefaultVersion}/mob/{mobId}/download";
-            _eventHandler.OnStatusMessage($"正在下載怪物圖片包: {downloadUrl}");
+            _mainForm.OnStatusMessage($"正在下載怪物圖片包: {downloadUrl}");
 
             // 下載zip檔案
             var response = await _httpClient.GetAsync(downloadUrl);
@@ -254,7 +251,7 @@ namespace ArtaleAI.API
                                     string savePath = Path.Combine(outputDir, fileName);
 
                                     Cv2.ImWrite(savePath, processedImage);
-                                    _eventHandler.OnStatusMessage($"已儲存: {fileName}");
+                                    _mainForm.OnStatusMessage($"已儲存: {fileName}");
                                     processedCount++;
                                     index++;
                                 }
@@ -263,7 +260,7 @@ namespace ArtaleAI.API
                     }
                     catch (Exception ex)
                     {
-                        _eventHandler.OnStatusMessage($"處理圖片 {entry.Name} 時發生錯誤: {ex.Message}");
+                        _mainForm.OnStatusMessage($"處理圖片 {entry.Name} 時發生錯誤: {ex.Message}");
                     }
                 }
             }
@@ -282,7 +279,7 @@ namespace ArtaleAI.API
                 var image = Cv2.ImDecode(imageBytes, ImreadModes.Unchanged);
                 if (image.Empty())
                 {
-                    _eventHandler.OnStatusMessage($"無法解碼圖片: {fileName}");
+                    _mainForm.OnStatusMessage($"無法解碼圖片: {fileName}");
                     return null;
                 }
 
@@ -336,7 +333,7 @@ namespace ArtaleAI.API
             }
             catch (Exception ex)
             {
-                _eventHandler.OnStatusMessage($"圖片處理錯誤 {fileName}: {ex.Message}");
+                _mainForm.OnStatusMessage($"圖片處理錯誤 {fileName}: {ex.Message}");
                 return null;
             }
         }
