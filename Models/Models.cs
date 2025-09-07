@@ -407,4 +407,25 @@ namespace ArtaleAI.Models
     }
 
     #endregion
+
+    /// <summary>
+    /// 攻擊範圍渲染項目
+    /// </summary>
+    public class AttackRangeRenderItem : IRenderItem
+    {
+        public Rectangle BoundingBox { get; set; }
+        private readonly AttackRangeOverlayStyle _style;
+
+        public AttackRangeRenderItem(AttackRangeOverlayStyle style)
+        {
+            _style = style ?? throw new ArgumentNullException(nameof(style));
+        }
+
+        public string DisplayText => _style.RangeDisplayName;
+        public Color FrameColor => ColorHelper.ParseColor(_style.FrameColor);
+        public Color TextColor => ColorHelper.ParseColor(_style.TextColor);
+        public int FrameThickness => _style.FrameThickness;
+        public double TextScale => _style.TextScale;
+        public int TextThickness => _style.TextThickness;
+    }
 }

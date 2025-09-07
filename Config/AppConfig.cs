@@ -22,6 +22,7 @@ namespace ArtaleAI.Config
         public WindowCaptureSettings WindowCapture { get; set; } = new();
         public ArtaleAI.Models.PlayerDetectionSettings PlayerDetection { get; set; } = new();
         public DetectionPerformanceSettings DetectionPerformance { get; set; } = new();
+        public AttackRangeSettings AttackRange { get; set; } = new();
 
     }
 
@@ -78,6 +79,7 @@ namespace ArtaleAI.Config
         public PlayerOverlayStyle Player { get; set; } = new();
         public PartyRedBarOverlayStyle PartyRedBar { get; set; } = new();
         public DetectionBoxOverlayStyle DetectionBox { get; set; } = new();
+        public AttackRangeOverlayStyle AttackRange { get; set; } = new();
     }
 
     public class MonsterOverlayStyle
@@ -174,5 +176,22 @@ namespace ArtaleAI.Config
         public Dictionary<string, string> OcclusionMappings { get; set; }
         public Dictionary<string, string> ModeDescriptions { get; set; }
         public Dictionary<string, int> PerformanceLevels { get; set; }
+    }
+    public class AttackRangeOverlayStyle
+    {
+        public string FrameColor { get; set; }
+        public string TextColor { get; set; }
+        public int FrameThickness { get; set; }
+        public double TextScale { get; set; }
+        public int TextThickness { get; set; }
+        public string RangeDisplayName { get; set; }
+    }
+
+    public class AttackRangeSettings
+    {
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public int OffsetX { get; set; }
+        public int OffsetY { get; set; }
     }
 }

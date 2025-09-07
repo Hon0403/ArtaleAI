@@ -144,13 +144,18 @@ partyRedBar:
   # UI排除設定
   uiHeightFromBottom: 200
 
+  #辨識框設定
   dotOffsetY: 50           # 向下5像素
-
-  detectionBoxWidth: 350   # 檢測框寬度
+  detectionBoxWidth: 500   # 檢測框寬度
   detectionBoxHeight: 200   # 檢測框高度
-
   dynamicFillRateSmall: 0.2    # 寬度 <= 10 的血條填充率
   dynamicFillRateMedium: 0.4   # 寬度 <= 25 的血條填充率
+
+attackRange:
+  width: 400          # 攻擊範圍總寬度 (像素)
+  height: 150         # 攻擊範圍總高度 (像素) 
+  offsetX: 0          # 水平位置偏移 (像素)
+  offsetY: 50         # 垂直位置偏移 (像素)
 
 # 辨識框視覺樣式設定
 overlayStyle:
@@ -195,6 +200,15 @@ overlayStyle:
     textScale: 1.0           # 文字大小
     textThickness: 2         # 文字粗細
     boxDisplayName: "MOB DETECT"  # 檢測框標籤
+
+  # 攻擊範圍樣式
+  attackRange:
+    frameColor: "255,0,0"      # 紅色框線
+    textColor: "255,255,255"   # 白色文字
+    frameThickness: 2          # 框線粗細
+    textScale: 1.0             # 文字大小
+    textThickness: 2           # 文字粗細
+    rangeDisplayName: "ATTACK RANGE" # 顯示名稱
 
 # 怪物下載設定
 monsterDownload:

@@ -6,6 +6,7 @@ using ArtaleAI.GameWindow;
 using ArtaleAI.Minimap;
 using ArtaleAI.Models;
 using ArtaleAI.Utils;
+using System.Linq;
 using Windows.Graphics.Capture;
 
 namespace ArtaleAI
@@ -29,6 +30,7 @@ namespace ArtaleAI
         private Rectangle? _currentMinimapRect;
         private List<Rectangle> _currentBloodBars = new();
         private List<Rectangle> _currentDetectionBoxes = new();
+        private List<Rectangle> _currentAttackRangeBoxes = new();
         private List<MonsterRenderInfo> _currentMonsters = new();
 
         private GraphicsCapturer? _capturer;
@@ -106,13 +108,13 @@ namespace ArtaleAI
         private async Task UpdatePartialResultsAsync(
             List<Rectangle>? bloodBars,
             List<Rectangle>? detectionBoxes,
+            List<Rectangle>? attackRangeBoxes,
             List<MonsterRenderInfo>? monsters,
             Bitmap sourceFrame)
         {
             // 更新檢測結果
-            UpdateDetectionResults(bloodBars, detectionBoxes, monsters);
+            UpdateDetectionResults(bloodBars, detectionBoxes, attackRangeBoxes, monsters);
 
-            // ✅ 修改：直接調用渲染方法，不使用不存在的 RenderOverlaysInternal
             RenderAndDisplayOverlays(sourceFrame);
         }
 
@@ -164,10 +166,9 @@ namespace ArtaleAI
             {
                 bloodBars = await DetectBloodBarsAsync(frame);
                 _lastBloodBarDetection = now;
-
                 if (bloodBars.Any())
                 {
-                    await UpdatePartialResultsAsync(bloodBars, null, null, frame);
+                    await UpdatePartialResultsAsync(bloodBars, null, null, null, frame);
                 }
             }
             else
@@ -179,15 +180,16 @@ namespace ArtaleAI
 
             if (!bloodBars.Any()) return;
 
-            // 🎯 階段2：計算檢測框 (輕量化操作，每次執行)
+            // 🎯 階段2：計算檢測框和攻擊範圍框 (輕量化操作，每次執行)
             var detectionBoxes = CalculateDetectionBoxes(bloodBars[0]);
-            await UpdatePartialResultsAsync(bloodBars, detectionBoxes, null, frame);
+            var attackRangeBoxes = CalculateAttackRangeBoxes(bloodBars[0]); // 新增
+            await UpdatePartialResultsAsync(bloodBars, detectionBoxes, attackRangeBoxes, null, frame);
 
-            // 👹 階段3：條件式怪物檢測  
+            // 👹 階段3：條件式怪物檢測
             if (ShouldDetectMonster(now, config.DetectionPerformance))
             {
                 var monsters = await DetectMonstersAsync(frame, detectionBoxes);
-                await UpdatePartialResultsAsync(bloodBars, detectionBoxes, monsters, frame);
+                await UpdatePartialResultsAsync(bloodBars, detectionBoxes, attackRangeBoxes, monsters, frame);
                 _lastMonsterDetection = now;
                 _consecutiveSkippedFrames = 0;
             }
@@ -195,7 +197,7 @@ namespace ArtaleAI
             {
                 // 使用上次的怪物結果
                 OnStatusMessage("⚡ 跳過怪物檢測，使用快取結果");
-                await UpdatePartialResultsAsync(bloodBars, detectionBoxes, _currentMonsters, frame);
+                await UpdatePartialResultsAsync(bloodBars, detectionBoxes, attackRangeBoxes, _currentMonsters, frame);
                 _consecutiveSkippedFrames++;
             }
 
@@ -205,11 +207,12 @@ namespace ArtaleAI
             {
                 OnStatusMessage("🔄 強制執行完整檢測 (自適應)");
                 var monsters = await DetectMonstersAsync(frame, detectionBoxes);
-                await UpdatePartialResultsAsync(bloodBars, detectionBoxes, monsters, frame);
+                await UpdatePartialResultsAsync(bloodBars, detectionBoxes, attackRangeBoxes, monsters, frame);
                 _lastMonsterDetection = now;
                 _consecutiveSkippedFrames = 0;
             }
         }
+
 
         // 血條檢測條件判斷
         private bool ShouldDetectBloodBar(DateTime now, DetectionPerformanceSettings config)
@@ -302,6 +305,7 @@ namespace ArtaleAI
         private void UpdateDetectionResults(
             List<Rectangle>? bloodBars,
             List<Rectangle>? detectionBoxes,
+            List<Rectangle>? attackRangeBoxes,
             List<MonsterRenderInfo>? monsters)
         {
             if (bloodBars != null)
@@ -309,6 +313,9 @@ namespace ArtaleAI
 
             if (detectionBoxes != null)
                 _currentDetectionBoxes = detectionBoxes.ToList();
+
+            if (attackRangeBoxes != null)
+                _currentAttackRangeBoxes = attackRangeBoxes.ToList();
 
             if (monsters != null)
                 _currentMonsters = monsters.ToList();
@@ -326,9 +333,10 @@ namespace ArtaleAI
                     return;
                 }
 
-                var monsterItems = new List<IRenderItem>();
-                var partyRedBarItems = new List<IRenderItem>();
-                var detectionBoxItems = new List<IRenderItem>();
+                var monsterItems = new List<MonsterRenderItem>();
+                var partyRedBarItems = new List<PartyRedBarRenderItem>();
+                var detectionBoxItems = new List<DetectionBoxRenderItem>();
+                var attackRangeItems = new List<AttackRangeRenderItem>(); // 新增
 
                 // 創建渲染項目
                 if (_currentBloodBars.Any())
@@ -343,6 +351,13 @@ namespace ArtaleAI
                         new DetectionBoxRenderItem(config.OverlayStyle.DetectionBox) { BoundingBox = rect }));
                 }
 
+                // 新增：攻擊範圍框渲染
+                if (_currentAttackRangeBoxes.Any())
+                {
+                    attackRangeItems.AddRange(_currentAttackRangeBoxes.Select(rect =>
+                        new AttackRangeRenderItem(config.OverlayStyle.AttackRange) { BoundingBox = rect }));
+                }
+
                 if (_currentMonsters.Any())
                 {
                     monsterItems.AddRange(_currentMonsters.Select(m =>
@@ -354,13 +369,18 @@ namespace ArtaleAI
                         }));
                 }
 
+                // 修正：合併所有檢測框項目為 IRenderItem 列表
+                var allDetectionItems = new List<IRenderItem>();
+                allDetectionItems.AddRange(detectionBoxItems.Cast<IRenderItem>());
+                allDetectionItems.AddRange(attackRangeItems.Cast<IRenderItem>());
+
                 var renderedFrame = SimpleRenderer.RenderOverlays(
                     baseBitmap,
                     monsterItems,
                     null,
                     null,
                     partyRedBarItems,
-                    detectionBoxItems
+                    allDetectionItems // 使用合併後的列表
                 );
 
                 if (renderedFrame != null)
@@ -373,6 +393,7 @@ namespace ArtaleAI
                 OnError($"渲染疊加層失敗: {ex.Message}");
             }
         }
+
 
         // ✅ 裁切幀輔助方法
         private Bitmap? CropFrame(Bitmap originalFrame, Rectangle cropRect)
@@ -927,6 +948,25 @@ namespace ArtaleAI
             }
         }
 
+        private List<Rectangle> CalculateAttackRangeBoxes(Rectangle bloodBarRect)
+        {
+            var config = _configurationManager?.CurrentConfig?.AttackRange;
+            if (config == null) return new List<Rectangle>();
+
+            // 🎯 修正：改為與辨識框相同的基準點
+            var playerCenterX = bloodBarRect.X + bloodBarRect.Width / 2 + config.OffsetX;
+            var playerCenterY = bloodBarRect.Y + bloodBarRect.Height + config.OffsetY; // 改為血條底部
+
+            var attackRangeBox = new Rectangle(
+                playerCenterX - config.Width / 2,
+                playerCenterY - config.Height / 2,
+                config.Width,
+                config.Height
+            );
+
+            OnStatusMessage($"攻擊範圍框計算: ({attackRangeBox.X}, {attackRangeBox.Y}) {attackRangeBox.Width}x{attackRangeBox.Height}");
+            return new List<Rectangle> { attackRangeBox };
+        }
 
         /// <summary>
         /// 完全停止並釋放所有分頁處理資源
@@ -945,6 +985,7 @@ namespace ArtaleAI
             _currentMonsters.Clear();
             _currentBloodBars.Clear();
             _currentDetectionBoxes.Clear();
+            _currentAttackRangeBoxes.Clear();
             GC.Collect();
             OnStatusMessage("✅ 資源已清理");
         }
@@ -959,7 +1000,6 @@ namespace ArtaleAI
 
             OnStatusMessage($"正在載入小地圖快照 ({usage})...");
 
-            // ✅ 使用 MapDetector 的 GetSnapshotAsync 方法
             var result = await _mapDetector?.GetSnapshotAsync(this.Handle, config, _selectedCaptureItem, reporter);
 
             if (result?.MinimapImage != null)
