@@ -577,7 +577,7 @@ namespace ArtaleAI.Detection
                 });
             }
 
-            return ApplySimpleNMS(results, _settings.NmsIouThreshold, lowerIsBetter: false);
+            return results;
         }
 
         private static List<MatchResult> ProcessColorMode(Mat sourceImg, Mat templateImg, double threshold, string monsterName, Rectangle? characterBox)
@@ -617,7 +617,7 @@ namespace ArtaleAI.Detection
                     }
                 }
 
-                return ApplySimpleNMS(results, _settings.NmsIouThreshold, lowerIsBetter: false);
+                return results;
             }
             catch (Exception ex)
             {

@@ -23,6 +23,7 @@ namespace ArtaleAI.Config
         public ArtaleAI.Models.PlayerDetectionSettings PlayerDetection { get; set; } = new();
         public DetectionPerformanceSettings DetectionPerformance { get; set; } = new();
         public AttackRangeSettings AttackRange { get; set; } = new();
+        public TrajectorySettings Trajectory { get; set; } = new();
 
     }
 
@@ -193,5 +194,15 @@ namespace ArtaleAI.Config
         public int Height { get; set; }
         public int OffsetX { get; set; }
         public int OffsetY { get; set; }
+    }
+
+    public class TrajectorySettings
+    {
+        public bool EnableRecording { get; set; }
+        public double PointInterval { get; set; }
+        public int MaxPoints { get; set; }
+        public bool AutoConnect { get; set; }
+        public double ConnectionRadius { get; set; }
+        public int RecordIntervalMs { get; set; }
     }
 }

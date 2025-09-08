@@ -26,7 +26,7 @@ templates:
 
   monsterDetection:
     defaultThreshold: 0.3
-    maxDetectionResults: 5
+    maxDetectionResults: 3
     detectionMode: Color
     occlusionHandling: DynamicThreshold
     
@@ -42,7 +42,7 @@ templates:
     dynamicThresholdMultiplier: 0.5
     
     # NMS 參數
-    nmsIouThreshold: 0.6
+    nmsIouThreshold: 0.25
     
     # TemplateFree 模式參數
     templateFreeKernelSize: 25
@@ -50,6 +50,15 @@ templates:
     minDetectionArea: 800
     maxDetectionArea: 50000
     aspectRatioLimit: 5.0
+
+# 軌跡記錄設定
+trajectory:
+  enableRecording: true         # 啟用軌跡記錄
+  pointInterval: 3.0            # 每3像素記錄一次
+  maxPoints: 5000               # 最多記錄5000點
+  autoConnect: true             # 自動連接路徑
+  connectionRadius: 15.0        # 15像素內自動連接
+  recordIntervalMs: 200         # 每200ms記錄一次
 
 templateMatching:
   defaultNmsThreshold: 0.1     # NMS 預設閾值

@@ -1,4 +1,5 @@
 ﻿using ArtaleAI.Config;
+using System.Drawing.Drawing2D;
 using System.Text.Json;
 using Windows.Graphics.Capture;
 
@@ -307,35 +308,20 @@ namespace ArtaleAI.Models
     ///
     public class MapData
     {
-        public List<MapPath> WaypointPaths { get; set; } = new List<MapPath>();
-        public List<MapArea> SafeZone { get; set; } = new List<MapArea>();
-        public List<Rope> Ropes { get; set; } = new List<Rope>();
-        // 用來儲存單點的「禁止區域」標記
-        public List<Waypoint> RestrictedPoints { get; set; } = new List<Waypoint>();
+        public List<PathData>? WaypointPaths { get; set; }
+        public List<PathData>? SafeZones { get; set; }
+        public List<PathData>? Ropes { get; set; }
+        public List<PointF>? RestrictedPoints { get; set; }
 
-        ///
-        /// 將目前的地圖數據儲存到指定的 JSON 檔案。
-        ///
-        public void SaveToFile(string filePath)
-        {
-            var options = new JsonSerializerOptions { WriteIndented = true };
-            string jsonString = JsonSerializer.Serialize(this, options);
-            File.WriteAllText(filePath, jsonString);
-        }
 
-        ///
-        /// 從指定的 JSON 檔案載入地圖數據。
-        ///
-        public static MapData? LoadFromFile(string filePath)
-        {
-            if (!File.Exists(filePath))
-            {
-                return null;
-            }
+    }
 
-            string jsonString = File.ReadAllText(filePath);
-            return JsonSerializer.Deserialize<MapData>(jsonString);
-        }
+    /// <summary>
+    /// 統一的路徑/區域數據 - 所有模式都使用相同結構
+    /// </summary>
+    public class PathData
+    {
+        public List<PointF> Points { get; set; } = new();
     }
 
     #endregion

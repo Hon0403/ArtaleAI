@@ -1,5 +1,7 @@
-﻿using OpenCvSharp;
+﻿using ArtaleAI.Models;
+using OpenCvSharp;
 using OpenCvSharp.Extensions;
+using System.Linq;
 
 namespace ArtaleAI.Utils
 {
@@ -250,6 +252,78 @@ namespace ArtaleAI.Utils
 
             if (unionArea <= 0) return 0.0;
             return interArea / unionArea;
+        }
+
+        #endregion
+
+        #region NMS工具
+
+        /// <summary>
+        /// 通用的非極大值抑制算法
+        /// </summary>
+        /// <typeparam name="T">實現位置和尺寸介面的類型</typeparam>
+        public static List<T> ApplyNMS<T>(
+            List<T> items,
+            double iouThreshold = 0.25,
+            bool higherIsBetter = true)
+            where T : class
+        {
+            if (items.Count <= 1) return items;
+
+            var nmsResults = new List<T>();
+
+            // 根據信心度排序
+            var sortedItems = higherIsBetter
+                ? items.OrderByDescending(GetConfidence).ToList()
+                : items.OrderBy(GetConfidence).ToList();
+
+            while (sortedItems.Any())
+            {
+                var best = sortedItems.First();
+                nmsResults.Add(best);
+                sortedItems.RemoveAt(0);
+
+                var bestRect = GetBoundingBox(best);
+
+                // 移除重疊度過高的項目
+                sortedItems.RemoveAll(candidate =>
+                {
+                    var candidateRect = GetBoundingBox(candidate);
+                    return CalculateIoU(bestRect, candidateRect) > iouThreshold;
+                });
+            }
+
+            return nmsResults;
+        }
+
+        /// <summary>
+        /// 獲取物件的邊界框
+        /// </summary>
+        private static Rectangle GetBoundingBox<T>(T item)
+        {
+            return item switch
+            {
+                MonsterRenderInfo monster => new Rectangle(
+                    monster.Location.X, monster.Location.Y,
+                    monster.Size.Width, monster.Size.Height),
+                MatchResult match => new Rectangle(
+                    match.Position.X, match.Position.Y,
+                    match.Size.Width, match.Size.Height),
+                _ => throw new NotSupportedException($"不支持的類型: {typeof(T)}")
+            };
+        }
+
+        /// <summary>
+        /// 獲取物件的信心度
+        /// </summary>
+        private static double GetConfidence<T>(T item)
+        {
+            return item switch
+            {
+                MonsterRenderInfo monster => monster.Confidence,
+                MatchResult match => match.Confidence,
+                _ => throw new NotSupportedException($"不支持的類型: {typeof(T)}")
+            };
         }
 
         #endregion

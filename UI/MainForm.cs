@@ -6,7 +6,6 @@ using ArtaleAI.GameWindow;
 using ArtaleAI.Minimap;
 using ArtaleAI.Models;
 using ArtaleAI.Utils;
-using System.Linq;
 using Windows.Graphics.Capture;
 
 namespace ArtaleAI
@@ -25,6 +24,7 @@ namespace ArtaleAI
         private GraphicsCaptureItem? _selectedCaptureItem;
         private MapEditor? _mapEditor;
         private DetectionEngine? _detectionEngine;
+
 
         // 檢測狀態管理
         private Rectangle? _currentMinimapRect;
@@ -64,7 +64,8 @@ namespace ArtaleAI
             _configurationManager.Load();
 
             var mapEditorSettings = _configurationManager?.CurrentConfig?.MapEditor;
-            _mapEditor = new MapEditor(mapEditorSettings);
+            var trajectorySettings = _configurationManager?.CurrentConfig?.Trajectory;
+            _mapEditor = new MapEditor(mapEditorSettings, trajectorySettings);
 
             // 初始化檢測服務
             var detectionSettings = _configurationManager?.CurrentConfig?.Templates?.MonsterDetection;
@@ -122,13 +123,11 @@ namespace ArtaleAI
         {
             return await Task.Run(() =>
             {
-                OnStatusMessage("🩸 開始血條檢測...");
                 var result = _detectionEngine?.GetPlayerLocationByPartyRedBar(frame, _currentMinimapRect);
 
                 if (result.HasValue && result.Value.redBarRect.HasValue)
                 {
                     var rect = result.Value.redBarRect.Value;
-                    OnStatusMessage($"✅ 找到血條: ({rect.X}, {rect.Y}) {rect.Width}x{rect.Height}");
                     return new List<Rectangle> { rect };
                 }
 
@@ -144,12 +143,9 @@ namespace ArtaleAI
             if (_detectionEngine?.HasTemplates != true || !detectionBoxes.Any())
                 return new List<MonsterRenderInfo>();
 
-            OnStatusMessage($"🎯 開始怪物檢測：{detectionBoxes.Count} 個檢測框");
-
             // 直接呼叫現有方法
             var results = await DetectMonstersInBoxesAsync(frame, detectionBoxes);
 
-            OnStatusMessage($"✅ 怪物檢測完成：找到 {results.Count} 個怪物");
             return results;
         }
 
@@ -166,8 +162,10 @@ namespace ArtaleAI
             {
                 bloodBars = await DetectBloodBarsAsync(frame);
                 _lastBloodBarDetection = now;
+
                 if (bloodBars.Any())
                 {
+
                     await UpdatePartialResultsAsync(bloodBars, null, null, null, frame);
                 }
             }
@@ -182,7 +180,7 @@ namespace ArtaleAI
 
             // 🎯 階段2：計算檢測框和攻擊範圍框 (輕量化操作，每次執行)
             var detectionBoxes = CalculateDetectionBoxes(bloodBars[0]);
-            var attackRangeBoxes = CalculateAttackRangeBoxes(bloodBars[0]); // 新增
+            var attackRangeBoxes = CalculateAttackRangeBoxes(bloodBars[0]);
             await UpdatePartialResultsAsync(bloodBars, detectionBoxes, attackRangeBoxes, null, frame);
 
             // 👹 階段3：條件式怪物檢測
@@ -213,7 +211,6 @@ namespace ArtaleAI
             }
         }
 
-
         // 血條檢測條件判斷
         private bool ShouldDetectBloodBar(DateTime now, DetectionPerformanceSettings config)
         {
@@ -243,15 +240,13 @@ namespace ArtaleAI
                 boxWidth,
                 boxHeight);
 
-            OnStatusMessage($"檢測框計算: ({detectionBox.X}, {detectionBox.Y}) {detectionBox.Width}x{detectionBox.Height}");
-
             return new List<Rectangle> { detectionBox };
         }
 
         private async Task<List<MonsterRenderInfo>> DetectMonstersInBoxesAsync(
             Bitmap frame, List<Rectangle> detectionBoxes)
         {
-            // ✅ 在 UI 執行緒中預先獲取所需資料
+            // 在 UI 執行緒中預先獲取所需資料
             var templateData = await GetTemplateDataSafelyAsync();
 
             // 檢查是否有有效的模板資料
@@ -275,7 +270,7 @@ namespace ArtaleAI
                         continue;
                     }
 
-                    // ✅ 傳遞預先準備的資料，避免在背景執行緒中存取 UI
+                    // 傳遞預先準備的資料，避免在背景執行緒中存取 UI
                     var monsters = await _detectionEngine.ProcessFrameAsync(
                         croppedFrame,
                         _configurationManager?.CurrentConfig,
@@ -290,13 +285,18 @@ namespace ArtaleAI
                     }
 
                     allResults.AddRange(monsters);
-                    OnStatusMessage($"🎯 檢測框 {detectionBox} 找到 {monsters.Count} 個怪物");
                 }
                 catch (Exception ex)
                 {
                     OnStatusMessage($"⚠️ 檢測框 {detectionBox} 處理失敗: {ex.Message}");
                     continue;
                 }
+            }
+
+            if (allResults.Count > 1)
+            {
+                double iouThreshold = _configurationManager?.CurrentConfig?.Templates?.MonsterDetection?.NmsIouThreshold ?? 0.25;
+                allResults = UtilityHelper.ApplyNMS(allResults, iouThreshold, higherIsBetter: true);
             }
 
             return allResults;
@@ -336,7 +336,7 @@ namespace ArtaleAI
                 var monsterItems = new List<MonsterRenderItem>();
                 var partyRedBarItems = new List<PartyRedBarRenderItem>();
                 var detectionBoxItems = new List<DetectionBoxRenderItem>();
-                var attackRangeItems = new List<AttackRangeRenderItem>(); // 新增
+                var attackRangeItems = new List<AttackRangeRenderItem>();
 
                 // 創建渲染項目
                 if (_currentBloodBars.Any())
@@ -477,7 +477,6 @@ namespace ArtaleAI
             pictureBoxMinimap.MouseUp += pictureBoxMinimap_MouseUp;
             pictureBoxMinimap.MouseMove += pictureBoxMinimap_MouseMove;
             pictureBoxMinimap.MouseLeave += pictureBoxMinimap_MouseLeave;
-            pictureBoxMinimap.MouseClick += pictureBoxMinimap_MouseClick;
 
             // 按鈕事件
             btn_SaveMap.Click += btn_SaveMap_Click;
@@ -693,30 +692,25 @@ namespace ArtaleAI
         public decimal GetZoomFactor() =>
             _configurationManager.CurrentConfig.General.ZoomFactor;
 
-        public Point? ConvertToImageCoordinates(Point mouseLocation)
+        public PointF? ConvertToImageCoordinates(Point mouseLocation)
         {
             if (pictureBoxMinimap.Image == null) return null;
-
             var clientSize = pictureBoxMinimap.ClientSize;
             var imageSize = pictureBoxMinimap.Image.Size;
             float ratioX = (float)clientSize.Width / imageSize.Width;
             float ratioY = (float)clientSize.Height / imageSize.Height;
             float ratio = Math.Min(ratioX, ratioY);
-
             int displayWidth = (int)(imageSize.Width * ratio);
             int displayHeight = (int)(imageSize.Height * ratio);
             int offsetX = (clientSize.Width - displayWidth) / 2;
             int offsetY = (clientSize.Height - displayHeight) / 2;
-
             var displayRect = new Rectangle(offsetX, offsetY, displayWidth, displayHeight);
             if (!displayRect.Contains(mouseLocation)) return null;
-
             float imageX = mouseLocation.X - offsetX;
             float imageY = mouseLocation.Y - offsetY;
             float originalX = imageX / ratio;
             float originalY = imageY / ratio;
-
-            return new Point((int)originalX, (int)originalY);
+            return new PointF(originalX, originalY);
         }
 
         // 怪物模板功能
@@ -964,7 +958,6 @@ namespace ArtaleAI
                 config.Height
             );
 
-            OnStatusMessage($"攻擊範圍框計算: ({attackRangeBox.X}, {attackRangeBox.Y}) {attackRangeBox.Width}x{attackRangeBox.Height}");
             return new List<Rectangle> { attackRangeBox };
         }
 
@@ -1089,6 +1082,7 @@ namespace ArtaleAI
             pictureBoxMinimap.Invalidate();
 
             OnStatusMessage($"編輯模式切換至: {selectedMode}");
+
         }
 
         #endregion
@@ -1097,27 +1091,26 @@ namespace ArtaleAI
 
         private void pictureBoxMinimap_MouseDown(object sender, MouseEventArgs e)
         {
-            var imgPoint = ConvertToImageCoordinates(e.Location);
-            if (!imgPoint.HasValue) return;
-
             if (e.Button == MouseButtons.Left)
-                _mapEditor?.HandleMouseClick(imgPoint.Value);
-            else if (e.Button == MouseButtons.Right)
-                _mapEditor?.HandleRightClick();
-
-            pictureBoxMinimap.Invalidate();
+            {
+                var imgPoint = ConvertToImageCoordinates(e.Location);
+                if (imgPoint.HasValue)
+                {
+                    _mapEditor?.StartDrawing(imgPoint.Value);
+                    pictureBoxMinimap.Invalidate();
+                }
+            }
         }
 
         private void pictureBoxMinimap_MouseMove(object sender, MouseEventArgs e)
         {
-            // 更新放大鏡
+            // 放大鏡功能
             _floatingMagnifier?.UpdateMagnifier(e.Location, pictureBoxMinimap);
 
-            // 更新地圖編輯器的滑鼠位置
             var imgPoint = ConvertToImageCoordinates(e.Location);
             if (imgPoint.HasValue)
             {
-                _mapEditor?.HandleMouseMove(imgPoint.Value);
+                _mapEditor?.UpdatePreview(imgPoint.Value);
                 pictureBoxMinimap.Invalidate();
             }
         }
@@ -1125,18 +1118,13 @@ namespace ArtaleAI
         private void pictureBoxMinimap_MouseUp(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
-                pictureBoxMinimap.Invalidate();
-        }
-
-        private void pictureBoxMinimap_MouseClick(object sender, MouseEventArgs e)
-        {
-            if (e.Button != MouseButtons.Left) return;
-
-            var imgPoint = ConvertToImageCoordinates(e.Location);
-            if (imgPoint.HasValue)
             {
-                _mapEditor?.HandleMouseClick(imgPoint.Value);
-                pictureBoxMinimap.Invalidate();
+                var imgPoint = ConvertToImageCoordinates(e.Location);
+                if (imgPoint.HasValue)
+                {
+                    _mapEditor?.FinishDrawing(imgPoint.Value);
+                    pictureBoxMinimap.Invalidate();
+                }
             }
         }
 
@@ -1148,6 +1136,8 @@ namespace ArtaleAI
         private void pictureBoxMinimap_MouseLeave(object sender, EventArgs e)
         {
             _floatingMagnifier?.Hide();
+            // 如果離開控制項時正在繪製，可選擇取消或完成
+            // _mapEditor?.ResetDrawing();
         }
 
         #endregion

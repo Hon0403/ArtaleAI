@@ -116,6 +116,8 @@ namespace ArtaleAI.Display
             var imagePoint = _mainForm.ConvertToImageCoordinates(mouseLocation);
             if (!imagePoint.HasValue) return null;
 
+            var imagePointInt = new Point((int)imagePoint.Value.X, (int)imagePoint.Value.Y);
+
             var zoomFactor = _mainForm.GetZoomFactor();
             if (zoomFactor <= 0) return null;
 
@@ -123,8 +125,8 @@ namespace ArtaleAI.Display
             int cropSize = (int)(Math.Min(magnifierSize.Width, magnifierSize.Height) / zoomFactor);
 
             var cropRect = new Rectangle(
-                imagePoint.Value.X - cropSize / 2,
-                imagePoint.Value.Y - cropSize / 2,
+                imagePointInt.X - cropSize / 2,
+                imagePointInt.Y - cropSize / 2,
                 cropSize,
                 cropSize);
 

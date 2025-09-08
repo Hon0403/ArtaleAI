@@ -113,7 +113,6 @@ namespace ArtaleAI.Detection
             {
                 using var frameMat = UtilityHelper.BitmapToThreeChannelMat(fullFrameBitmap);
 
-                // ✅ 修復：只保留一個定義，使用安全的空值檢查
                 var cornerThreshold = _config.Templates.Minimap.CornerThreshold;
 
                 Console.WriteLine($"🔍 開始小地圖檢測 (三通道)");

@@ -1,6 +1,7 @@
 ﻿using ArtaleAI.Config;
 using ArtaleAI.Models;
 using System.Drawing.Drawing2D;
+using PathData = ArtaleAI.Models.PathData;
 
 
 namespace ArtaleAI.Minimap
@@ -14,11 +15,14 @@ namespace ArtaleAI.Minimap
         private EditMode _currentEditMode = EditMode.None;
         private readonly MapEditorSettings? _settings;
 
-        // 狀態變數，用來記錄第一次點擊的位置
-        private MapPath? _activePath = null;
-        private PointF? _firstClickPoint = null;
+        private bool _isDrawing = false;
+        private PointF? _startPoint = null;
         private PointF? _previewPoint = null;
-        public MapEditor(MapEditorSettings? settings = null)
+
+
+        public bool IsDrawing => _isDrawing;
+
+        public MapEditor(MapEditorSettings? settings = null, TrajectorySettings? trajectorySettings = null)
         {
             _settings = settings;
         }
@@ -26,7 +30,6 @@ namespace ArtaleAI.Minimap
         public void LoadMapData(MapData data)
         {
             _currentMapData = data ?? new MapData();
-            _activePath = null;
         }
 
         public MapData GetCurrentMapData()
@@ -37,46 +40,150 @@ namespace ArtaleAI.Minimap
         public void SetEditMode(EditMode mode)
         {
             _currentEditMode = mode;
-            ResetDrawingState();
+            ResetDrawing();
         }
 
         /// <summary>
-        /// 處理滑鼠移動事件，僅用於更新預覽點的位置。
+        /// 開始繪製 (MouseDown)
         /// </summary>
-        public void HandleMouseMove(PointF imagePoint)
+        public void StartDrawing(PointF point)
         {
-            _previewPoint = imagePoint;
+            if (IsLineMode())
+            {
+                _isDrawing = true;
+                _startPoint = point;
+            }
+            else
+            {
+                // 單擊模式直接處理
+                HandleSingleClick(point);
+            }
         }
 
         /// <summary>
-        /// 處理滑鼠單次點擊事件。所有標記的建立邏輯都集中於此。
+        /// 更新預覽 (MouseMove)
         /// </summary>
-        public void HandleMouseClick(PointF imagePoint)
+        public void UpdatePreview(PointF point)
         {
+            _previewPoint = point;
+        }
+
+        /// <summary>
+        /// 完成繪製 (MouseUp)
+        /// </summary>
+        public void FinishDrawing(PointF point)
+        {
+            if (_isDrawing && _startPoint.HasValue)
+            {
+                CreateLine(_startPoint.Value, point);
+                ResetDrawing();
+            }
+        }
+
+        /// <summary>
+        /// 檢查是否為線段繪製模式
+        /// </summary>
+        private bool IsLineMode()
+        {
+            return _currentEditMode == EditMode.Waypoint ||
+                   _currentEditMode == EditMode.SafeZone ||
+                   _currentEditMode == EditMode.Rope;
+        }
+
+        /// <summary>
+        /// 創建線段
+        /// </summary>
+        private void CreateLine(PointF start, PointF end)
+        {
+            Console.WriteLine($"🎯 CreateLine: {_currentEditMode} 模式，從 ({start.X:F1}, {start.Y:F1}) 到 ({end.X:F1}, {end.Y:F1})");
+
+            var points = GenerateLinearPath(start, end);
+
             switch (_currentEditMode)
             {
                 case EditMode.Waypoint:
-                    HandleWaypointClick(imagePoint);
+                    _currentMapData.WaypointPaths ??= new List<PathData>();
+                    _currentMapData.WaypointPaths.Add(new PathData { Points = points });
+                    Console.WriteLine($"✅ 新增路徑，共 {points.Count} 個點");
                     break;
+
                 case EditMode.SafeZone:
+                    _currentMapData.SafeZones ??= new List<PathData>();
+                    _currentMapData.SafeZones.Add(new PathData { Points = points });
+                    Console.WriteLine($"🛡️ 新增安全區域，共 {points.Count} 個點");
+                    break;
+
                 case EditMode.Rope:
-                    HandleTwoClickDrawing(imagePoint);
-                    break;
-                case EditMode.RestrictedZone:
-                    var newRestrictedPoint = new Waypoint { Position = imagePoint };
-                    _currentMapData.RestrictedPoints.Add(newRestrictedPoint);
-                    break;
-                case EditMode.Delete:
-                    HandleDeleteAction(imagePoint);
+                    // 繩索現在也使用 points 格式（只有兩個點：起點和終點）
+                    _currentMapData.Ropes ??= new List<PathData>();
+                    _currentMapData.Ropes.Add(new PathData { Points = new List<PointF> { start, end } });
+                    Console.WriteLine($"🪢 新增繩索路徑（起點到終點）");
                     break;
             }
         }
-        public void HandleRightClick()
+
+        /// <summary>
+        /// 線性插值生成路徑點 - 簡化版
+        /// </summary>
+        private List<PointF> GenerateLinearPath(PointF start, PointF end)
         {
-            if (_currentEditMode == EditMode.Waypoint)
+            var points = new List<PointF> { start };
+
+            // 計算距離
+            float distance = CalculateDistance(start, end);
+            Console.WriteLine($"🛠️ 起終點距離: {distance:F1} 像素");
+
+            // 根據距離決定中間點數量
+            int pointCount = GetOptimalPointCount(distance);
+            Console.WriteLine($"📊 預計生成 {pointCount} 個中間點");
+
+            // 線性插值生成中間點
+            for (int i = 1; i < pointCount - 1; i++)
             {
-                _activePath = null;
-                ResetDrawingState();
+                float ratio = (float)i / (pointCount - 1);
+                var interpolatedPoint = new PointF(
+                    start.X + (end.X - start.X) * ratio,
+                    start.Y + (end.Y - start.Y) * ratio
+                );
+                points.Add(interpolatedPoint);
+            }
+
+            points.Add(end);
+            Console.WriteLine($"✅ 線性插值完成，總計: {points.Count} 個點");
+
+            return points;
+        }
+
+        /// <summary>
+        /// 根據距離計算最佳點數
+        /// </summary>
+        private int GetOptimalPointCount(float distance)
+        {
+            // 每隔一定像素插入一個點
+            const float pixelsPerPoint = 10.0f; // 每10像素一個點
+            int pointCount = Math.Max(2, (int)(distance / pixelsPerPoint) + 2);
+
+            // 限制最大點數，避免太密集
+            return Math.Min(pointCount, 20);
+        }
+
+        /// <summary>
+        /// 處理單擊
+        /// </summary>
+        private void HandleSingleClick(PointF point)
+        {
+            switch (_currentEditMode)
+            {
+                case EditMode.RestrictedZone:
+                    if (_currentMapData.RestrictedPoints == null)
+                        _currentMapData.RestrictedPoints = new List<PointF>();
+                    _currentMapData.RestrictedPoints.Add(point);
+                    Console.WriteLine($"🚫 新增限制點: ({point.X:F1}, {point.Y:F1})");
+                    break;
+
+                case EditMode.Delete:
+                    HandleDeleteAction(point);
+                    break;
             }
         }
 
@@ -87,102 +194,59 @@ namespace ArtaleAI.Minimap
             DrawPreviewShapes(g, convertToDisplay);
         }
 
-
-        /// <summary>
-        /// 處理需要兩次點擊（起點和終點）的繪圖模式。
-        /// </summary>
-        private void HandleTwoClickDrawing(PointF clickPoint)
-        {
-            if (_firstClickPoint == null)
-            {
-                // 這是第一次點擊，記錄起點
-                _firstClickPoint = clickPoint;
-            }
-            else
-            {
-                // 這是第二次點擊，建立物件
-                if (_currentEditMode == EditMode.SafeZone)
-                {
-                    var newSafeZone = new MapArea();
-                    newSafeZone.Points.Add(_firstClickPoint.Value);
-                    newSafeZone.Points.Add(clickPoint);
-                    _currentMapData.SafeZone.Add(newSafeZone);
-                }
-                else if (_currentEditMode == EditMode.Rope)
-                {
-                    var newRope = new Rope { Start = _firstClickPoint.Value, End = clickPoint };
-                    _currentMapData.Ropes.Add(newRope);
-                }
-
-                // 完成繪製後，重置狀態以準備繪製下一條線
-                ResetDrawingState();
-            }
-        }
-
         private void DrawCompletedShapes(Graphics g, Func<PointF, Point> convert)
         {
             // 繪製安全區域
-            foreach (var area in _currentMapData.SafeZone)
+            if (_currentMapData.SafeZones?.Any() == true)
             {
-                DrawPolygon(g, area.Points, Color.Green, 2, convert);
-            }
-            // 繪製禁止點
-            foreach (var point in _currentMapData.RestrictedPoints)
-            {
-                DrawWaypoint(g, point.Position, convert, Color.Red);
-            }
-            // 繪製繩索
-            foreach (var rope in _currentMapData.Ropes)
-            {
-                DrawPolygon(g, new List<PointF> { rope.Start, rope.End }, Color.Yellow, 3, convert);
+                foreach (var area in _currentMapData.SafeZones)
+                {
+                    DrawPolygon(g, area.Points, Color.Green, 2, convert);
+                }
             }
 
-            // 繪製連續的路徑標記
-            foreach (var path in _currentMapData.WaypointPaths)
+            // 繪製限制點
+            if (_currentMapData.RestrictedPoints?.Any() == true)
             {
-                if (path.Points.Count >= 2)
+                foreach (var point in _currentMapData.RestrictedPoints)
                 {
-                    var pathPoints = path.Points.Select(wp => wp.Position).ToList();
-                    DrawPolygon(g, pathPoints, Color.White, 2, convert);
-                }
-                foreach (var waypoint in path.Points)
-                {
-                    DrawWaypoint(g, waypoint.Position, convert, Color.Blue);
+                    DrawWaypoint(g, point, convert, Color.Red);
                 }
             }
-        }
-        private void HandleWaypointClick(PointF clickPoint)
-        {
-            if (_activePath == null)
+
+            // 繪製繩索（現在也是 points 陣列）
+            if (_currentMapData.Ropes?.Any() == true)
             {
-                _activePath = new MapPath();
-                _currentMapData.WaypointPaths.Add(_activePath);
+                foreach (var rope in _currentMapData.Ropes)
+                {
+                    DrawPolygon(g, rope.Points, Color.Yellow, 3, convert);
+                }
             }
-            var newWaypoint = new Waypoint { Position = clickPoint };
-            _activePath.Points.Add(newWaypoint);
+
+            // 繪製路徑
+            if (_currentMapData.WaypointPaths?.Any() == true)
+            {
+                foreach (var path in _currentMapData.WaypointPaths)
+                {
+                    if (path.Points.Count >= 2)
+                    {
+                        DrawPolygon(g, path.Points, Color.Blue, 2, convert);
+                    }
+                }
+            }
         }
 
         private void DrawPreviewShapes(Graphics g, Func<PointF, Point> convert)
         {
-            if (!_previewPoint.HasValue) return;
-
-            // 為 Waypoint 模式新增預覽線，從最後一個點連到滑鼠位置
-            if (_currentEditMode == EditMode.Waypoint && _activePath != null && _activePath.Points.Any())
-            {
-                PointF lastPoint = _activePath.Points.Last().Position;
-                using (var pen = new Pen(Color.Cyan, 2) { DashStyle = DashStyle.Dash })
-                {
-                    g.DrawLine(pen, convert(lastPoint), convert(_previewPoint.Value));
-                }
-            }
-            else if ((_currentEditMode == EditMode.SafeZone || _currentEditMode == EditMode.Rope) && _firstClickPoint.HasValue)
+            if (_isDrawing && _startPoint.HasValue && _previewPoint.HasValue)
             {
                 using (var pen = new Pen(Color.Cyan, 2) { DashStyle = DashStyle.Dash })
                 {
-                    g.DrawLine(pen, convert(_firstClickPoint.Value), convert(_previewPoint.Value));
+                    g.DrawLine(pen, convert(_startPoint.Value), convert(_previewPoint.Value));
                 }
             }
         }
+
 
         private void DrawPolygon(Graphics g, List<PointF> points, Color color, float penWidth, Func<PointF, Point> convert)
         {
@@ -201,57 +265,74 @@ namespace ArtaleAI.Minimap
             using (var pen = new Pen(Color.White, 2)) { g.DrawEllipse(pen, displayPoint.X - 5, displayPoint.Y - 5, 10, 10); }
         }
 
-        private void ResetDrawingState()
+        private void ResetDrawing()
         {
-            _firstClickPoint = null;
+            _isDrawing = false;
+            _startPoint = null;
             _previewPoint = null;
         }
 
         private void HandleDeleteAction(PointF clickPosition)
         {
-            float deletionRadius = _settings.DeletionRadius;
+            float deletionRadius = _settings?.DeletionRadius ?? 10.0f;
 
-            // 刪除單個的路徑點
-            foreach (var path in _currentMapData.WaypointPaths.ToList())
+            // 刪除路徑點
+            if (_currentMapData.WaypointPaths?.Any() == true)
             {
-                var waypointToDelete = path.Points.FirstOrDefault(wp => CalculateDistance(wp.Position, clickPosition) <= deletionRadius);
-                if (waypointToDelete != null)
+                foreach (var path in _currentMapData.WaypointPaths.ToList())
                 {
-                    path.Points.Remove(waypointToDelete);
-                    if (!path.Points.Any())
+                    var pointToDelete = path.Points.FirstOrDefault(pt => CalculateDistance(pt, clickPosition) <= deletionRadius);
+                    if (pointToDelete != default(PointF))
                     {
-                        _currentMapData.WaypointPaths.Remove(path);
+                        path.Points.Remove(pointToDelete);
+                        if (!path.Points.Any())
+                        {
+                            _currentMapData.WaypointPaths.Remove(path);
+                        }
+                        return;
                     }
+                }
+            }
+
+            // 刪除安全區域
+            if (_currentMapData.SafeZones?.Any() == true)
+            {
+                var safeZoneToDelete = _currentMapData.SafeZones.FirstOrDefault(area =>
+                    area.Points.Any(p => CalculateDistance(p, clickPosition) <= deletionRadius));
+                if (safeZoneToDelete != null)
+                {
+                    _currentMapData.SafeZones.Remove(safeZoneToDelete);
                     return;
                 }
             }
 
-            var safeZoneToDelete = _currentMapData.SafeZone.OrderBy(area => area.Points.Min(p => CalculateDistance(p, clickPosition))).FirstOrDefault();
-            if (safeZoneToDelete != null && safeZoneToDelete.Points.Any(p => CalculateDistance(p, clickPosition) <= deletionRadius))
+            // 刪除繩索
+            if (_currentMapData.Ropes?.Any() == true)
             {
-                _currentMapData.SafeZone.Remove(safeZoneToDelete);
-                return;
+                var ropeToDelete = _currentMapData.Ropes.FirstOrDefault(rope =>
+                    rope.Points.Any(p => CalculateDistance(p, clickPosition) <= deletionRadius));
+                if (ropeToDelete != null)
+                {
+                    _currentMapData.Ropes.Remove(ropeToDelete);
+                    return;
+                }
             }
 
-            var ropeToDelete = _currentMapData.Ropes
-                .OrderBy(rope => Math.Min(CalculateDistance(rope.Start, clickPosition), CalculateDistance(rope.End, clickPosition)))
-                .FirstOrDefault();
-            if (ropeToDelete != null && (CalculateDistance(ropeToDelete.Start, clickPosition) <= deletionRadius || CalculateDistance(ropeToDelete.End, clickPosition) <= deletionRadius))
+            // 刪除限制點
+            if (_currentMapData.RestrictedPoints?.Any() == true)
             {
-                _currentMapData.Ropes.Remove(ropeToDelete);
-                return;
-            }
-
-            var restrictedPointToDelete = _currentMapData.RestrictedPoints
-                .FirstOrDefault(rp => CalculateDistance(rp.Position, clickPosition) <= deletionRadius);
-            if (restrictedPointToDelete != null)
-            {
-                _currentMapData.RestrictedPoints.Remove(restrictedPointToDelete);
-                return;
+                var restrictedPointToDelete = _currentMapData.RestrictedPoints
+                    .FirstOrDefault(pt => CalculateDistance(pt, clickPosition) <= deletionRadius);
+                if (restrictedPointToDelete != default(PointF))
+                {
+                    _currentMapData.RestrictedPoints.Remove(restrictedPointToDelete);
+                    return;
+                }
             }
         }
 
-        private float CalculateDistance(PointF p1, PointF p2)
+
+        public static float CalculateDistance(PointF p1, PointF p2)
         {
             return (float)Math.Sqrt(Math.Pow(p1.X - p2.X, 2) + Math.Pow(p1.Y - p2.Y, 2));
         }

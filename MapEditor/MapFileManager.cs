@@ -45,7 +45,7 @@ namespace ArtaleAI.Minimap
                 }
 
                 // 載入所有地圖檔案
-                var mapFiles = Directory.GetFiles(mapDataDirectory, "*.mappath");
+                var mapFiles = Directory.GetFiles(mapDataDirectory, "*.json");
 
                 if (!mapFiles.Any())
                 {
@@ -80,7 +80,6 @@ namespace ArtaleAI.Minimap
                 }
 
                 string mapFilePath = Path.Combine(_mainForm.GetMapDataDirectory(), fileName);
-
                 if (!File.Exists(mapFilePath))
                 {
                     _mainForm.OnError($"檔案不存在: {mapFilePath}");
@@ -89,17 +88,16 @@ namespace ArtaleAI.Minimap
 
                 _mainForm.OnStatusMessage($"正在載入地圖檔案: {fileName}");
 
-                MapData? loadedData = MapData.LoadFromFile(mapFilePath);
+                MapData? loadedData = _mainForm.ConfigurationManager?.LoadMapFromFile(mapFilePath);
+
                 if (loadedData != null)
                 {
                     _mapEditor.LoadMapData(loadedData);
                     _currentMapFilePath = mapFilePath;
-
                     _mainForm.OnMapLoaded(fileName);
                     _mainForm.UpdateWindowTitle($"地圖編輯器 - {fileName}");
                     _mainForm.RefreshMinimap();
-
-                    _mainForm.OnStatusMessage($" 成功載入地圖: {fileName}");
+                    _mainForm.OnStatusMessage($"✅ 成功載入地圖: {fileName}");
                 }
                 else
                 {
@@ -121,16 +119,13 @@ namespace ArtaleAI.Minimap
             {
                 if (HasCurrentMap)
                 {
-                    // 儲存到現有檔案
                     var currentMapData = _mapEditor.GetCurrentMapData();
-                    currentMapData.SaveToFile(_currentMapFilePath!);
-
+                    _mainForm.ConfigurationManager?.SaveMapToFile(currentMapData, _currentMapFilePath!);
                     _mainForm.OnMapSaved(CurrentMapFileName!, false);
-                    _mainForm.OnStatusMessage($" 地圖儲存成功: {CurrentMapFileName}");
+                    _mainForm.OnStatusMessage($"✅ 地圖儲存成功: {CurrentMapFileName}");
                 }
                 else
                 {
-                    // 新檔案需要另存新檔
                     SaveMapAs();
                 }
             }
@@ -147,28 +142,27 @@ namespace ArtaleAI.Minimap
         {
             try
             {
-                using (SaveFileDialog saveFileDialog = new SaveFileDialog())
+                using var saveFileDialog = new SaveFileDialog
                 {
-                    saveFileDialog.InitialDirectory = _mainForm.GetMapDataDirectory();
-                    saveFileDialog.Filter = "地圖路徑檔 (*.mappath)|*.mappath";
-                    saveFileDialog.DefaultExt = ".mappath";
+                    InitialDirectory = _mainForm.GetMapDataDirectory(),
+                    Filter = "地圖路徑檔 (*.json)|*.json",
+                    DefaultExt = ".json"
+                };
 
-                    if (saveFileDialog.ShowDialog() == DialogResult.OK)
-                    {
-                        var currentMapData = _mapEditor.GetCurrentMapData();
-                        currentMapData.SaveToFile(saveFileDialog.FileName);
+                if (saveFileDialog.ShowDialog() == DialogResult.OK)
+                {
+                    var currentMapData = _mapEditor.GetCurrentMapData();
 
-                        _currentMapFilePath = saveFileDialog.FileName;
-                        string fileName = Path.GetFileName(saveFileDialog.FileName);
+                    _mainForm.ConfigurationManager?.SaveMapToFile(currentMapData, saveFileDialog.FileName);
 
-                        // 重新整理下拉選單
-                        InitializeMapFilesDropdown();
-                        _mapFilesComboBox.SelectedItem = fileName;
+                    _currentMapFilePath = saveFileDialog.FileName;
+                    string fileName = Path.GetFileName(saveFileDialog.FileName);
 
-                        _mainForm.OnMapSaved(fileName, true);
-                        _mainForm.UpdateWindowTitle($"地圖編輯器 - {fileName}");
-                        _mainForm.OnStatusMessage($" 新地圖儲存成功: {fileName}");
-                    }
+                    InitializeMapFilesDropdown();
+                    _mapFilesComboBox.SelectedItem = fileName;
+                    _mainForm.OnMapSaved(fileName, true);
+                    _mainForm.UpdateWindowTitle($"地圖編輯器 - {fileName}");
+                    _mainForm.OnStatusMessage($"✅ 新地圖儲存成功: {fileName}");
                 }
             }
             catch (Exception ex)
@@ -227,7 +221,7 @@ namespace ArtaleAI.Minimap
                 if (!Directory.Exists(mapDataDirectory))
                     return Array.Empty<string>();
 
-                var mapFiles = Directory.GetFiles(mapDataDirectory, "*.mappath");
+                var mapFiles = Directory.GetFiles(mapDataDirectory, "*.json");
                 return mapFiles.Select(file => Path.GetFileName(file)).ToArray();
             }
             catch (Exception ex)

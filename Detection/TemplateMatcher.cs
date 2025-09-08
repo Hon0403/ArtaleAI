@@ -2,6 +2,7 @@
 using ArtaleAI.Models;
 using ArtaleAI.Utils;
 using OpenCvSharp;
+using System.Configuration;
 using CvPoint = OpenCvSharp.Point;
 using SdPoint = System.Drawing.Point;
 
@@ -163,7 +164,7 @@ namespace ArtaleAI.Detection
             }
             double defaultNmsThreshold = _templateMatchingSettings.BasicModeNmsThreshold;
 
-            return ApplySimpleNMS(results, _settings.NmsIouThreshold, lowerIsBetter: false); // Basic 用 CCoeffNormed，大分數更好
+            return results;
         }
 
         /// <summary>
@@ -235,7 +236,7 @@ namespace ArtaleAI.Detection
                 }
             }
 
-            return ApplySimpleNMS(results, _settings.NmsIouThreshold);
+            return results;
         }
 
         /// <summary>
@@ -276,7 +277,7 @@ namespace ArtaleAI.Detection
                 });
             }
 
-            return ApplySimpleNMS(results, _settings.NmsIouThreshold);
+            return results;
         }
 
         /// <summary>
@@ -333,7 +334,7 @@ namespace ArtaleAI.Detection
                 }
 
                 Console.WriteLine($"🎨 Color 模式處理完成，總共找到 {results.Count} 個結果");
-                return ApplySimpleNMS(results, _settings.NmsIouThreshold, lowerIsBetter: false);
+                return results;
             }
             catch (Exception ex)
             {
@@ -404,50 +405,50 @@ namespace ArtaleAI.Detection
                 }
             }
 
-            return ApplySimpleNMS(results, _settings.NmsIouThreshold);
+            return results;
         }
 
         #endregion
 
         #region 工具方法
 
-        /// <summary>
-        /// 簡單的非極大值抑制
-        /// </summary>
-        private static List<MatchResult> ApplySimpleNMS(List<MatchResult> results, double iouThreshold = 0.3, bool lowerIsBetter = true)
-        {
-            if (results.Count <= 1) return results;
+        ///// <summary>
+        ///// 簡單局部的非極大值抑制
+        ///// </summary>
+        //private static List<MatchResult> ApplySimpleNMS(List<MatchResult> results, double iouThreshold = 0.3, bool lowerIsBetter = true)
+        //{
+        //    if (results.Count <= 1) return results;
 
-            if (iouThreshold < 0)
-            {
-                iouThreshold = _templateMatchingSettings.DefaultIouThreshold;
-            }
+        //    if (iouThreshold < 0)
+        //    {
+        //        iouThreshold = _templateMatchingSettings.DefaultIouThreshold;
+        //    }
 
-            var nmsResults = new List<MatchResult>();
+        //    var nmsResults = new List<MatchResult>();
 
-            var sortedResults = lowerIsBetter
-                ? results.OrderBy(r => r.Score).ToList()      // SqDiffNormed：小分數更好
-                : results.OrderByDescending(r => r.Score).ToList(); // CCoeffNormed：大分數更好
+        //    var sortedResults = lowerIsBetter
+        //        ? results.OrderBy(r => r.Score).ToList()      // SqDiffNormed：小分數更好
+        //        : results.OrderByDescending(r => r.Score).ToList(); // CCoeffNormed：大分數更好
 
-            while (sortedResults.Any())
-            {
-                var best = sortedResults.First();
-                nmsResults.Add(best);
-                sortedResults.RemoveAt(0);
+        //    while (sortedResults.Any())
+        //    {
+        //        var best = sortedResults.First();
+        //        nmsResults.Add(best);
+        //        sortedResults.RemoveAt(0);
 
-                var bestRect = new Rectangle(best.Position.X, best.Position.Y,
-                    best.Size.Width, best.Size.Height);
+        //        var bestRect = new Rectangle(best.Position.X, best.Position.Y,
+        //            best.Size.Width, best.Size.Height);
 
-                sortedResults.RemoveAll(candidate =>
-                {
-                    var candidateRect = new Rectangle(candidate.Position.X, candidate.Position.Y,
-                        candidate.Size.Width, candidate.Size.Height);
-                    return UtilityHelper.CalculateIoU(bestRect, candidateRect) > iouThreshold;
-                });
-            }
+        //        sortedResults.RemoveAll(candidate =>
+        //        {
+        //            var candidateRect = new Rectangle(candidate.Position.X, candidate.Position.Y,
+        //                candidate.Size.Width, candidate.Size.Height);
+        //            return UtilityHelper.CalculateIoU(bestRect, candidateRect) > iouThreshold;
+        //        });
+        //    }
 
-            return nmsResults;
-        }
+        //    return nmsResults;
+        //}
 
         /// <summary>
         /// 獲取匹配位置（含數量限制）
