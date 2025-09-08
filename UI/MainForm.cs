@@ -24,7 +24,7 @@ namespace ArtaleAI
         private GraphicsCaptureItem? _selectedCaptureItem;
         private MapEditor? _mapEditor;
         private DetectionEngine? _detectionEngine;
-
+        private readonly SemaphoreSlim _frameGate = new(1, 1);
 
         // 檢測狀態管理
         private Rectangle? _currentMinimapRect;
@@ -90,14 +90,11 @@ namespace ArtaleAI
         public async Task OnFrameAvailable(Bitmap frame)
         {
             if (frame == null) return;
-
             try
             {
-                // 立即顯示，無阻塞
-                UpdateDisplaySafely(new Bitmap(frame));
-
-                // 完全非同步的檢測管道
+                // 移除立即顯示，只處理檢測
                 await ProcessDetectionPipelineAsync(frame);
+                // 只在 RenderAndDisplayOverlays 中更新一次
             }
             finally
             {
@@ -155,60 +152,56 @@ namespace ArtaleAI
             if (config?.DetectionPerformance == null) return;
 
             var now = DateTime.UtcNow;
+            List<Rectangle> bloodBars = null;
+            List<Rectangle> detectionBoxes = null;
+            List<Rectangle> attackRangeBoxes = null;
+            List<MonsterRenderInfo> monsters = null;
 
             // 🩸 階段1：條件式血條檢測
-            List<Rectangle> bloodBars = null;
             if (ShouldDetectBloodBar(now, config.DetectionPerformance))
             {
                 bloodBars = await DetectBloodBarsAsync(frame);
                 _lastBloodBarDetection = now;
-
-                if (bloodBars.Any())
-                {
-
-                    await UpdatePartialResultsAsync(bloodBars, null, null, null, frame);
-                }
             }
             else
             {
-                // 使用上次的血條結果
                 bloodBars = _currentBloodBars.ToList();
-                OnStatusMessage("⚡ 跳過血條檢測，使用快取結果");
             }
 
             if (!bloodBars.Any()) return;
 
-            // 🎯 階段2：計算檢測框和攻擊範圍框 (輕量化操作，每次執行)
-            var detectionBoxes = CalculateDetectionBoxes(bloodBars[0]);
-            var attackRangeBoxes = CalculateAttackRangeBoxes(bloodBars[0]);
-            await UpdatePartialResultsAsync(bloodBars, detectionBoxes, attackRangeBoxes, null, frame);
+            // 🎯 階段2：計算檢測框和攻擊範圍框
+            detectionBoxes = CalculateDetectionBoxes(bloodBars[0]);
+            attackRangeBoxes = CalculateAttackRangeBoxes(bloodBars[0]);
 
             // 👹 階段3：條件式怪物檢測
             if (ShouldDetectMonster(now, config.DetectionPerformance))
             {
-                var monsters = await DetectMonstersAsync(frame, detectionBoxes);
-                await UpdatePartialResultsAsync(bloodBars, detectionBoxes, attackRangeBoxes, monsters, frame);
+                monsters = await DetectMonstersAsync(frame, detectionBoxes);
                 _lastMonsterDetection = now;
                 _consecutiveSkippedFrames = 0;
             }
             else
             {
-                // 使用上次的怪物結果
-                OnStatusMessage("⚡ 跳過怪物檢測，使用快取結果");
-                await UpdatePartialResultsAsync(bloodBars, detectionBoxes, attackRangeBoxes, _currentMonsters, frame);
+                monsters = _currentMonsters.ToList();
                 _consecutiveSkippedFrames++;
             }
 
-            // 自適應強制檢測 (避免長時間不更新)
-            if (config.DetectionPerformance.EnableAdaptiveInterval &&
-                _consecutiveSkippedFrames >= config.DetectionPerformance.MaxDetectionSkipFrames)
-            {
-                OnStatusMessage("🔄 強制執行完整檢測 (自適應)");
-                var monsters = await DetectMonstersAsync(frame, detectionBoxes);
-                await UpdatePartialResultsAsync(bloodBars, detectionBoxes, attackRangeBoxes, monsters, frame);
-                _lastMonsterDetection = now;
-                _consecutiveSkippedFrames = 0;
-            }
+            // ✅ 只在最後更新一次 UI
+            await UpdateFinalResultsAsync(bloodBars, detectionBoxes, attackRangeBoxes, monsters, frame);
+        }
+
+        private async Task UpdateFinalResultsAsync(
+            List<Rectangle> bloodBars,
+            List<Rectangle> detectionBoxes,
+            List<Rectangle> attackRangeBoxes,
+            List<MonsterRenderInfo> monsters,
+            Bitmap sourceFrame)
+        {
+            // 更新所有檢測結果
+            UpdateDetectionResults(bloodBars, detectionBoxes, attackRangeBoxes, monsters);
+            // 只渲染一次
+            RenderAndDisplayOverlays(sourceFrame);
         }
 
         // 血條檢測條件判斷
@@ -914,22 +907,39 @@ namespace ArtaleAI
                     using var frame = _capturer.TryGetNextFrame();
                     if (frame != null)
                     {
-                        Bitmap safeCopy;
-                        try
+                        // ✅ 加上節流控制
+                        if (await _frameGate.WaitAsync(0, cancellationToken))
                         {
-                            safeCopy = new Bitmap(frame.Width, frame.Height, frame.PixelFormat);
-                            using (var g = Graphics.FromImage(safeCopy))
+                            Bitmap safeCopy;
+                            try
                             {
-                                g.DrawImage(frame, 0, 0);
+                                safeCopy = new Bitmap(frame.Width, frame.Height, frame.PixelFormat);
+                                using (var g = Graphics.FromImage(safeCopy))
+                                {
+                                    g.DrawImage(frame, 0, 0);
+                                }
                             }
-                        }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"創建副本失敗: {ex.Message}");
-                            continue;
-                        }
+                            catch (Exception ex)
+                            {
+                                System.Diagnostics.Debug.WriteLine($"創建副本失敗: {ex.Message}");
+                                continue;
+                            }
 
-                        _ = Task.Run(async () => await OnFrameAvailable(safeCopy));
+                            // ✅ 修改任務啟動方式
+                            _ = Task.Run(async () =>
+                            {
+                                try
+                                {
+                                    await OnFrameAvailable(safeCopy);
+                                }
+                                finally
+                                {
+                                    _frameGate.Release(); // 釋放節流
+                                    safeCopy.Dispose();
+                                }
+                            }, cancellationToken);
+                        }
+                        // else: 上一幀還在處理中，丟棄當前幀
                     }
 
                     await Task.Delay(captureDelayMs, cancellationToken);
@@ -1195,6 +1205,7 @@ namespace ArtaleAI
                 _mapDetector?.Dispose();
                 pictureBoxMinimap.Image?.Dispose();
                 pictureBoxLiveView.Image?.Dispose();
+                _frameGate?.Dispose();
 
                 OnStatusMessage("應用程式已清理完成");
             }
