@@ -31,9 +31,6 @@ namespace ArtaleAI.Utils
                 case 1: // 灰階 → BGR
                     Cv2.CvtColor(input, output, ColorConversionCodes.GRAY2BGR);
                     break;
-                case 4: // BGRA → BGR
-                    Cv2.CvtColor(input, output, ColorConversionCodes.BGRA2BGR);
-                    break;
                 default:
                     input.CopyTo(output);
                     break;
@@ -44,7 +41,7 @@ namespace ArtaleAI.Utils
         /// <summary>
         /// 執行緒安全的 Bitmap 轉三通道 Mat
         /// </summary>
-        public static Mat BitmapToThreeChannelMat(Bitmap bitmap)
+        public static Mat BitmapToThreeChannelMatSafe(Bitmap bitmap)
         {
             if (bitmap == null)
                 throw new ArgumentNullException(nameof(bitmap));
@@ -72,6 +69,32 @@ namespace ArtaleAI.Utils
                     System.Diagnostics.Debug.WriteLine($"轉換失敗: {ex.Message}");
                     throw new InvalidOperationException($"安全轉換失敗: {ex.Message}", ex);
                 }
+            }
+        }
+
+        public static Mat BitmapToThreeChannelMat(Bitmap bitmap, bool fastMode = true)
+        {
+            if (bitmap == null)
+                throw new ArgumentNullException(nameof(bitmap));
+
+            if (fastMode)
+            {
+                // 🚀 快速模式：直接使用 OpenCvSharp 內建轉換器
+                try
+                {
+                    using var originalMat = OpenCvSharp.Extensions.BitmapConverter.ToMat(bitmap);
+                    return EnsureThreeChannels(originalMat);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"快速轉換失敗，回退至安全模式: {ex.Message}");
+                    // 失敗時自動回退到原本的安全模式
+                    return BitmapToThreeChannelMatSafe(bitmap);
+                }
+            }
+            else
+            {
+                return BitmapToThreeChannelMatSafe(bitmap);
             }
         }
 
@@ -115,43 +138,6 @@ namespace ArtaleAI.Utils
 
             var mask = new Mat();
 
-            if (templateImg.Channels() == 4)
-            {
-                // 🔥 修正：從BGRA提取Alpha通道並確保格式正確
-                Mat[] channels = null;
-                try
-                {
-                    channels = Cv2.Split(templateImg);
-                    var alphaMask = channels[3].Clone();
-
-                    // 確保是單通道 CV_8U 格式
-                    if (alphaMask.Type() != MatType.CV_8UC1)
-                    {
-                        alphaMask.ConvertTo(mask, MatType.CV_8UC1);
-                        alphaMask.Dispose();
-                    }
-                    else
-                    {
-                        mask = alphaMask;
-                    }
-
-                    // 二值化處理：透明=0, 不透明=255
-                    Cv2.Threshold(mask, mask, 1, 255, ThresholdTypes.Binary);
-                }
-                finally
-                {
-                    if (channels != null)
-                    {
-                        foreach (var ch in channels)
-                            ch?.Dispose();
-                    }
-                }
-            }
-            else
-            {
-                mask = Mat.Ones(templateImg.Size(), MatType.CV_8UC1) * 255;
-            }
-
             return mask;
         }
 
@@ -166,27 +152,100 @@ namespace ArtaleAI.Utils
             var mask = new Mat();
             if (img.Channels() == 3)
             {
-                // BGR 格式：檢查三個通道是否為黑色
-                Cv2.InRange(img, new Scalar(0, 0, 0), new Scalar(0, 0, 0), mask);
-            }
-            else if (img.Channels() == 4)
-            {
-                // BGRA 格式：檢查前三個通道，忽略 Alpha
-                Cv2.InRange(img, new Scalar(0, 0, 0, 0), new Scalar(0, 0, 0, 255), mask);
+                Cv2.InRange(img, new Scalar(0, 0, 0), new Scalar(30, 30, 30), mask);
             }
             else
             {
-                Cv2.InRange(img, new Scalar(0), new Scalar(0), mask);
+                Cv2.InRange(img, new Scalar(0), new Scalar(30), mask);
             }
+
             return mask;
         }
 
-        public static void SafeDispose(params Mat?[] mats)
+        /// <summary>
+        /// 使用 HSV 顏色空間分離綠色背景（推薦）
+        /// </summary>
+        public static Mat CreateForegroundMaskHSV(Mat img)
         {
-            if (mats == null) return;
-            foreach (var mat in mats)
+            if (img?.Empty() == true)
+                throw new ArgumentException("輸入圖像為空", nameof(img));
+
+            using var hsvImg = new Mat();
+            Cv2.CvtColor(img, hsvImg, ColorConversionCodes.BGR2HSV);
+
+            var mask = new Mat();
+
+            // ✅ HSV 綠色範圍：H(60-80), S(100-255), V(100-255)
+            var lowerGreen = new Scalar(50, 80, 80);   // 較寬的綠色範圍
+            var upperGreen = new Scalar(90, 255, 255);
+
+            var greenMask = new Mat();
+            Cv2.InRange(hsvImg, lowerGreen, upperGreen, greenMask);
+
+            // 反轉：綠色=0，非綠色=255
+            Cv2.BitwiseNot(greenMask, mask);
+            greenMask.Dispose();
+
+            return mask;
+        }
+
+        /// <summary>
+        /// 多層HSV檢測，更準確分離綠色背景
+        /// </summary>
+        public static Mat CreateAdvancedForegroundMask(Mat img)
+        {
+            if (img?.Empty() == true)
+                throw new ArgumentException("輸入圖像為空", nameof(img));
+
+            using var hsvImg = new Mat();
+            Cv2.CvtColor(img, hsvImg, ColorConversionCodes.BGR2HSV);
+
+            // 🎯 更精準的綠色範圍檢測
+            var pureGreenMask = new Mat();
+            Cv2.InRange(hsvImg, new Scalar(35, 80, 80), new Scalar(85, 255, 255), pureGreenMask);
+
+            // 🎯 形態學處理
+            var kernel = Cv2.GetStructuringElement(MorphShapes.Ellipse, new OpenCvSharp.Size(3, 3));
+            using var closedGreen = new Mat();
+
+            // 填補洞
+            Cv2.MorphologyEx(pureGreenMask, closedGreen, MorphTypes.Close, kernel);
+
+            // 反轉得到前景遮罩
+            var finalMask = new Mat();
+            Cv2.BitwiseNot(closedGreen, finalMask);
+
+            // 🔧 調試輸出
+            try
             {
-                mat?.Dispose();
+                var debugDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Debug");
+                Directory.CreateDirectory(debugDir);
+
+                pureGreenMask.SaveImage(Path.Combine(debugDir, "01_green_detection.png"));
+                closedGreen.SaveImage(Path.Combine(debugDir, "02_closed.png"));
+                finalMask.SaveImage(Path.Combine(debugDir, "05_final_mask.png"));
+
+                Console.WriteLine($"✅ 調試圖像已保存");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"調試圖像保存失敗: {ex.Message}");
+            }
+
+            // 清理資源
+            pureGreenMask.Dispose();
+            kernel.Dispose();
+
+            return finalMask;
+        }
+
+
+        public static void SafeDispose(params Bitmap?[] bitmaps)
+        {
+            if (bitmaps == null) return;
+            foreach (var bitmap in bitmaps)
+            {
+                bitmap?.Dispose();
             }
         }
 
@@ -327,65 +386,36 @@ namespace ArtaleAI.Utils
         }
 
         #endregion
-    }
 
-    public static class ControlExtensions
-    {
+        #region 怪物模板管理工具
+        private static readonly Dictionary<string, List<Bitmap>> _cachedMonsterTemplates = new();
+
+
         /// <summary>
-        /// WinForms 非同步 Invoke 擴展方法 (.NET Framework 相容版本)
+        /// 清理模板快取
         /// </summary>
-        public static Task InvokeAsync(this Control control, Action action)
+        public static void ClearMonsterTemplateCache()
         {
-            if (control.InvokeRequired)
+            foreach (var templates in _cachedMonsterTemplates.Values)
             {
-                var tcs = new TaskCompletionSource<bool>();
-                control.BeginInvoke(new Action(() =>
-                {
-                    try
-                    {
-                        action();
-                        tcs.SetResult(true);
-                    }
-                    catch (Exception ex)
-                    {
-                        tcs.SetException(ex);
-                    }
-                }));
-                return tcs.Task;
+                SafeDispose(templates.ToArray());
             }
-            else
-            {
-                action();
-                return Task.CompletedTask;
-            }
+            _cachedMonsterTemplates.Clear();
         }
 
         /// <summary>
-        /// 帶返回值的非同步 Invoke
+        /// HSV 轉換工具
         /// </summary>
-        public static Task<T> InvokeAsync<T>(this Control control, Func<T> func)
+        public static Scalar ToOpenCvHsv((int h, int s, int v) hsv)
         {
-            if (control.InvokeRequired)
-            {
-                var tcs = new TaskCompletionSource<T>();
-                control.BeginInvoke(new Action(() =>
-                {
-                    try
-                    {
-                        var result = func();
-                        tcs.SetResult(result);
-                    }
-                    catch (Exception ex)
-                    {
-                        tcs.SetException(ex);
-                    }
-                }));
-                return tcs.Task;
-            }
-            else
-            {
-                return Task.FromResult(func());
-            }
+            return new Scalar(hsv.h, hsv.s, hsv.v);
         }
+
+        public static (int h, int s, int v) FromOpenCvHsv(Scalar hsv)
+        {
+            return ((int)hsv.Val0, (int)hsv.Val1, (int)hsv.Val2);
+        }
+        #endregion
+
     }
 }

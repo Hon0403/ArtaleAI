@@ -26,43 +26,43 @@ templates:
 
   monsterDetection:
     defaultThreshold: 0.3
-    maxDetectionResults: 3
+    maxDetectionResults: 1
     detectionMode: Color
-    occlusionHandling: DynamicThreshold
+    # occlusionHandling: DynamicThreshold
     
     # 多尺度匹配參數
-    multiScaleFactors: [0.9, 1.0, 1.1]
+    # multiScaleFactors: [1.1]
     
     # 形態學處理參數
-    morphologyKernelSize: 5
-    contourBlurSize: 3
-    contourThresholdLimit: 0.3
+    # morphologyKernelSize: 5
+    # contourBlurSize: 3
+    # contourThresholdLimit: 0.8
     
     # 動態閾值參數
-    dynamicThresholdMultiplier: 0.5
+    # dynamicThresholdMultiplier: 0.5
     
     # NMS 參數
     nmsIouThreshold: 0.25
     
     # TemplateFree 模式參數
-    templateFreeKernelSize: 25
-    templateFreeOpenKernelSize: 5
-    minDetectionArea: 800
-    maxDetectionArea: 50000
-    aspectRatioLimit: 5.0
+    # templateFreeKernelSize: 25
+    # templateFreeOpenKernelSize: 5
+    # minDetectionArea: 800
+    # maxDetectionArea: 50000
+    # aspectRatioLimit: 5.0
 
 # 軌跡記錄設定
-trajectory:
-  enableRecording: true         # 啟用軌跡記錄
-  pointInterval: 3.0            # 每3像素記錄一次
-  maxPoints: 5000               # 最多記錄5000點
-  autoConnect: true             # 自動連接路徑
-  connectionRadius: 15.0        # 15像素內自動連接
-  recordIntervalMs: 200         # 每200ms記錄一次
+# trajectory:
+#   enableRecording: true         # 啟用軌跡記錄
+#   pointInterval: 3.0            # 每3像素記錄一次
+#   maxPoints: 5000               # 最多記錄5000點
+#   autoConnect: true             # 自動連接路徑
+#   connectionRadius: 15.0        # 15像素內自動連接
+#   recordIntervalMs: 200         # 每200ms記錄一次
 
 templateMatching:
   defaultNmsThreshold: 0.1     # NMS 預設閾值
-  minContourPixels: 100        # 最小輪廓像素數量
+  minContourPixels: 100         # 最小輪廓像素數量
   confidenceThreshold: 0.8     # 信心度閾值比例
   defaultIouThreshold: 0.1
   grayscaleConfidenceMultiplier: 0.8
@@ -95,15 +95,15 @@ mapEditor:
 # 檢測性能控制
 detectionPerformance:
   bloodBarDetectIntervalMs: 150    # 血條檢測間隔 (毫秒)
-  monsterDetectIntervalMs: 300     # 怪物檢測間隔 (毫秒)
-  enableAdaptiveInterval: false     # 啟用自適應間隔
-  maxDetectionSkipFrames: 5        # 最大跳過幀數
+  monsterDetectIntervalMs: 200     # 怪物檢測間隔 (毫秒)
+  # enableAdaptiveInterval: false     # 啟用自適應間隔
+  # maxDetectionSkipFrames: 5        # 最大跳過幀數
 
 #  視窗捕捉配置
 windowCapture:
   # 捕捉性能參數
   captureFrameRate: 15
-  framePoolSize: 3
+  # framePoolSize: 3
   
   # 穩定化參數
   initialDelayMs: 100
@@ -111,8 +111,8 @@ windowCapture:
   retryDelayMs: 500
 
   # 記憶體管理
-  enableMultiThreadProtection: true
-  maxCacheFrames: 5
+  # enableMultiThreadProtection: true
+  # maxCacheFrames: 5
 
 #  玩家偵測配置擴展
 playerDetection:
@@ -121,8 +121,8 @@ playerDetection:
   mediumBarWidthLimit: 25
   
   # 處理性能參數
-  enableAsyncProcessing: true
-  processingTimeoutMs: 1000
+  # enableAsyncProcessing: true
+  # processingTimeoutMs: 1000
   
   # 偵測品質參數
   minAspectRatio: 0.1
@@ -155,8 +155,8 @@ partyRedBar:
 
   #辨識框設定
   dotOffsetY: 50           # 向下5像素
-  detectionBoxWidth: 500   # 檢測框寬度
-  detectionBoxHeight: 200   # 檢測框高度
+  detectionBoxWidth: 550   # 檢測框寬度
+  detectionBoxHeight: 300   # 檢測框高度
   dynamicFillRateSmall: 0.2    # 寬度 <= 10 的血條填充率
   dynamicFillRateMedium: 0.4   # 寬度 <= 25 的血條填充率
 
@@ -261,9 +261,9 @@ detectionModes:
   #  遮擋處理映射
   occlusionMappings:
     "Basic": "None"
-    "ContourOnly": "MorphologyRepair"
-    "Grayscale": "DynamicThreshold" 
-    "Color": "MultiScale"
+    "ContourOnly": "None"
+    "Grayscale": "None"
+    "Color": "None"
     "TemplateFree": "MorphologyRepair"
   
   #  模式描述
