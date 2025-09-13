@@ -304,7 +304,7 @@ namespace ArtaleAI.API
                         Cv2.BitwiseNot(transparentMask, transparentMask);
 
                         // 解析背景顏色 (BGR格式)
-                        var colorValues = _imageSettings.ReplacementColorBgr.Split(',')
+                        var colorValues = _imageSettings.ReplacementColorRgb.Split(',')
                             .Select(s => byte.Parse(s.Trim())).ToArray();
 
                         if (colorValues.Length >= 3)

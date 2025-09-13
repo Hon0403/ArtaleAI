@@ -7,6 +7,8 @@ using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
 using Windows.Graphics.DirectX.Direct3D11;
 using WinRT;
+using OpenCvSharp;
+using OpenCvSharp.Extensions; // 🚀 新增：支援 Mat.ToBitmap()
 
 namespace ArtaleAI.GameWindow
 {
@@ -42,7 +44,7 @@ namespace ArtaleAI.GameWindow
             _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
                 d3dDevice,
                 DirectXPixelFormat.B8G8R8A8UIntNormalized,
-                3, // 增加緩衝區數量
+                3,
                 item.Size);
 
             _session = _framePool.CreateCaptureSession(item);
@@ -50,8 +52,8 @@ namespace ArtaleAI.GameWindow
             _session.StartCapture();
         }
 
-
-        public Bitmap? TryGetNextFrame()
+        // 🚀 新方法：直接返回 Mat，跳過 Bitmap 轉換
+        public Mat? TryGetNextMat()
         {
             using var frame = _framePool.TryGetNextFrame();
             if (frame == null) return null;
@@ -67,51 +69,157 @@ namespace ArtaleAI.GameWindow
                     _lastSize);
             }
 
-            return ConvertToBitmap(frame);
+            return ConvertToMat(frame);
         }
 
-        // 簡化的位圖轉換方法
-        private Bitmap ConvertToBitmap(Direct3D11CaptureFrame frame)
+        // 🎯 核心方法：直接從 Direct3D11CaptureFrame 轉換到 Mat
+        private Mat ConvertToMat(Direct3D11CaptureFrame frame)
         {
             using var sourceTexture = GetSharpDXTexture2D(frame.Surface);
             var desc = sourceTexture.Description;
-            desc.CpuAccessFlags = CpuAccessFlags.Read;
-            desc.BindFlags = BindFlags.None;
-            desc.Usage = ResourceUsage.Staging;
-            desc.OptionFlags = ResourceOptionFlags.None;
 
-            using var stagingTexture = new Texture2D(_device, desc);
+            // 創建 staging texture 用於 CPU 存取
+            var stagingDesc = new Texture2DDescription()
+            {
+                ArraySize = 1,
+                BindFlags = BindFlags.None,
+                CpuAccessFlags = CpuAccessFlags.Read,
+                Format = desc.Format,
+                Height = desc.Height,
+                Width = desc.Width,
+                MipLevels = 1,
+                OptionFlags = ResourceOptionFlags.None,
+                SampleDescription = new SharpDX.DXGI.SampleDescription(1, 0),
+                Usage = ResourceUsage.Staging
+            };
+
+            using var stagingTexture = new Texture2D(_device, stagingDesc);
             _device.ImmediateContext.CopyResource(sourceTexture, stagingTexture);
 
             var dataBox = _device.ImmediateContext.MapSubresource(stagingTexture, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
 
-            var bitmap = new Bitmap(desc.Width, desc.Height, PixelFormat.Format32bppArgb);
-            var boundsRect = new Rectangle(0, 0, desc.Width, desc.Height);
-            var mapDest = bitmap.LockBits(boundsRect, ImageLockMode.WriteOnly, bitmap.PixelFormat);
+            try
+            {
+                int width = desc.Width;
+                int height = desc.Height;
 
-            // 檢查是否可以一次複製全部
-            if (dataBox.RowPitch == mapDest.Stride)
-            {
-                Utilities.CopyMemory(mapDest.Scan0, dataBox.DataPointer, desc.Height * dataBox.RowPitch);
-            }
-            else
-            {
-                // 只有在 RowPitch 和 Stride 不同時才逐行復製
-                IntPtr sourcePtr = dataBox.DataPointer;
-                IntPtr destPtr = mapDest.Scan0;
-                for (int y = 0; y < desc.Height; y++)
+                // 創建 BGRA Mat (Direct3D 格式)
+                var matBGRA = new Mat(height, width, MatType.CV_8UC4);
+
+                unsafe
                 {
-                    Utilities.CopyMemory(destPtr, sourcePtr, desc.Width * 4);
-                    sourcePtr = IntPtr.Add(sourcePtr, dataBox.RowPitch);
-                    destPtr = IntPtr.Add(destPtr, mapDest.Stride);
-                }
-            }
+                    byte* matPtr = (byte*)matBGRA.DataPointer;
+                    byte* sourcePtr = (byte*)dataBox.DataPointer;
 
-            bitmap.UnlockBits(mapDest);
-            _device.ImmediateContext.UnmapSubresource(stagingTexture, 0);
-            return bitmap;
+                    if (dataBox.RowPitch == matBGRA.Step())
+                    {
+                        System.Buffer.MemoryCopy(sourcePtr, matPtr, matBGRA.Total() * matBGRA.ElemSize(), height * dataBox.RowPitch);
+                    }
+                    else
+                    {
+                        for (int y = 0; y < height; y++)
+                        {
+                            System.Buffer.MemoryCopy(
+                                sourcePtr + y * dataBox.RowPitch,
+                                matPtr + y * matBGRA.Step(),
+                                width * 4,
+                                width * 4);
+                        }
+                    }
+                }
+
+                var matBGR = new Mat();
+                Cv2.CvtColor(matBGRA, matBGR, ColorConversionCodes.BGRA2BGR);
+                matBGRA.Dispose();
+
+                Console.WriteLine($"✅ Mat轉換完成 - 格式: BGR, 尺寸: {matBGR.Width}x{matBGR.Height}");
+                return matBGR;
+            }
+            finally
+            {
+                _device.ImmediateContext.UnmapSubresource(stagingTexture, 0);
+            }
         }
 
+        public Bitmap? TryGetNextFrame()
+        {
+            using var frame = _framePool.TryGetNextFrame();
+            if (frame == null) return null;
+
+            // 檢查尺寸變化
+            if (frame.ContentSize.Width != _lastSize.Width || frame.ContentSize.Height != _lastSize.Height)
+            {
+                _lastSize = frame.ContentSize;
+                _framePool.Recreate(
+                    CreateDirect3DDevice(_device.QueryInterface<SharpDX.DXGI.Device>()),
+                    DirectXPixelFormat.B8G8R8A8UIntNormalized,
+                    2,
+                    _lastSize);
+            }
+
+            return ConvertToBitmap(frame);
+        }
+
+        private Bitmap ConvertToBitmap(Direct3D11CaptureFrame frame)
+        {
+            using var sourceTexture = GetSharpDXTexture2D(frame.Surface);
+            var desc = sourceTexture.Description;
+
+            // 創建staging texture
+            var stagingDesc = new Texture2DDescription()
+            {
+                ArraySize = 1,
+                BindFlags = BindFlags.None,
+                CpuAccessFlags = CpuAccessFlags.Read,
+                Format = desc.Format,
+                Height = desc.Height,
+                Width = desc.Width,
+                MipLevels = 1,
+                OptionFlags = ResourceOptionFlags.None,
+                SampleDescription = new SharpDX.DXGI.SampleDescription(1, 0),
+                Usage = ResourceUsage.Staging
+            };
+
+            using var stagingTexture = new Texture2D(_device, stagingDesc);
+            _device.ImmediateContext.CopyResource(sourceTexture, stagingTexture);
+
+            var dataBox = _device.ImmediateContext.MapSubresource(stagingTexture, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
+
+            try
+            {
+                // 直接轉換為Bitmap
+                var bitmap = new Bitmap(desc.Width, desc.Height, PixelFormat.Format32bppArgb);
+                var bitmapData = bitmap.LockBits(
+                    new Rectangle(0, 0, desc.Width, desc.Height),
+                    ImageLockMode.WriteOnly,
+                    PixelFormat.Format32bppArgb);
+
+                unsafe
+                {
+                    byte* sourcePtr = (byte*)dataBox.DataPointer;
+                    byte* destPtr = (byte*)bitmapData.Scan0;
+
+                    for (int y = 0; y < desc.Height; y++)
+                    {
+                        System.Buffer.MemoryCopy(
+                            sourcePtr + y * dataBox.RowPitch,
+                            destPtr + y * bitmapData.Stride,
+                            bitmapData.Stride,
+                            Math.Min(dataBox.RowPitch, bitmapData.Stride)
+                        );
+                    }
+                }
+
+                bitmap.UnlockBits(bitmapData);
+                return bitmap;
+            }
+            finally
+            {
+                _device.ImmediateContext.UnmapSubresource(stagingTexture, 0);
+            }
+        }
+
+        // 原有的輔助方法保持不變
         [DllImport("d3d11.dll", EntryPoint = "CreateDirect3D11DeviceFromDXGIDevice")]
         private static extern uint CreateDirect3D11DeviceFromDXGIDevice(IntPtr dxgiDevice, out IntPtr graphicsDevice);
 

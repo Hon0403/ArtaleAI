@@ -15,117 +15,27 @@ namespace ArtaleAI.Utils
         #region 圖像處理工具
 
         /// <summary>
-        /// 確保Mat是三通道BGR格式
-        /// </summary>
-        public static Mat EnsureThreeChannels(Mat input)
-        {
-            if (input?.Empty() == true)
-                throw new ArgumentException("輸入圖像為空", nameof(input));
-
-            if (input.Channels() == 3)
-                return input.Clone();
-
-            var output = new Mat();
-            switch (input.Channels())
-            {
-                case 1: // 灰階 → BGR
-                    Cv2.CvtColor(input, output, ColorConversionCodes.GRAY2BGR);
-                    break;
-                default:
-                    input.CopyTo(output);
-                    break;
-            }
-            return output;
-        }
-
-        /// <summary>
-        /// 執行緒安全的 Bitmap 轉三通道 Mat
-        /// </summary>
-        public static Mat BitmapToThreeChannelMatSafe(Bitmap bitmap)
-        {
-            if (bitmap == null)
-                throw new ArgumentNullException(nameof(bitmap));
-
-            lock (_conversionLock)
-            {
-                try
-                {
-                    // 創建完全獨立的副本再轉換
-                    using var safeCopy = new Bitmap(bitmap.Width, bitmap.Height, bitmap.PixelFormat);
-                    using (var g = Graphics.FromImage(safeCopy))
-                    {
-                        // 鎖定來源 bitmap 避免併發讀取
-                        lock (bitmap)
-                        {
-                            g.DrawImage(bitmap, 0, 0);
-                        }
-                    }
-
-                    using var originalMat = safeCopy.ToMat();
-                    return EnsureThreeChannels(originalMat);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"轉換失敗: {ex.Message}");
-                    throw new InvalidOperationException($"安全轉換失敗: {ex.Message}", ex);
-                }
-            }
-        }
-
-        public static Mat BitmapToThreeChannelMat(Bitmap bitmap, bool fastMode = true)
-        {
-            if (bitmap == null)
-                throw new ArgumentNullException(nameof(bitmap));
-
-            if (fastMode)
-            {
-                // 🚀 快速模式：直接使用 OpenCvSharp 內建轉換器
-                try
-                {
-                    using var originalMat = OpenCvSharp.Extensions.BitmapConverter.ToMat(bitmap);
-                    return EnsureThreeChannels(originalMat);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"快速轉換失敗，回退至安全模式: {ex.Message}");
-                    // 失敗時自動回退到原本的安全模式
-                    return BitmapToThreeChannelMatSafe(bitmap);
-                }
-            }
-            else
-            {
-                return BitmapToThreeChannelMatSafe(bitmap);
-            }
-        }
-
-        /// <summary>
         /// 創建HSV版本的Mat
         /// </summary>
-        public static Mat ConvertToHSV(Mat bgrMat)
+        public static Mat ConvertToHSV(Mat bgrMat) // 參數改名
         {
             if (bgrMat?.Empty() == true)
                 throw new ArgumentException("輸入圖像為空", nameof(bgrMat));
-
             var hsvMat = new Mat();
-            Cv2.CvtColor(bgrMat, hsvMat, ColorConversionCodes.BGR2HSV);
+            Cv2.CvtColor(bgrMat, hsvMat, ColorConversionCodes.BGR2HSV); // RGB2HSV → BGR2HSV
             return hsvMat;
         }
 
         /// <summary>
         /// 創建灰階版本的Mat
         /// </summary>
-        public static Mat ConvertToGrayscale(Mat bgrMat)
+        public static Mat ConvertToGrayscale(Mat bgrMat) // 參數改名
         {
             if (bgrMat?.Empty() == true)
                 throw new ArgumentException("輸入圖像為空", nameof(bgrMat));
-
             var grayMat = new Mat();
             Cv2.CvtColor(bgrMat, grayMat, ColorConversionCodes.BGR2GRAY);
-            // 轉回三通道灰階
-            var gray3ChMat = new Mat();
-            Cv2.CvtColor(grayMat, gray3ChMat, ColorConversionCodes.GRAY2BGR);
-            grayMat.Dispose();
-            return gray3ChMat;
+            return grayMat;
         }
 
         /// <summary>
@@ -162,81 +72,38 @@ namespace ArtaleAI.Utils
             return mask;
         }
 
-        /// <summary>
-        /// 使用 HSV 顏色空間分離綠色背景（推薦）
-        /// </summary>
-        public static Mat CreateForegroundMaskHSV(Mat img)
+        public static Mat EnsureThreeChannels(Mat input)
         {
-            if (img?.Empty() == true)
-                throw new ArgumentException("輸入圖像為空", nameof(img));
+            if (input?.Empty() == true)
+                throw new ArgumentException("輸入圖像為空", nameof(input));
 
-            using var hsvImg = new Mat();
-            Cv2.CvtColor(img, hsvImg, ColorConversionCodes.BGR2HSV);
+            if (input.Channels() == 3)
+                return input.Clone();
 
-            var mask = new Mat();
-
-            // ✅ HSV 綠色範圍：H(60-80), S(100-255), V(100-255)
-            var lowerGreen = new Scalar(50, 80, 80);   // 較寬的綠色範圍
-            var upperGreen = new Scalar(90, 255, 255);
-
-            var greenMask = new Mat();
-            Cv2.InRange(hsvImg, lowerGreen, upperGreen, greenMask);
-
-            // 反轉：綠色=0，非綠色=255
-            Cv2.BitwiseNot(greenMask, mask);
-            greenMask.Dispose();
-
-            return mask;
+            var output = new Mat();
+            switch (input.Channels())
+            {
+                case 1: // 灰階 → BGR
+                    Cv2.CvtColor(input, output, ColorConversionCodes.GRAY2BGR);
+                    break;
+                case 4: // RGBA → BGR
+                    Cv2.CvtColor(input, output, ColorConversionCodes.RGBA2BGR);
+                    break;
+                default:
+                    input.CopyTo(output);
+                    break;
+            }
+            return output;
         }
 
-        /// <summary>
-        /// 多層HSV檢測，更準確分離綠色背景
-        /// </summary>
-        public static Mat CreateAdvancedForegroundMask(Mat img)
+        public static Mat BitmapToThreeChannelMat(Bitmap bitmap)
         {
-            if (img?.Empty() == true)
-                throw new ArgumentException("輸入圖像為空", nameof(img));
+            if (bitmap == null)
+                throw new ArgumentNullException(nameof(bitmap));
 
-            using var hsvImg = new Mat();
-            Cv2.CvtColor(img, hsvImg, ColorConversionCodes.BGR2HSV);
-
-            // 🎯 更精準的綠色範圍檢測
-            var pureGreenMask = new Mat();
-            Cv2.InRange(hsvImg, new Scalar(35, 80, 80), new Scalar(85, 255, 255), pureGreenMask);
-
-            // 🎯 形態學處理
-            var kernel = Cv2.GetStructuringElement(MorphShapes.Ellipse, new OpenCvSharp.Size(3, 3));
-            using var closedGreen = new Mat();
-
-            // 填補洞
-            Cv2.MorphologyEx(pureGreenMask, closedGreen, MorphTypes.Close, kernel);
-
-            // 反轉得到前景遮罩
-            var finalMask = new Mat();
-            Cv2.BitwiseNot(closedGreen, finalMask);
-
-            // 🔧 調試輸出
-            try
-            {
-                var debugDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Debug");
-                Directory.CreateDirectory(debugDir);
-
-                pureGreenMask.SaveImage(Path.Combine(debugDir, "01_green_detection.png"));
-                closedGreen.SaveImage(Path.Combine(debugDir, "02_closed.png"));
-                finalMask.SaveImage(Path.Combine(debugDir, "05_final_mask.png"));
-
-                Console.WriteLine($"✅ 調試圖像已保存");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"調試圖像保存失敗: {ex.Message}");
-            }
-
-            // 清理資源
-            pureGreenMask.Dispose();
-            kernel.Dispose();
-
-            return finalMask;
+            // 🚀 直接使用OpenCV的標準轉換，保持BGR格式
+            using var originalMat = OpenCvSharp.Extensions.BitmapConverter.ToMat(bitmap);
+            return EnsureThreeChannels(originalMat); // 這個返回BGR格式
         }
 
 

@@ -38,6 +38,9 @@
     <None Update="templates\minimap\bottom_right.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="templates\minimap\frame_template.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="templates\minimap\other_players.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

@@ -30,6 +30,7 @@ namespace ArtaleAI.Detection
                 // 檢查快取
                 if (_cachedMonsterTemplates.TryGetValue(monsterName, out var cachedTemplates))
                 {
+					statusReporter($"從快取載入 {monsterName} BGR模板");
                     return cachedTemplates.Select(t => new Bitmap(t)).ToList(); // 返回副本
                 }
 
@@ -40,7 +41,7 @@ namespace ArtaleAI.Detection
                     return new List<Bitmap>();
                 }
 
-                statusReporter($"正在從 '{monsterName}' 載入怪物模板...");
+				statusReporter($"正在從 '{monsterName}' 載入BGR格式模板...");
                 var templateFiles = await Task.Run(() => Directory.GetFiles(monsterFolderPath, "*.png"));
 
                 if (!templateFiles.Any())
@@ -54,13 +55,16 @@ namespace ArtaleAI.Detection
                 {
                     try
                     {
-                        using (var tempBitmap = new Bitmap(file))
+                        // 🚀 直接載入 Bitmap，不做額外轉換
+                        var templateBitmap = new Bitmap(file);
+                        if (IsValidTemplate(templateBitmap, Path.GetFileName(file)))
                         {
-                            if (IsValidTemplate(tempBitmap, Path.GetFileName(file)))
-                            {
-                                var safeCopy = new Bitmap(tempBitmap);
-                                loadedTemplates.Add(safeCopy);
-                            }
+                            loadedTemplates.Add(templateBitmap);
+                            Console.WriteLine($"✅ 載入模板: {Path.GetFileName(file)}");
+                        }
+                        else
+                        {
+                            templateBitmap.Dispose();
                         }
                     }
                     catch (Exception ex)
@@ -71,7 +75,8 @@ namespace ArtaleAI.Detection
 
                 // 快取模板
                 _cachedMonsterTemplates[monsterName] = loadedTemplates.Select(t => new Bitmap(t)).ToList();
-                statusReporter($"✅ 成功載入 {loadedTemplates.Count} 個 '{monsterName}' 模板");
+                statusReporter($"✅ 成功載入 {loadedTemplates.Count} 個 '{monsterName}' BGR模板");
+
                 return loadedTemplates;
             }
             catch (Exception ex)

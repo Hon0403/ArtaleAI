@@ -8,8 +8,9 @@
 
 templates:
   minimap:
-    playerThreshold: 0.6
-    cornerThreshold: 0.6
+    matchingMethod: "Edges"
+    playerThreshold: 0.4
+    cornerThreshold: 0.7
     playerMarker:
       path: templates/minimap/player_marker.png
     otherPlayers:
@@ -24,8 +25,9 @@ templates:
       bottomRight:
         path: templates/minimap/bottom_right.png
 
+
   monsterDetection:
-    defaultThreshold: 0.3
+    defaultThreshold: 0.1
     maxDetectionResults: 1
     detectionMode: Color
     # occlusionHandling: DynamicThreshold
@@ -185,14 +187,6 @@ overlayStyle:
     textThickness: 2           # 文字粗細
     minimapDisplayName: "Minimap" # 小地圖顯示名稱
 
-  player:
-    frameColor: 0,255,255      # 玩家框線顏色 (RGB: 綠色)
-    textColor: 255,255,255     # 玩家文字顏色 (RGB: 黑色)
-    frameThickness: 2          # 框線粗細
-    textScale: 1.2             # 文字大小倍率  
-    textThickness: 2           # 文字粗細
-    playerDisplayName: "Player"   # 玩家顯示名稱
-
   partyRedBar:  # ← 血條樣式
     frameColor: 124,252,0    # 綠色框線
     textColor: 255,255,255   # 白色文字
@@ -235,7 +229,7 @@ monsterDownload:
 # 圖像處理設定
 imageProcessing:
   convertTransparentPixels: true
-  replacementColorBgr: 0,255,0
+  replacementColorRgb: 0,255,0
   preserveAlphaChannel: true
   outputFormat: png
   compressionQuality: 90

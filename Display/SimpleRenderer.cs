@@ -9,18 +9,18 @@ namespace ArtaleAI.Display
             Bitmap baseBitmap,
             IEnumerable<IRenderItem>? monsterItems,
             IEnumerable<IRenderItem>? minimapItems,
-            IEnumerable<IRenderItem>? playerItems,
             IEnumerable<IRenderItem>? partyRedBarItems,
-            IEnumerable<IRenderItem>? detectionBoxItems)
+            IEnumerable<IRenderItem>? detectionBoxItems,
+            IEnumerable<IRenderItem>? attackRangeItems = null) // 添加預設值
         {
             if (baseBitmap == null) return null;
 
             var allItems = new List<IRenderItem>();
             allItems.AddRange(monsterItems ?? Enumerable.Empty<IRenderItem>());
             allItems.AddRange(minimapItems ?? Enumerable.Empty<IRenderItem>());
-            allItems.AddRange(playerItems ?? Enumerable.Empty<IRenderItem>());
             allItems.AddRange(partyRedBarItems ?? Enumerable.Empty<IRenderItem>());
             allItems.AddRange(detectionBoxItems ?? Enumerable.Empty<IRenderItem>());
+            allItems.AddRange(attackRangeItems ?? Enumerable.Empty<IRenderItem>());
 
             if (!allItems.Any()) return new Bitmap(baseBitmap);
 

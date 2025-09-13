@@ -51,7 +51,7 @@ namespace ArtaleAI.API.Models
     public class ImageProcessingSettings
     {
         public bool ConvertTransparentPixels { get; set; }
-        public string ReplacementColorBgr { get; set; }
+        public string ReplacementColorRgb { get; set; }
         public bool PreserveAlphaChannel { get; set; }
         public string OutputFormat { get; set; }
         public int CompressionQuality { get; set; }

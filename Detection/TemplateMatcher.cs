@@ -50,15 +50,13 @@ namespace ArtaleAI.Detection
                 if (sourceBitmap == null) return results;
                 if (mode != MonsterDetectionMode.TemplateFree && templateBitmap == null) return results;
 
-                using var sourceImg = UtilityHelper.BitmapToThreeChannelMat(sourceBitmap);
-                Mat? templateImg = null;
-                if (templateBitmap != null)
-                {
-                    templateImg = UtilityHelper.BitmapToThreeChannelMat(templateBitmap);
-                }
+				using var sourceImg = UtilityHelper.BitmapToThreeChannelMat(sourceBitmap);
+				Mat? templateImg = null;
+				templateImg = UtilityHelper.BitmapToThreeChannelMat(templateBitmap);
 
-                try
-                {
+
+				try
+				{
                     results = mode switch
                     {
                         MonsterDetectionMode.Basic => ProcessBasicModeSimplified(sourceImg, templateImg!, threshold, monsterName),
@@ -376,6 +374,179 @@ namespace ArtaleAI.Detection
             if (_settings == null)
             {
                 throw new InvalidOperationException("TemplateMatcher 未初始化！");
+            }
+        }
+
+        public static List<MatchResult> FindMonstersWithMatOptimized(
+        Mat sourceMat,
+        List<Bitmap> templateBitmaps,
+        MonsterDetectionMode mode,
+        double threshold = 0.7,
+        string monsterName = "")
+        {
+            EnsureInitialized();
+
+            if (sourceMat?.Empty() != false || templateBitmaps == null || !templateBitmaps.Any())
+                return new List<MatchResult>();
+
+            var allResults = new List<MatchResult>();
+
+            foreach (var templateBitmap in templateBitmaps)
+            {
+                if (templateBitmap == null) continue;
+
+                try
+                {
+					// 🎯 只轉換模板一次，源圖像保持 Mat
+					using var templateMat = UtilityHelper.BitmapToThreeChannelMat(templateBitmap);
+					var results = FindMonstersMatToMat(sourceMat, templateMat, mode, threshold, monsterName);
+                    allResults.AddRange(results);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"❌ 優化模板匹配失敗: {ex.Message}");
+                    continue;
+                }
+            }
+
+            return allResults;
+        }
+
+        // 🚀 Mat 到 Mat 的直接匹配
+        private static List<MatchResult> FindMonstersMatToMat(
+            Mat sourceMat,
+            Mat templateMat,
+            MonsterDetectionMode mode,
+            double threshold,
+            string monsterName)
+        {
+            var results = mode switch
+            {
+                MonsterDetectionMode.Basic => ProcessBasicModeMatOptimized(sourceMat, templateMat, threshold, monsterName),
+                MonsterDetectionMode.Color => ProcessColorModeMatOptimized(sourceMat, templateMat, threshold, monsterName),
+                MonsterDetectionMode.Grayscale => ProcessGrayscaleModeMatOptimized(sourceMat, templateMat, threshold, monsterName),
+                _ => new List<MatchResult>()
+            };
+
+            Console.WriteLine($"🎯 {mode} Mat優化模式找到 {results.Count} 個怪物");
+            return results;
+        }
+
+        // 🚀 Mat 優化版 Color 模式
+        private static List<MatchResult> ProcessColorModeMatOptimized(Mat sourceMat, Mat templateMat, double threshold, string monsterName)
+        {
+            var results = new List<MatchResult>();
+
+            try
+            {
+                using var result = new Mat();
+
+                // 🚀 直接 Mat 匹配，無轉換損失
+                Cv2.MatchTemplate(sourceMat, templateMat, result, TemplateMatchModes.CCoeffNormed);
+
+                var locations = GetMatchingLocations(result, threshold, false);
+
+                foreach (var loc in locations)
+                {
+                    float score = result.At<float>(loc.Y, loc.X);
+
+                    results.Add(new MatchResult
+                    {
+                        Name = monsterName,
+                        Position = new SdPoint(loc.X, loc.Y),
+                        Size = new System.Drawing.Size(templateMat.Width, templateMat.Height),
+                        Score = score,
+                        Confidence = score
+                    });
+                }
+
+                Console.WriteLine($"🎯 Mat Color優化找到 {results.Count} 個匹配");
+                return results;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Mat Color優化失敗: {ex.Message}");
+                return results;
+            }
+        }
+
+        private static List<MatchResult> ProcessBasicModeMatOptimized(Mat sourceMat, Mat templateMat, double threshold, string monsterName)
+        {
+            var results = new List<MatchResult>();
+
+            try
+            {
+                using var result = new Mat();
+
+                // 🚀 直接 Mat 匹配，無轉換損失
+                Cv2.MatchTemplate(sourceMat, templateMat, result, TemplateMatchModes.CCoeffNormed);
+
+                var locations = GetMatchingLocations(result, threshold, false);
+
+                foreach (var loc in locations)
+                {
+                    float score = result.At<float>(loc.Y, loc.X);
+
+                    results.Add(new MatchResult
+                    {
+                        Name = monsterName,
+                        Position = new SdPoint(loc.X, loc.Y),
+                        Size = new System.Drawing.Size(templateMat.Width, templateMat.Height),
+                        Score = score,
+                        Confidence = score
+                    });
+                }
+
+                Console.WriteLine($"🎯 Mat Basic優化找到 {results.Count} 個匹配");
+                return results;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Mat Basic優化失敗: {ex.Message}");
+                return results;
+            }
+        }
+
+        // Mat 優化版 Grayscale 模式
+        private static List<MatchResult> ProcessGrayscaleModeMatOptimized(Mat sourceMat, Mat templateMat, double threshold, string monsterName)
+        {
+            var results = new List<MatchResult>();
+
+            try
+            {
+                using var sourceGray = new Mat();
+                using var templateGray = new Mat();
+
+                // 🚀 從RGB轉換為灰階
+                Cv2.CvtColor(sourceMat, sourceGray, ColorConversionCodes.BGR2GRAY);
+                Cv2.CvtColor(templateMat, templateGray, ColorConversionCodes.BGR2GRAY);
+
+                using var result = new Mat();
+                Cv2.MatchTemplate(sourceGray, templateGray, result, TemplateMatchModes.CCoeffNormed);
+
+                var locations = GetMatchingLocations(result, threshold, false);
+
+                foreach (var loc in locations)
+                {
+                    float score = result.At<float>(loc.Y, loc.X);
+
+                    results.Add(new MatchResult
+                    {
+                        Name = monsterName,
+                        Position = new SdPoint(loc.X, loc.Y),
+                        Size = new System.Drawing.Size(templateMat.Width, templateMat.Height),
+                        Score = score,
+                        Confidence = score
+                    });
+                }
+
+                Console.WriteLine($"🎯 BGR Mat Grayscale優化找到 {results.Count} 個匹配");
+                return results;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ BGR Mat Grayscale優化失敗: {ex.Message}");
+                return results;
             }
         }
 

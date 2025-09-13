@@ -45,11 +45,14 @@ namespace ArtaleAI.Config
 
     public class MinimapTemplates
     {
+        public string MatchingMethod { get; set; }
         public double PlayerThreshold { get; set; }
         public double CornerThreshold { get; set; }
         public TemplateConfig PlayerMarker { get; set; }
         public TemplateConfig OtherPlayers { get; set; }
         public CornerTemplates Corners { get; set; }
+        public TemplateConfig? Frame { get; set; }
+
     }
 
     public class DetectionPerformanceSettings
@@ -66,6 +69,7 @@ namespace ArtaleAI.Config
         public TemplateConfig TopRight { get; set; }
         public TemplateConfig BottomLeft { get; set; }
         public TemplateConfig BottomRight { get; set; }
+
     }
 
     public class TemplateConfig
@@ -77,7 +81,6 @@ namespace ArtaleAI.Config
     {
         public MonsterOverlayStyle Monster { get; set; } = new();
         public MinimapOverlayStyle Minimap { get; set; } = new();
-        public PlayerOverlayStyle Player { get; set; } = new();
         public PartyRedBarOverlayStyle PartyRedBar { get; set; } = new();
         public DetectionBoxOverlayStyle DetectionBox { get; set; } = new();
         public AttackRangeOverlayStyle AttackRange { get; set; } = new();
@@ -102,16 +105,6 @@ namespace ArtaleAI.Config
         public double TextScale { get; set; }
         public int TextThickness { get; set; }
         public string MinimapDisplayName { get; set; }
-    }
-
-    public class PlayerOverlayStyle
-    {
-        public string FrameColor { get; set; }
-        public string TextColor { get; set; }
-        public int FrameThickness { get; set; }
-        public double TextScale { get; set; }
-        public int TextThickness { get; set; }
-        public string PlayerDisplayName { get; set; }
     }
 
     public class DetectionBoxOverlayStyle

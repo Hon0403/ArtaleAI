@@ -7,6 +7,8 @@ using ArtaleAI.Minimap;
 using ArtaleAI.Models;
 using ArtaleAI.Utils;
 using OpenCvSharp;
+using OpenCvSharp.Extensions;
+using System.Diagnostics;
 using Windows.Graphics.Capture;
 using SdPoint = System.Drawing.Point;
 using SdRect = System.Drawing.Rectangle;
@@ -100,278 +102,6 @@ namespace ArtaleAI
             OnStatusMessage($"成功載入 {monsterNames.Count} 種怪物模板選項");
         }
 
-        // 即時顯示事件
-        public void OnFrameAvailable(Bitmap frame)
-        {
-            if (frame == null) return;
-
-            try
-            {
-                var config = _configurationManager?.CurrentConfig;
-                if (config?.DetectionPerformance == null) return;
-
-                // 🎯 單執行緒：循序處理
-                ProcessBloodBars(frame);
-                ProcessMonsters(frame);
-                RenderAndDisplayOverlays(frame);
-            }
-            catch (Exception ex)
-            {
-                OnStatusMessage($"幀處理失敗: {ex.Message}");
-            }
-            finally
-            {
-                frame?.Dispose();
-            }
-        }
-
-
-        private void ProcessBloodBars(Bitmap frame)
-        {
-            try
-            {
-                var config = _configurationManager?.CurrentConfig;
-                if (!ShouldDetectBloodBar(DateTime.UtcNow, config.DetectionPerformance)) return;
-
-                using var frameMat = UtilityHelper.BitmapToThreeChannelMat(frame);
-                using var cameraArea = BloodBarDetector.ExtractCameraArea(frameMat, null, config.PartyRedBar, out int cameraOffsetY);
-                using var hsvImage = UtilityHelper.ConvertToHSV(cameraArea);
-                using var redMask = BloodBarDetector.CreateRedMask(hsvImage, config.PartyRedBar);
-
-                var bloodBarRect = BloodBarDetector.FindBestRedBar(redMask, config.PartyRedBar);
-                if (bloodBarRect.HasValue)
-                {
-                    var screenBloodBar = BloodBarDetector.ToScreenCoordinates(bloodBarRect.Value, cameraOffsetY);
-                    _currentBloodBars = new List<Rectangle> { screenBloodBar };
-                    _currentDetectionBoxes = BloodBarDetector.CalculateDetectionBoxes(screenBloodBar, config.PartyRedBar);
-                    _currentAttackRangeBoxes = BloodBarDetector.CalculateAttackRangeBoxes(screenBloodBar, config.AttackRange);
-                    _lastBloodBarDetection = DateTime.UtcNow;
-                    OnStatusMessage($"✅ 血條檢測成功: {screenBloodBar}");
-                }
-            }
-            catch (Exception ex) { OnStatusMessage($"❌ 血條檢測異常: {ex.Message}"); }
-        }
-
-        private void ProcessMonsters(Bitmap frame)
-        {
-            try
-            {
-                var config = _configurationManager?.CurrentConfig;
-                if (config?.DetectionPerformance == null) return;
-
-                var now = DateTime.UtcNow;
-
-                OnStatusMessage($"🔍 怪物檢測開始: 檢測區域={_currentDetectionBoxes.Count}個");
-
-                // 🎯 單執行緒：直接使用當前檢測框，不需要複製
-                if (_currentDetectionBoxes.Any() && ShouldDetectMonster(now, config.DetectionPerformance))
-                {
-                    OnStatusMessage($"🎯 開始怪物檢測，使用 {_currentDetectionBoxes.Count} 個檢測框");
-
-                    var monsters = DetectMonstersInCurrentBoxes(frame, _currentDetectionBoxes);
-
-                    // 🎯 單執行緒：直接更新，不需要鎖定
-                    _currentMonsters = monsters;
-
-                    _lastMonsterDetection = now;
-                    if (monsters.Any())
-                    {
-                        OnStatusMessage($"🎯 發現 {monsters.Count} 個怪物");
-                    }
-                    else
-                    {
-                        OnStatusMessage($"⚠️ 未發現怪物，檢測框={_currentDetectionBoxes.Count}個");
-                    }
-                }
-                else if (!_currentDetectionBoxes.Any())
-                {
-                    OnStatusMessage("❌ 無檢測區域，等待血條檢測成功");
-                }
-                else
-                {
-                    OnStatusMessage($"⏰ 怪物檢測間隔未到，距離上次={(now - _lastMonsterDetection).TotalMilliseconds:F0}ms");
-                }
-            }
-            catch (Exception ex)
-            {
-                OnStatusMessage($"❌ 怪物檢測異常: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// 同步版本的怪物檢測方法 - 用於各別處理
-        /// </summary>
-        private List<MonsterRenderInfo> DetectMonstersInCurrentBoxes(Bitmap frame, List<Rectangle> detectionBoxes)
-        {
-            try
-            {
-                var templateData = GetTemplateDataSafely();
-                if (string.IsNullOrEmpty(templateData.SelectedMonsterName) || !templateData.Templates.Any())
-                    return new List<MonsterRenderInfo>();
-
-                var allResults = new List<MonsterRenderInfo>();
-
-                foreach (var originalDetectionBox in detectionBoxes)
-                {
-                    try
-                    {
-                        // ✅ 1. 計算實際可裁切的區域
-                        var frameBounds = new Rectangle(0, 0, frame.Width, frame.Height);
-                        var validCropArea = Rectangle.Intersect(originalDetectionBox, frameBounds);
-
-                        if (validCropArea.IsEmpty || validCropArea.Width < 10 || validCropArea.Height < 10)
-                        {
-                            Console.WriteLine($"⚠️ 跳過無效檢測區域: {validCropArea}");
-                            continue;
-                        }
-
-                        // ✅ 2. 裁切圖像
-                        using var croppedFrame = frame.Clone(validCropArea, frame.PixelFormat);
-                        if (croppedFrame == null) continue;
-
-                        Console.WriteLine($"🔍 檢測區域: 原始={originalDetectionBox}, 實際裁切={validCropArea}");
-
-                        // ✅ 3. 在裁切圖像中進行檢測
-                        var croppedResults = ProcessMonstersInCroppedFrame(
-                            croppedFrame,
-                            templateData,
-                            validCropArea,           // 實際裁切區域
-                            originalDetectionBox     // 原始檢測框（用於調試）
-                        );
-
-                        allResults.AddRange(croppedResults);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"❌ 檢測框處理失敗: {ex.Message}");
-                        continue;
-                    }
-                }
-
-                // ✅ 4. 應用NMS去除重複
-                if (allResults.Count > 1)
-                {
-                    double iouThreshold = _configurationManager.CurrentConfig.Templates.MonsterDetection.NmsIouThreshold;
-                    Console.WriteLine($"🎯 應用NMS，閾值={iouThreshold}, 候選數={allResults.Count}");
-                    allResults = UtilityHelper.ApplyNMS(allResults, iouThreshold, higherIsBetter: true);
-                    Console.WriteLine($"✅ NMS後剩餘: {allResults.Count} 個結果");
-                }
-
-                return allResults;
-            }
-            catch (Exception ex)
-            {
-                OnStatusMessage($"❌ 怪物檢測失敗: {ex.Message}");
-                return new List<MonsterRenderInfo>();
-            }
-        }
-
-        /// <summary>
-        /// 處理裁切後的圖像檢測
-        /// </summary>
-        private List<MonsterRenderInfo> ProcessMonstersInCroppedFrame(
-            Bitmap croppedFrame,
-            TemplateData templateData,
-            Rectangle actualCropArea,
-            Rectangle originalDetectionBox)
-        {
-            var results = new List<MonsterRenderInfo>();
-
-            try
-            {
-                // 增強調試輸出
-                OnStatusMessage($"🔍 開始裁切圖像檢測:");
-                OnStatusMessage($"  - 裁切圖像: {croppedFrame.Width}x{croppedFrame.Height}");
-                OnStatusMessage($"  - 模板數量: {templateData.Templates.Count}");
-                OnStatusMessage($"  - 怪物名稱: '{templateData.SelectedMonsterName}'");
-                OnStatusMessage($"  - 檢測模式: {templateData.DetectionMode}");
-                OnStatusMessage($"  - 閾值: {templateData.Threshold:F3}");
-
-                // 檢查模板是否為空
-                if (templateData.Templates.Count == 0)
-                {
-                    OnStatusMessage("❌ 沒有可用模板!");
-                    return results;
-                }
-
-                // 檢查第一個模板
-                var firstTemplate = templateData.Templates[0];
-                if (firstTemplate != null)
-                {
-                    OnStatusMessage($"📏 第一個模板尺寸: {firstTemplate.Width}x{firstTemplate.Height}");
-
-                    // 檢查尺寸是否合理
-                    if (firstTemplate.Width > croppedFrame.Width || firstTemplate.Height > croppedFrame.Height)
-                    {
-                        OnStatusMessage($"❌ 模板太大! 模板:{firstTemplate.Width}x{firstTemplate.Height}, 檢測區域:{croppedFrame.Width}x{croppedFrame.Height}");
-                        return results;
-                    }
-                }
-
-                // 解析檢測模式
-                if (!Enum.TryParse<MonsterDetectionMode>(templateData.DetectionMode, out var detectionMode))
-                {
-                    detectionMode = MonsterDetectionMode.Color;
-                    OnStatusMessage("⚠️ 檢測模式解析失敗，使用預設 Color 模式");
-                }
-
-                OnStatusMessage("🎯 開始模板匹配...");
-
-                // 執行模板匹配並記錄每一步
-                var matchResults = TemplateMatcher.FindMonstersWithCache(
-                    croppedFrame,
-                    templateData.Templates,
-                    detectionMode,
-                    templateData.Threshold,
-                    templateData.SelectedMonsterName,
-                    null
-                );
-
-                OnStatusMessage($"📊 模板匹配完成，原始結果: {matchResults.Count} 個");
-
-                // ✅ 處理每個結果並記錄詳細資訊
-                foreach (var match in matchResults)
-                {
-                    var globalX = match.Position.X + actualCropArea.X;
-                    var globalY = match.Position.Y + actualCropArea.Y;
-
-                    OnStatusMessage($"👾 候選怪物:");
-                    OnStatusMessage($"  - 名稱: {match.Name}");
-                    OnStatusMessage($"  - 裁切內座標: ({match.Position.X}, {match.Position.Y})");
-                    OnStatusMessage($"  - 全局座標: ({globalX}, {globalY})");
-                    OnStatusMessage($"  - 信心度: {match.Confidence:F4}");
-                    OnStatusMessage($"  - 尺寸: {match.Size.Width}x{match.Size.Height}");
-
-                    // ✅ 極低閾值測試
-                    if (match.Confidence >= 0.01) // 極低閾值
-                    {
-                        var monster = new MonsterRenderInfo
-                        {
-                            MonsterName = match.Name,
-                            Location = new SdPoint(globalX, globalY),
-                            Size = match.Size,
-                            Confidence = match.Confidence
-                        };
-                        results.Add(monster);
-                        OnStatusMessage($"  ✅ 已添加怪物 (信心度: {match.Confidence:F4})");
-                    }
-                    else
-                    {
-                        OnStatusMessage($"  ❌ 信心度過低: {match.Confidence:F4}");
-                    }
-                }
-
-                OnStatusMessage($"✅ 最終結果: {results.Count} 個怪物");
-                return results;
-            }
-            catch (Exception ex)
-            {
-                OnStatusMessage($"❌ 裁切圖像檢測異常: {ex.Message}");
-                OnStatusMessage($"❌ 堆疊追蹤: {ex.StackTrace}");
-                return results;
-            }
-        }
-
         // 血條檢測條件判斷
         private bool ShouldDetectBloodBar(DateTime now, DetectionPerformanceSettings config)
         {
@@ -384,78 +114,6 @@ namespace ArtaleAI
         {
             var elapsed = (now - _lastMonsterDetection).TotalMilliseconds;
             return elapsed >= config.MonsterDetectIntervalMs || _currentMonsters.Count == 0;
-        }
-
-        private void RenderAndDisplayOverlays(Bitmap baseBitmap)
-        {
-            try
-            {
-                var config = _configurationManager?.CurrentConfig;
-                if (config?.OverlayStyle == null)
-                {
-                    OnStatusMessage("⚠️ 渲染樣式配置無效，顯示原始畫面");
-                    UpdateDisplaySafely(new Bitmap(baseBitmap));
-                    return;
-                }
-
-                var monsterItems = new List<MonsterRenderItem>();
-                var partyRedBarItems = new List<PartyRedBarRenderItem>();
-                var detectionBoxItems = new List<DetectionBoxRenderItem>();
-                var attackRangeItems = new List<AttackRangeRenderItem>();
-
-                if (_currentBloodBars.Any())
-                {
-                    partyRedBarItems.AddRange(_currentBloodBars.Select(rect =>
-                        new PartyRedBarRenderItem(config.OverlayStyle.PartyRedBar) { BoundingBox = rect }));
-                }
-
-                if (_currentDetectionBoxes.Any())
-                {
-                    detectionBoxItems.AddRange(_currentDetectionBoxes.Select(rect =>
-                        new DetectionBoxRenderItem(config.OverlayStyle.DetectionBox) { BoundingBox = rect }));
-                }
-
-                // 攻擊範圍框渲染
-                if (_currentAttackRangeBoxes.Any())
-                {
-                    attackRangeItems.AddRange(_currentAttackRangeBoxes.Select(rect =>
-                        new AttackRangeRenderItem(config.OverlayStyle.AttackRange) { BoundingBox = rect }));
-                }
-
-                if (_currentMonsters.Any())
-                {
-                    monsterItems.AddRange(_currentMonsters.Select(m =>
-                        new MonsterRenderItem(config.OverlayStyle.Monster)
-                        {
-                            BoundingBox = new Rectangle(m.Location.X, m.Location.Y, m.Size.Width, m.Size.Height),
-                            MonsterName = m.MonsterName,
-                            Confidence = m.Confidence
-                        }));
-                }
-
-                // 修正：合併所有檢測框項目為 IRenderItem 列表
-                var allDetectionItems = new List<IRenderItem>();
-                allDetectionItems.AddRange(detectionBoxItems.Cast<IRenderItem>());
-                allDetectionItems.AddRange(attackRangeItems.Cast<IRenderItem>());
-
-                var renderedFrame = SimpleRenderer.RenderOverlays(
-                    baseBitmap,
-                    monsterItems,
-                    null,
-                    null,
-                    partyRedBarItems,
-                    allDetectionItems 
-                );
-
-                if (renderedFrame != null)
-                {
-                    UpdateDisplaySafely(renderedFrame);
-                }
-            }
-            catch (Exception ex)
-            {
-                OnError($"渲染疊加層失敗: {ex.Message}");
-            }
         }
 
         private void UpdateDisplaySafely(Bitmap newFrame)
@@ -737,23 +395,31 @@ namespace ArtaleAI
         public PointF? ConvertToImageCoordinates(SdPoint mouseLocation)
         {
             if (pictureBoxMinimap.Image == null) return null;
+
             var clientSize = pictureBoxMinimap.ClientSize;
             var imageSize = pictureBoxMinimap.Image.Size;
+
+            // 🔍 檢查這裡的比例計算是否正確
             float ratioX = (float)clientSize.Width / imageSize.Width;
             float ratioY = (float)clientSize.Height / imageSize.Height;
-            float ratio = Math.Min(ratioX, ratioY);
+            float ratio = Math.Min(ratioX, ratioY); // 保持比例
+
+            // 計算實際顯示區域
             int displayWidth = (int)(imageSize.Width * ratio);
             int displayHeight = (int)(imageSize.Height * ratio);
             int offsetX = (clientSize.Width - displayWidth) / 2;
             int offsetY = (clientSize.Height - displayHeight) / 2;
+
             var displayRect = new Rectangle(offsetX, offsetY, displayWidth, displayHeight);
             if (!displayRect.Contains(mouseLocation)) return null;
-            float imageX = mouseLocation.X - offsetX;
-            float imageY = mouseLocation.Y - offsetY;
-            float originalX = imageX / ratio;
-            float originalY = imageY / ratio;
-            return new PointF(originalX, originalY);
+
+            // 🎯 修正：確保座標轉換的精確性
+            float imageX = (mouseLocation.X - offsetX) / ratio;
+            float imageY = (mouseLocation.Y - offsetY) / ratio;
+
+            return new PointF(imageX, imageY);
         }
+
 
         // 怪物模板功能
         public string GetMonstersDirectory() => UtilityHelper.GetMonstersDirectory();
@@ -827,14 +493,26 @@ namespace ArtaleAI
         /// </summary>
         private async Task StartPathEditingModeAsync()
         {
-            OnStatusMessage("🗺️ 路徑編輯模式：載入靜態小地圖");
-
+            OnStatusMessage("🗺️ 路徑編輯模式：載入靜態小地圖（Mat域優化）");
             tabControl1.Enabled = false;
+
             try
             {
-                // 載入一次性的小地圖快照
-                await LoadMinimapAsync(MinimapUsage.PathEditing);
-                OnStatusMessage(" 路徑編輯模式就緒");
+                // 🚀 使用修改後的Mat域處理流程
+                var result = await LoadMinimapWithMatOptimized(MinimapUsage.PathEditing);
+
+                if (result?.MinimapImage != null)
+                {
+                    // 📷 設置小地圖到 UI
+                    pictureBoxMinimap.Image?.Dispose();
+                    pictureBoxMinimap.Image = result.MinimapImage;
+
+                    OnStatusMessage("✅ 路徑編輯模式就緒（Mat域無損精度）");
+                }
+                else
+                {
+                    OnError("無法載入小地圖");
+                }
             }
             catch (Exception ex)
             {
@@ -843,6 +521,34 @@ namespace ArtaleAI
             finally
             {
                 tabControl1.Enabled = true;
+            }
+        }
+
+        private async Task<MinimapSnapshotResult?> LoadMinimapWithMatOptimized(MinimapUsage usage)
+        {
+            var config = _configurationManager?.CurrentConfig ?? new AppConfig();
+
+            try
+            {
+                OnStatusMessage("🎯 建立捕捉器");
+
+                // 🎯 建立捕捉器
+                var captureItem = WindowFinder.TryCreateItemForWindow(config.General.GameWindowTitle);
+                if (captureItem == null)
+                {
+                    OnError($"找不到遊戲視窗: {config.General.GameWindowTitle}");
+                    return null;
+                }
+
+                OnStatusMessage("📸 執行Mat域小地圖處理");
+
+                // 🚀 使用修改後的Mat域處理方法
+                return await _mapDetector?.GetSnapshotAsync(this.Handle, config, captureItem, OnStatusMessage);
+            }
+            catch (Exception ex)
+            {
+                OnError($"Mat域小地圖載入失敗: {ex.Message}");
+                return null;
             }
         }
 
@@ -947,30 +653,24 @@ namespace ArtaleAI
                 int targetFPS = config.WindowCapture.CaptureFrameRate;
                 int captureDelayMs = 1000 / targetFPS;
 
-                OnStatusMessage($"🎥 捕捉幀率設定為 {targetFPS} FPS (間隔 {captureDelayMs}ms)");
+                OnStatusMessage($"🎥 BGR優化捕捉設定: {targetFPS} FPS (間隔 {captureDelayMs}ms)");
 
                 await Task.Yield();
 
                 while (!cancellationToken.IsCancellationRequested && _capturer != null)
                 {
-                    using var frame = _capturer.TryGetNextFrame();
-                    if (frame != null)
+                    // 🚀 直接獲取最高效的 BGR Mat
+                    using var frameMat = _capturer.TryGetNextMat();
+                    if (frameMat != null)
                     {
-                        // 🎯 單執行緒：直接處理，不需要節流控制
                         try
                         {
-                            var safeCopy = new Bitmap(frame.Width, frame.Height, frame.PixelFormat);
-                            using (var g = Graphics.FromImage(safeCopy))
-                            {
-                                g.DrawImage(frame, 0, 0);
-                            }
-
-                            // 🎯 關鍵：直接在主執行緒處理，不使用Task.Run
-                            OnFrameAvailable(safeCopy);
+                            // 🎯 直接使用 Mat 進行所有處理，這是最高效能的做法
+                            OnFrameAvailableOptimized(frameMat);
                         }
                         catch (Exception ex)
                         {
-                            System.Diagnostics.Debug.WriteLine($"處理幀失敗: {ex.Message}");
+                            System.Diagnostics.Debug.WriteLine($"BGR處理幀失敗: {ex.Message}");
                         }
                     }
 
@@ -980,7 +680,211 @@ namespace ArtaleAI
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                OnError($"捕捉過程發生錯誤: {ex.Message}");
+                OnError($"BGR捕捉過程發生錯誤: {ex.Message}");
+            }
+        }
+
+        // 🚀 新增：優化版的幀處理方法
+        public void OnFrameAvailableOptimized(Mat frameMat)
+        {
+            if (frameMat?.Empty() != false) return;
+
+            // 🔍 驗證格式正確性
+            Debug.Assert(frameMat.Channels() == 3, "期望 BGR 三通道格式");
+            Debug.Assert(frameMat.Type() == MatType.CV_8UC3, "期望 CV_8UC3 類型");
+
+            try
+            {
+                var config = _configurationManager?.CurrentConfig;
+                if (config?.DetectionPerformance == null) return;
+
+                // 🎯 只保留必要的處理，移除角色檢測
+                ProcessBloodBarsOptimized(frameMat);
+                ProcessMonstersOptimized(frameMat);
+                RenderAndDisplayOverlaysOptimized(frameMat);
+            }
+            catch (Exception ex)
+            {
+                OnStatusMessage($"BGR幀處理失敗: {ex.Message}");
+            }
+        }
+
+        private void ProcessBloodBarsOptimized(Mat frameMat)
+        {
+            try
+            {
+                var config = _configurationManager?.CurrentConfig;
+                if (!ShouldDetectBloodBar(DateTime.UtcNow, config.DetectionPerformance)) return;
+
+                // 🎯 直接使用BGR Mat
+                using var cameraArea = BloodBarDetector.ExtractCameraArea(frameMat, null, config.PartyRedBar, out int cameraOffsetY);
+
+                // 🚀 關鍵：從RGB轉HSV
+                using var hsvImage = UtilityHelper.ConvertToHSV(cameraArea); // 這裡已經是RGB2HSV
+                using var redMask = BloodBarDetector.CreateRedMask(hsvImage, config.PartyRedBar);
+
+                var bloodBarRect = BloodBarDetector.FindBestRedBar(redMask, config.PartyRedBar);
+                if (bloodBarRect.HasValue)
+                {
+                    var screenBloodBar = BloodBarDetector.ToScreenCoordinates(bloodBarRect.Value, cameraOffsetY);
+                    _currentBloodBars = new List<Rectangle> { screenBloodBar };
+                    _currentDetectionBoxes = BloodBarDetector.CalculateDetectionBoxes(screenBloodBar, config.PartyRedBar);
+                    _currentAttackRangeBoxes = BloodBarDetector.CalculateAttackRangeBoxes(screenBloodBar, config.AttackRange);
+                    _lastBloodBarDetection = DateTime.UtcNow;
+
+                    OnStatusMessage($"✅ BGR優化血條檢測成功: {screenBloodBar}");
+                }
+            }
+            catch (Exception ex)
+            {
+                OnStatusMessage($"❌ BGR血條檢測異常: {ex.Message}");
+            }
+        }
+
+        // 🚀 優化版怪物檢測
+        private void ProcessMonstersOptimized(Mat frameMat)
+        {
+            try
+            {
+                var config = _configurationManager?.CurrentConfig;
+                if (!ShouldDetectMonster(DateTime.UtcNow, config.DetectionPerformance)) return;
+
+                if (!_currentDetectionBoxes.Any())
+                {
+                    OnStatusMessage("❌ 無檢測區域，等待血條檢測成功");
+                    return;
+                }
+
+                OnStatusMessage($"🎯 開始BGR優化怪物檢測，使用 {_currentDetectionBoxes.Count} 個檢測框");
+
+                var templateData = GetTemplateDataSafely();
+                if (string.IsNullOrEmpty(templateData.SelectedMonsterName) || !templateData.Templates.Any())
+                {
+                    OnStatusMessage("❌ 沒有可用模板!");
+                    return;
+                }
+
+                var allResults = new List<MonsterRenderInfo>();
+
+                foreach (var detectionBox in _currentDetectionBoxes)
+                {
+                    // 裁切BGR檢測區域
+                    var frameBounds = new Rect(0, 0, frameMat.Width, frameMat.Height);
+                    var cropRect = new Rect(detectionBox.X, detectionBox.Y, detectionBox.Width, detectionBox.Height);
+                    var validCropRect = frameBounds & cropRect; // 計算交集
+
+                    if (validCropRect.Width < 10 || validCropRect.Height < 10) continue;
+
+                    using var croppedMat = frameMat[validCropRect].Clone();
+                    OnStatusMessage($"🎯 BGR Mat直接優化檢測: {croppedMat.Width}x{croppedMat.Height}");
+
+                    // 🚀 使用優化版Mat檢測
+                    var results = TemplateMatcher.FindMonstersWithMatOptimized(
+                        croppedMat,
+                        templateData.Templates,
+                        Enum.Parse<MonsterDetectionMode>(templateData.DetectionMode),
+                        templateData.Threshold,
+                        templateData.SelectedMonsterName);
+
+                    // 轉換座標到全局
+                    foreach (var result in results)
+                    {
+                        var monster = new MonsterRenderInfo
+                        {
+                            MonsterName = result.Name,
+                            Location = new SdPoint(result.Position.X + validCropRect.X, result.Position.Y + validCropRect.Y),
+                            Size = result.Size,
+                            Confidence = result.Confidence
+                        };
+                        allResults.Add(monster);
+                        OnStatusMessage($"✅ BGR檢測到怪物: {monster.MonsterName} (信心度: {monster.Confidence:F4})");
+                    }
+                }
+
+                _currentMonsters = allResults;
+                _lastMonsterDetection = DateTime.UtcNow;
+
+                if (allResults.Any())
+                    OnStatusMessage($"🎯 BGR優化檢測完成，發現 {allResults.Count} 個怪物");
+                else
+                    OnStatusMessage("⚠️ BGR優化檢測未發現怪物");
+            }
+            catch (Exception ex)
+            {
+                OnStatusMessage($"❌ BGR怪物檢測異常: {ex.Message}");
+            }
+        }
+
+        // 🚀 優化版渲染方法
+        private void RenderAndDisplayOverlaysOptimized(Mat frameMat)
+        {
+            try
+            {
+                using var displayBitmap = frameMat.ToBitmap();
+
+                // 🚀 直接內嵌渲染邏輯，避免調用已刪除的BGR方法
+                var config = _configurationManager?.CurrentConfig;
+                if (config?.OverlayStyle == null)
+                {
+                    UpdateDisplaySafely(new Bitmap(displayBitmap));
+                    return;
+                }
+
+                var monsterItems = new List<IRenderItem>();
+                var partyRedBarItems = new List<IRenderItem>();
+                var detectionBoxItems = new List<IRenderItem>();
+                var attackRangeItems = new List<IRenderItem>();
+
+                if (_currentBloodBars.Any())
+                {
+                    partyRedBarItems.AddRange(_currentBloodBars.Select(rect =>
+                        new PartyRedBarRenderItem(config.OverlayStyle.PartyRedBar) { BoundingBox = rect }));
+                }
+
+                if (_currentDetectionBoxes.Any())
+                {
+                    detectionBoxItems.AddRange(_currentDetectionBoxes.Select(rect =>
+                        new DetectionBoxRenderItem(config.OverlayStyle.DetectionBox) { BoundingBox = rect }));
+                }
+
+                if (_currentAttackRangeBoxes.Any())
+                {
+                    attackRangeItems.AddRange(_currentAttackRangeBoxes.Select(rect =>
+                        new AttackRangeRenderItem(config.OverlayStyle.AttackRange) { BoundingBox = rect }));
+                }
+
+                if (_currentMonsters.Any())
+                {
+                    monsterItems.AddRange(_currentMonsters.Select(m =>
+                        new MonsterRenderItem(config.OverlayStyle.Monster)
+                        {
+                            BoundingBox = new Rectangle(m.Location.X, m.Location.Y, m.Size.Width, m.Size.Height),
+                            MonsterName = m.MonsterName,
+                            Confidence = m.Confidence
+                        }));
+                }
+
+                var allDetectionItems = new List<IRenderItem>();
+                allDetectionItems.AddRange(detectionBoxItems);
+                allDetectionItems.AddRange(attackRangeItems);
+
+                var renderedFrame = SimpleRenderer.RenderOverlays(
+                    displayBitmap,
+                    monsterItems,
+                    null,
+                    null,
+                    partyRedBarItems,
+                    allDetectionItems
+                );
+
+                if (renderedFrame != null)
+                {
+                    UpdateDisplaySafely(renderedFrame);
+                }
+            }
+            catch (Exception ex)
+            {
+                OnError($"BGR優化渲染失敗: {ex.Message}");
             }
         }
 
@@ -989,56 +893,61 @@ namespace ArtaleAI
         /// </summary>
         private async Task StopAndReleaseAllResources()
         {
-            OnStatusMessage("🛑 停止所有處理...");
-
-            if (IsLiveViewRunning)
+            try
             {
-                await StopLiveViewAsync();
-                OnStatusMessage("✅ 即時顯示服務已停止");
-            }
+                // 停止即時顯示
+                if (_isLiveViewRunning)
+                {
+                    await StopLiveViewAsync();
+                }
 
-            // 清理狀態
-            _currentMonsters.Clear();
-            _currentBloodBars.Clear();
-            _currentDetectionBoxes.Clear();
-            _currentAttackRangeBoxes.Clear();
-            GC.Collect();
-            OnStatusMessage("✅ 資源已清理");
+                // 清理顯示畫面
+                var oldLiveImage = pictureBoxLiveView.Image;
+                pictureBoxLiveView.Image = null;
+                oldLiveImage?.Dispose();
+
+                OnStatusMessage("🗑️ 資源已清理");
+            }
+            catch (Exception ex)
+            {
+                OnError($"清理資源時發生錯誤: {ex.Message}");
+            }
         }
 
         /// <summary>
         /// 統一的小地圖載入方法 - 重構版
         /// </summary>
-        private async Task<MinimapLoadResult?> LoadMinimapAsync(MinimapUsage usage)
+        private async Task LoadMinimapAsync(MinimapUsage usage)
         {
-            var config = _configurationManager?.CurrentConfig ?? new AppConfig();
-            Action<string> reporter = message => OnStatusMessage(message);
-
-            OnStatusMessage($"正在載入小地圖快照 ({usage})...");
-
-            var result = await _mapDetector?.GetSnapshotAsync(this.Handle, config, _selectedCaptureItem, reporter);
-
-            if (result?.MinimapImage != null)
+            try
             {
-                switch (usage)
-                {
-                    case MinimapUsage.PathEditing:
-                        pictureBoxMinimap.Image?.Dispose();
-                        pictureBoxMinimap.Image = result.MinimapImage;
-                        _selectedCaptureItem = result.CaptureItem;
-                        OnStatusMessage("✅ 路徑編輯小地圖載入完成");
-                        break;
-                    case MinimapUsage.LiveViewOverlay:
-                        SetupLiveViewOverlay(result);
-                        OnStatusMessage("✅ 即時顯示小地圖疊加層設置完成");
-                        break;
-                }
-                return new MinimapLoadResult(result.MinimapImage, result.CaptureItem);
-            }
+                OnStatusMessage($"🗺️ 正在載入小地圖 ({usage} 模式)...");
 
-            OnStatusMessage("❌ 小地圖載入失敗或已取消");
-            return null;
+                var snapshot = await _mapDetector!.GetSnapshotAsync(
+                    this.Handle,
+                    _configurationManager!.CurrentConfig!,
+                    _selectedCaptureItem,
+                    OnStatusMessage
+                );
+
+                if (snapshot?.MinimapImage != null)
+                {
+                    // 🔍 調試：保存路徑編輯模式的小地圖
+                    snapshot.MinimapImage.Save($"debug_PathEditing_minimap_{DateTime.Now:HHmmss}.png");
+
+                    pictureBoxMinimap.Image?.Dispose();
+                    pictureBoxMinimap.Image = snapshot.MinimapImage;
+
+                    OnStatusMessage($"✅ 路徑編輯小地圖尺寸: {snapshot.MinimapImage.Width}x{snapshot.MinimapImage.Height}");
+                }
+            }
+            catch (Exception ex)
+            {
+                OnError($"載入小地圖失敗: {ex.Message}");
+                throw;
+            }
         }
+
 
         /// <summary>
         /// 設置即時顯示的小地圖疊加層
@@ -1231,15 +1140,16 @@ namespace ArtaleAI
         private TemplateData GetTemplateDataSafely()
         {
             if (InvokeRequired)
-            {
                 return (TemplateData)Invoke(() => GetTemplateDataSafely());
-            }
+
+            var selectedMonster = cbo_MonsterTemplates.SelectedItem?.ToString();
+            var selectedModeDisplay = cbo_DetectMode.SelectedItem?.ToString() ;
 
             return new TemplateData
             {
-                SelectedMonsterName = cbo_MonsterTemplates.SelectedItem.ToString(),
-                Templates = GetCurrentMonsterTemplates(),
-                DetectionMode = ExtractModeFromDisplayText(cbo_DetectMode.SelectedItem.ToString()),
+                SelectedMonsterName = selectedMonster,                 // 空字串代表未選擇
+                Templates = GetCurrentMonsterTemplates(),              // 可能為空清單
+                DetectionMode = ExtractModeFromDisplayText(selectedModeDisplay), // 內部已回退到預設
                 Threshold = _configurationManager.CurrentConfig.Templates.MonsterDetection.DefaultThreshold,
                 TemplateCount = GetMonsterTemplateCount()
             };
@@ -1269,17 +1179,20 @@ namespace ArtaleAI
         private async void OnMonsterSelectionChanged(object? sender, EventArgs e)
         {
             if (cbo_MonsterTemplates.SelectedItem == null) return;
-            string selectedMonster = cbo_MonsterTemplates.SelectedItem.ToString() ?? string.Empty;
 
+            string selectedMonster = cbo_MonsterTemplates.SelectedItem.ToString() ?? string.Empty;
             if (!string.IsNullOrEmpty(selectedMonster))
             {
-                OnStatusMessage($"🔄 切換怪物模板：{selectedMonster}");
+                OnStatusMessage($"🔄 切換怪物模板：{selectedMonster}（BGR格式）");
                 ClearCurrentMonsterTemplates();
 
+                // 🚀 確保模板以BGR格式載入
                 _currentMonsterTemplates = await MonsterTemplateStore.LoadMonsterTemplatesAsync(
                     selectedMonster, GetMonstersDirectory(), OnStatusMessage);
+
                 _currentMonsterName = selectedMonster;
                 OnTemplatesLoaded(selectedMonster, _currentMonsterTemplates.Count);
+                OnStatusMessage($"✅ 所有模板已轉換為BGR格式");
             }
         }
 
