@@ -188,35 +188,40 @@ namespace ArtaleAI.Utils
         /// 通用的非極大值抑制算法
         /// </summary>
         /// <typeparam name="T">實現位置和尺寸介面的類型</typeparam>
-        public static List<T> ApplyNMS<T>(
-            List<T> items,
-            double iouThreshold = 0.25,
-            bool higherIsBetter = true)
-            where T : class
+        public static List<T> ApplyNMS<T>(List<T> items, double iouThreshold = 0.25, bool higherIsBetter = true) where T : class
         {
             if (items.Count <= 1) return items;
 
+            // 🚀 轉為陣列並排序
+            var itemArray = items.ToArray();
+            Array.Sort(itemArray, (a, b) =>
+                higherIsBetter ? GetConfidence(b).CompareTo(GetConfidence(a))
+                              : GetConfidence(a).CompareTo(GetConfidence(b)));
+
+            // 🚀 使用 bool 陣列標記被抑制的項目
+            var suppressed = new bool[itemArray.Length];
             var nmsResults = new List<T>();
 
-            // 根據信心度排序
-            var sortedItems = higherIsBetter
-                ? items.OrderByDescending(GetConfidence).ToList()
-                : items.OrderBy(GetConfidence).ToList();
-
-            while (sortedItems.Any())
+            for (int i = 0; i < itemArray.Length; i++)
             {
-                var best = sortedItems.First();
-                nmsResults.Add(best);
-                sortedItems.RemoveAt(0);
+                if (suppressed[i]) continue;
 
-                var bestRect = GetBoundingBox(best);
+                var current = itemArray[i];
+                nmsResults.Add(current);
+                var currentRect = GetBoundingBox(current);
 
-                // 移除重疊度過高的項目
-                sortedItems.RemoveAll(candidate =>
+                // 🚀 標記重疊項目而非移除
+                for (int j = i + 1; j < itemArray.Length; j++)
                 {
-                    var candidateRect = GetBoundingBox(candidate);
-                    return CalculateIoU(bestRect, candidateRect) > iouThreshold;
-                });
+                    if (!suppressed[j])
+                    {
+                        var candidateRect = GetBoundingBox(itemArray[j]);
+                        if (CalculateIoU(currentRect, candidateRect) > iouThreshold)
+                        {
+                            suppressed[j] = true;
+                        }
+                    }
+                }
             }
 
             return nmsResults;

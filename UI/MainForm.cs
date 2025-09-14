@@ -701,7 +701,7 @@ namespace ArtaleAI
                 // 🎯 只保留必要的處理，移除角色檢測
                 ProcessBloodBarsOptimized(frameMat);
                 ProcessMonstersOptimized(frameMat);
-                RenderAndDisplayOverlaysOptimized(frameMat);
+                RenderAndDisplayOverlays(frameMat);
             }
             catch (Exception ex)
             {
@@ -755,8 +755,6 @@ namespace ArtaleAI
                     return;
                 }
 
-                OnStatusMessage($"🎯 開始BGR優化怪物檢測，使用 {_currentDetectionBoxes.Count} 個檢測框");
-
                 var templateData = GetTemplateDataSafely();
                 if (string.IsNullOrEmpty(templateData.SelectedMonsterName) || !templateData.Templates.Any())
                 {
@@ -765,20 +763,17 @@ namespace ArtaleAI
                 }
 
                 var allResults = new List<MonsterRenderInfo>();
-
                 foreach (var detectionBox in _currentDetectionBoxes)
                 {
                     // 裁切BGR檢測區域
                     var frameBounds = new Rect(0, 0, frameMat.Width, frameMat.Height);
                     var cropRect = new Rect(detectionBox.X, detectionBox.Y, detectionBox.Width, detectionBox.Height);
-                    var validCropRect = frameBounds & cropRect; // 計算交集
+                    var validCropRect = frameBounds & cropRect;
 
                     if (validCropRect.Width < 10 || validCropRect.Height < 10) continue;
 
                     using var croppedMat = frameMat[validCropRect].Clone();
-                    OnStatusMessage($"🎯 BGR Mat直接優化檢測: {croppedMat.Width}x{croppedMat.Height}");
 
-                    // 🚀 使用優化版Mat檢測
                     var results = TemplateMatcher.FindMonstersWithMatOptimized(
                         croppedMat,
                         templateData.Templates,
@@ -797,17 +792,23 @@ namespace ArtaleAI
                             Confidence = result.Confidence
                         };
                         allResults.Add(monster);
-                        OnStatusMessage($"✅ BGR檢測到怪物: {monster.MonsterName} (信心度: {monster.Confidence:F4})");
                     }
                 }
 
-                _currentMonsters = allResults;
-                _lastMonsterDetection = DateTime.UtcNow;
-
-                if (allResults.Any())
-                    OnStatusMessage($"🎯 BGR優化檢測完成，發現 {allResults.Count} 個怪物");
+                // 🎯 新增：全局NMS去重處理
+                if (allResults.Count > 1)
+                {
+                    // 使用較嚴格的IoU閾值進行全局NMS
+                    var dedupedResults = UtilityHelper.ApplyNMS(allResults, iouThreshold: 0.3, higherIsBetter: true);
+                    _currentMonsters = dedupedResults;
+                    OnStatusMessage($"🎯 全局NMS處理：{allResults.Count} → {dedupedResults.Count} 個怪物");
+                }
                 else
-                    OnStatusMessage("⚠️ BGR優化檢測未發現怪物");
+                {
+                    _currentMonsters = allResults;
+                }
+
+                _lastMonsterDetection = DateTime.UtcNow;
             }
             catch (Exception ex)
             {
@@ -816,13 +817,11 @@ namespace ArtaleAI
         }
 
         // 🚀 優化版渲染方法
-        private void RenderAndDisplayOverlaysOptimized(Mat frameMat)
+        private void RenderAndDisplayOverlays(Mat frameMat)
         {
             try
             {
                 using var displayBitmap = frameMat.ToBitmap();
-
-                // 🚀 直接內嵌渲染邏輯，避免調用已刪除的BGR方法
                 var config = _configurationManager?.CurrentConfig;
                 if (config?.OverlayStyle == null)
                 {
@@ -830,53 +829,77 @@ namespace ArtaleAI
                     return;
                 }
 
-                var monsterItems = new List<IRenderItem>();
-                var partyRedBarItems = new List<IRenderItem>();
-                var detectionBoxItems = new List<IRenderItem>();
-                var attackRangeItems = new List<IRenderItem>();
+                // 🚀 預計算總容量，避免動態擴展
+                int totalItems = _currentBloodBars.Count + _currentDetectionBoxes.Count +
+                                _currentAttackRangeBoxes.Count + _currentMonsters.Count;
 
-                if (_currentBloodBars.Any())
+                var allItems = new List<IRenderItem>(totalItems);
+
+                // 🚀 血條項目 - 陣列批次處理
+                if (_currentBloodBars.Count > 0)
                 {
-                    partyRedBarItems.AddRange(_currentBloodBars.Select(rect =>
-                        new PartyRedBarRenderItem(config.OverlayStyle.PartyRedBar) { BoundingBox = rect }));
+                    var bloodBarStyle = config.OverlayStyle.PartyRedBar;
+                    var bloodBarsArray = _currentBloodBars.ToArray();
+
+                    for (int i = 0; i < bloodBarsArray.Length; i++)
+                    {
+                        allItems.Add(new PartyRedBarRenderItem(bloodBarStyle)
+                        {
+                            BoundingBox = bloodBarsArray[i]
+                        });
+                    }
                 }
 
-                if (_currentDetectionBoxes.Any())
+                // 🚀 檢測框 - 使用 Span<T>
+                if (_currentDetectionBoxes.Count > 0)
                 {
-                    detectionBoxItems.AddRange(_currentDetectionBoxes.Select(rect =>
-                        new DetectionBoxRenderItem(config.OverlayStyle.DetectionBox) { BoundingBox = rect }));
+                    var boxStyle = config.OverlayStyle.DetectionBox;
+                    var boxesArray = _currentDetectionBoxes.ToArray();
+                    Span<Rectangle> boxSpan = boxesArray.AsSpan();
+
+                    for (int i = 0; i < boxSpan.Length; i++)
+                    {
+                        allItems.Add(new DetectionBoxRenderItem(boxStyle)
+                        {
+                            BoundingBox = boxSpan[i]
+                        });
+                    }
                 }
 
-                if (_currentAttackRangeBoxes.Any())
+                if (_currentAttackRangeBoxes.Count > 0)
                 {
-                    attackRangeItems.AddRange(_currentAttackRangeBoxes.Select(rect =>
-                        new AttackRangeRenderItem(config.OverlayStyle.AttackRange) { BoundingBox = rect }));
+                    var attackRangeStyle = config.OverlayStyle.AttackRange;
+                    var attackRangeArray = _currentAttackRangeBoxes.ToArray();
+                    for (int i = 0; i < attackRangeArray.Length; i++)
+                    {
+                        allItems.Add(new AttackRangeRenderItem(attackRangeStyle)
+                        {
+                            BoundingBox = attackRangeArray[i]
+                        });
+                    }
+                    OnStatusMessage($"🎯 攻擊範圍框已添加: {attackRangeArray.Length} 個");
                 }
 
-                if (_currentMonsters.Any())
+                // 🚀 怪物項目 - 預分配處理
+                if (_currentMonsters.Count > 0)
                 {
-                    monsterItems.AddRange(_currentMonsters.Select(m =>
-                        new MonsterRenderItem(config.OverlayStyle.Monster)
+                    var monsterStyle = config.OverlayStyle.Monster;
+                    var monstersArray = _currentMonsters.ToArray();
+
+                    for (int i = 0; i < monstersArray.Length; i++)
+                    {
+                        var m = monstersArray[i];
+                        allItems.Add(new MonsterRenderItem(monsterStyle)
                         {
                             BoundingBox = new Rectangle(m.Location.X, m.Location.Y, m.Size.Width, m.Size.Height),
                             MonsterName = m.MonsterName,
                             Confidence = m.Confidence
-                        }));
+                        });
+                    }
                 }
 
-                var allDetectionItems = new List<IRenderItem>();
-                allDetectionItems.AddRange(detectionBoxItems);
-                allDetectionItems.AddRange(attackRangeItems);
-
-                var renderedFrame = SimpleRenderer.RenderOverlays(
-                    displayBitmap,
-                    monsterItems,
-                    null,
-                    null,
-                    partyRedBarItems,
-                    allDetectionItems
-                );
-
+                // 🚀 一次性渲染
+                var renderedFrame = SimpleRenderer.RenderOverlays(displayBitmap, allItems, null, null, null, null);
                 if (renderedFrame != null)
                 {
                     UpdateDisplaySafely(renderedFrame);
@@ -884,9 +907,10 @@ namespace ArtaleAI
             }
             catch (Exception ex)
             {
-                OnError($"BGR優化渲染失敗: {ex.Message}");
+                OnError($"陣列優化渲染失敗: {ex.Message}");
             }
         }
+
 
         /// <summary>
         /// 完全停止並釋放所有分頁處理資源

@@ -75,6 +75,28 @@ templateMatching:
   processedMaskMinPixels: 100
   basicModeDefaultNmsThreshold: 0.5
 
+  modeSpecificNms:
+    Basic:
+      iouThreshold: 0.15        # 較嚴格，避免Basic模式的誤檢
+      confidenceThreshold: 0.3  # 較高閾值，過濾低質量檢測
+      maxResults: 1             # 限制1個結果，因為Basic模式容易誤檢
+    ContourOnly:
+      iouThreshold: 0.25        # 中等嚴格度
+      confidenceThreshold: 0.7  # 中等信心度要求
+      maxResults: 2             # 允許2個結果
+    Grayscale:
+      iouThreshold: 0.30        # 適中的重疊容忍度
+      confidenceThreshold: 0.7  # 平衡的信心度要求
+      maxResults: 2             # 允許2個結果
+    Color:
+      iouThreshold: 0.10        # 較寬鬆，Color模式精度高
+      confidenceThreshold: 0.2  # 較低閾值，保留更多候選
+      maxResults: 1             # 最多3個結果，因為Color模式最可靠
+    TemplateFree:
+      iouThreshold: 0.10        # 非常嚴格，TemplateFree容易產生大量候選
+      confidenceThreshold: 0.8  # 很高的信心度要求
+      maxResults: 1             # 只保留最佳結果
+
 #  地圖編輯器配置
 mapEditor:
   # 滑鼠操作參數

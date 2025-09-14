@@ -98,12 +98,12 @@
             // 
             // cbo_DetectMode
             // 
+            cbo_DetectMode.DropDownStyle = ComboBoxStyle.DropDownList;
             cbo_DetectMode.FormattingEnabled = true;
             cbo_DetectMode.Location = new Point(5, 88);
             cbo_DetectMode.Name = "cbo_DetectMode";
             cbo_DetectMode.Size = new Size(193, 23);
             cbo_DetectMode.TabIndex = 5;
-            cbo_DetectMode.Text = "辨識模式";
             // 
             // btn_DownloadMonster
             // 
@@ -129,6 +129,7 @@
             // cbo_MonsterTemplates
             // 
             cbo_MonsterTemplates.Dock = DockStyle.Fill;
+            cbo_MonsterTemplates.DropDownStyle = ComboBoxStyle.DropDownList;
             cbo_MonsterTemplates.FormattingEnabled = true;
             cbo_MonsterTemplates.Location = new Point(3, 19);
             cbo_MonsterTemplates.Name = "cbo_MonsterTemplates";
@@ -512,12 +513,12 @@
             // 
             // cbo_MapFiles
             // 
+            cbo_MapFiles.DropDownStyle = ComboBoxStyle.DropDownList;
             cbo_MapFiles.FormattingEnabled = true;
             cbo_MapFiles.Location = new Point(25, 32);
             cbo_MapFiles.Name = "cbo_MapFiles";
             cbo_MapFiles.Size = new Size(141, 23);
             cbo_MapFiles.TabIndex = 0;
-            cbo_MapFiles.Text = "路徑檔";
             // 
             // panel3
             // 

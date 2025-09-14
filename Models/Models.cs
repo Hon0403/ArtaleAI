@@ -361,6 +361,8 @@ namespace ArtaleAI.Models
         public int MaxTemplateRatio { get; set; }
         public int ProcessedMaskMinPixels { get; set; }
         public double BasicModeDefaultNmsThreshold { get; set; }
+        public Dictionary<string, ModeSpecificNmsSettings> ModeSpecificNms { get; set; }
+
     }
 
     public class PlayerDetectionSettings
@@ -371,6 +373,12 @@ namespace ArtaleAI.Models
         public int ProcessingTimeoutMs { get; set; }
         public double MinAspectRatio { get; set; }
         public double MaxAspectRatio { get; set; }
+    }
+    public class ModeSpecificNmsSettings
+    {
+        public double IouThreshold { get; set; }
+        public double ConfidenceThreshold { get; set; }
+        public int MaxResults { get; set; }
     }
 
     public class MonsterDetectionSettings
