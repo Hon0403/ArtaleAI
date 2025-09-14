@@ -193,7 +193,7 @@ overlayStyle:
 
 ## 🛠️ 技術棧
 
-- **語言**：C# 8.0+
+- **語言**：C# 6.0
 - **UI**：Windows Forms
 - **影像處理**：OpenCvSharp 4.8.0
 - **設定**：YamlDotNet
@@ -224,42 +224,3 @@ overlayStyle:
 4. **調整檢測模式**：根據環境選擇最佳檢測模式
 
 ---
-
-## 🤝 貢獻指南
-
-1. Fork 本項目
-2. 創建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交變更 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 開啟 Pull Request
-
----
-
-## 📝 授權
-
-此項目采用 MIT 授權 - 詳見 [LICENSE](LICENSE) 文件
-
----
-
-## 📞 支援
-
-如有問題或建議，請透過以下方式聯繫：
-
-- 🐛 **問題回報**：[Issues](https://github.com/[Your-Username]/ArtaleAI/issues)
-- 💡 **功能建議**：[Feature Requests](https://github.com/[Your-Username]/ArtaleAI/discussions)
-
----
-
-## 🙏 致謝
-
-- OpenCV 社區提供的強大影像處理庫
-- MapleStory.io API 提供的遊戲資源
-- 所有貢獻者的辛勤努力
-
----
-
-<div align="center">
-
-**⭐ 如果這個項目對您有幫助，請給個 Star！⭐**
-
-</div>
