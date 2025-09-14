@@ -1,4 +1,4 @@
-# 🎮 ArtaleAI - 智能遊戲視覺輔助工具
+# 🎮 ArtaleAI - 電腦視覺輔助工具
 
 <div align="center">
 
@@ -6,7 +6,7 @@
 [![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.7.2+-blue.svg)](https://dotnet.microsoft.com/download/dotnet-framework)  
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.8.0-green.svg)](https://opencv.org/)
 
-**基於電腦視覺技術的智能遊戲輔助系統**
+**基於電腦視覺技術的遊戲輔助系統**
 
 </div>
 
@@ -20,7 +20,7 @@
 
 ## 🌟 核心特色
 
-- 🔍 **智能目標檢測**：多模式怪物識別（Basic / Color / Grayscale / ContourOnly / TemplateFree）  
+- 🔍 **目標檢測**：多模式怪物識別（Basic / Color / Grayscale / ContourOnly / TemplateFree）  
 - 🗺️ **小地圖分析**：自動檢測小地圖邊界、玩家位置與遊戲元素  
 - 📍 **路徑規劃**：視覺化地圖編輯器，支援路徑點、安全區域、限制區域、繩索標記  
 - 🩸 **血條檢測**：即時隊友血條識別與玩家追蹤  
