@@ -1,4 +1,7 @@
 ﻿using ArtaleAI.Models;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Drawing.Text;
 
 namespace ArtaleAI.Display
 {
@@ -11,7 +14,7 @@ namespace ArtaleAI.Display
             IEnumerable<IRenderItem>? minimapItems,
             IEnumerable<IRenderItem>? partyRedBarItems,
             IEnumerable<IRenderItem>? detectionBoxItems,
-            IEnumerable<IRenderItem>? attackRangeItems = null) // 添加預設值
+            IEnumerable<IRenderItem>? attackRangeItems = null)
         {
             if (baseBitmap == null) return null;
 
@@ -26,23 +29,42 @@ namespace ArtaleAI.Display
 
             try
             {
-                var result = new Bitmap(baseBitmap.Width, baseBitmap.Height);
-                using (var g = Graphics.FromImage(result))
+                // 🚀 方案三：建立透明疊加層
+                var overlay = new Bitmap(baseBitmap.Width, baseBitmap.Height, PixelFormat.Format32bppArgb);
+                using (var gOverlay = Graphics.FromImage(overlay))
                 {
-                    g.DrawImage(baseBitmap, 0, 0);
+                    // 清除為完全透明
+                    gOverlay.Clear(Color.Transparent);
+
+                    // 設定高品質繪製
+                    gOverlay.SmoothingMode = SmoothingMode.AntiAlias;
+                    gOverlay.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+
+                    // 在透明層上一次性完成所有繪製
                     foreach (var item in allItems)
                     {
-                        RenderSingleItemWithGraphics(g, item);
+                        RenderSingleItemWithGraphics(gOverlay, item);
                     }
                 }
+
+                // 🚀 最終合成：只需要兩次 DrawImage
+                var result = new Bitmap(baseBitmap.Width, baseBitmap.Height, PixelFormat.Format32bppArgb);
+                using (var gFinal = Graphics.FromImage(result))
+                {
+                    gFinal.DrawImage(baseBitmap, 0, 0);    // 貼底圖
+                    gFinal.DrawImage(overlay, 0, 0);       // 疊加透明層
+                }
+
+                overlay.Dispose(); // 釋放疊加層
                 return result;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Graphics渲染失敗: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"透明疊加層渲染失敗: {ex.Message}");
                 return new Bitmap(baseBitmap);
             }
         }
+
 
         private static void RenderSingleItemWithGraphics(Graphics g, IRenderItem item)
         {

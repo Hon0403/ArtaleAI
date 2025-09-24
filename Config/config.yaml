@@ -27,75 +27,25 @@ templates:
 
 
   monsterDetection:
-    defaultThreshold: 0.1
+    defaultThreshold: 0.5
     maxDetectionResults: 1
     detectionMode: Color
     # occlusionHandling: DynamicThreshold
-    
-    # 多尺度匹配參數
-    # multiScaleFactors: [1.1]
-    
-    # 形態學處理參數
-    # morphologyKernelSize: 5
-    # contourBlurSize: 3
-    # contourThresholdLimit: 0.8
-    
-    # 動態閾值參數
-    # dynamicThresholdMultiplier: 0.5
-    
+    multiScaleFactors: [1.0]
     # NMS 參數
     nmsIouThreshold: 0.25
-    
-    # TemplateFree 模式參數
-    # templateFreeKernelSize: 25
-    # templateFreeOpenKernelSize: 5
-    # minDetectionArea: 800
-    # maxDetectionArea: 50000
-    # aspectRatioLimit: 5.0
-
-# 軌跡記錄設定
-# trajectory:
-#   enableRecording: true         # 啟用軌跡記錄
-#   pointInterval: 3.0            # 每3像素記錄一次
-#   maxPoints: 5000               # 最多記錄5000點
-#   autoConnect: true             # 自動連接路徑
-#   connectionRadius: 15.0        # 15像素內自動連接
-#   recordIntervalMs: 200         # 每200ms記錄一次
 
 templateMatching:
   defaultNmsThreshold: 0.1     # NMS 預設閾值
-  minContourPixels: 100         # 最小輪廓像素數量
   confidenceThreshold: 0.8     # 信心度閾值比例
   defaultIouThreshold: 0.1
   grayscaleConfidenceMultiplier: 0.8
   basicModeNmsThreshold: 0.1
-  minTemplateWidth: 5
-  minTemplateHeight: 5
-  maxTemplateRatio: 10
-  processedMaskMinPixels: 100
   basicModeDefaultNmsThreshold: 0.5
 
-  modeSpecificNms:
-    Basic:
-      iouThreshold: 0.15        # 較嚴格，避免Basic模式的誤檢
-      confidenceThreshold: 0.3  # 較高閾值，過濾低質量檢測
-      maxResults: 1             # 限制1個結果，因為Basic模式容易誤檢
-    ContourOnly:
-      iouThreshold: 0.25        # 中等嚴格度
-      confidenceThreshold: 0.7  # 中等信心度要求
-      maxResults: 2             # 允許2個結果
-    Grayscale:
-      iouThreshold: 0.30        # 適中的重疊容忍度
-      confidenceThreshold: 0.7  # 平衡的信心度要求
-      maxResults: 2             # 允許2個結果
-    Color:
-      iouThreshold: 0.10        # 較寬鬆，Color模式精度高
-      confidenceThreshold: 0.2  # 較低閾值，保留更多候選
-      maxResults: 1             # 最多3個結果，因為Color模式最可靠
-    TemplateFree:
-      iouThreshold: 0.10        # 非常嚴格，TemplateFree容易產生大量候選
-      confidenceThreshold: 0.8  # 很高的信心度要求
-      maxResults: 1             # 只保留最佳結果
+  globalNms:
+    iouThreshold: 0.4 # 全局NMS的IoU閾值
+    maxResults: 3 # 最終保留的結果數量
 
 #  地圖編輯器配置
 mapEditor:
@@ -120,33 +70,22 @@ mapEditor:
 detectionPerformance:
   bloodBarDetectIntervalMs: 150    # 血條檢測間隔 (毫秒)
   monsterDetectIntervalMs: 200     # 怪物檢測間隔 (毫秒)
-  # enableAdaptiveInterval: false     # 啟用自適應間隔
-  # maxDetectionSkipFrames: 5        # 最大跳過幀數
 
 #  視窗捕捉配置
 windowCapture:
   # 捕捉性能參數
-  captureFrameRate: 15
-  # framePoolSize: 3
+  captureFrameRate: 30
   
   # 穩定化參數
   initialDelayMs: 100
   retryAttempts: 3
   retryDelayMs: 500
 
-  # 記憶體管理
-  # enableMultiThreadProtection: true
-  # maxCacheFrames: 5
-
 #  玩家偵測配置擴展
 playerDetection:
   # 血條寬度分級閾值
   smallBarWidthLimit: 10
   mediumBarWidthLimit: 25
-  
-  # 處理性能參數
-  # enableAsyncProcessing: true
-  # processingTimeoutMs: 1000
   
   # 偵測品質參數
   minAspectRatio: 0.1

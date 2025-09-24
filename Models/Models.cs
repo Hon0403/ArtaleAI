@@ -362,6 +362,7 @@ namespace ArtaleAI.Models
         public int ProcessedMaskMinPixels { get; set; }
         public double BasicModeDefaultNmsThreshold { get; set; }
         public Dictionary<string, ModeSpecificNmsSettings> ModeSpecificNms { get; set; }
+        public ModeSpecificNmsSettings GlobalNms { get; set; } = new();
 
     }
 

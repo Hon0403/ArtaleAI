@@ -132,24 +132,23 @@ namespace ArtaleAI.Detection
         {
             var results = mode switch
             {
-                MonsterDetectionMode.Basic => ProcessBasicModeMatOptimized(sourceMat, templateMat, threshold, monsterName),
-                MonsterDetectionMode.Color => ProcessColorModeMatOptimized(sourceMat, templateMat, threshold, monsterName),
-                MonsterDetectionMode.Grayscale => ProcessGrayscaleModeMatOptimized(sourceMat, templateMat, threshold, monsterName),
+                MonsterDetectionMode.Basic => ProcessBasicModeMat(sourceMat, templateMat, threshold, monsterName),
+                MonsterDetectionMode.Color => ProcessColorModeMat(sourceMat, templateMat, threshold, monsterName),
+                MonsterDetectionMode.Grayscale => ProcessGrayscaleModeMat(sourceMat, templateMat, threshold, monsterName),
                 _ => new List<MatchResult>()
             };
 
-            return results;
+            return ProcessMultiScale(sourceMat, templateMat, mode, threshold, monsterName);
         }
 
         // 🚀 Mat 優化版 Color 模式
-        private static List<MatchResult> ProcessColorModeMatOptimized(Mat sourceMat, Mat templateMat, double threshold, string monsterName)
+        private static List<MatchResult> ProcessColorModeMat(Mat sourceMat, Mat templateMat, double threshold, string monsterName)
         {
             var results = new List<MatchResult>();
             try
             {
                 using var result = new Mat();
                 Cv2.MatchTemplate(sourceMat, templateMat, result, TemplateMatchModes.CCoeffNormed);
-
                 var locations = GetMatchingLocations(result, threshold, false);
                 foreach (var loc in locations)
                 {
@@ -163,9 +162,6 @@ namespace ArtaleAI.Detection
                         Confidence = score
                     });
                 }
-
-                // 🚀 應用模式專用 NMS
-                results = ApplyModeSpecificNMS(results, MonsterDetectionMode.Color);
 
                 return results;
             }
@@ -176,14 +172,13 @@ namespace ArtaleAI.Detection
             }
         }
 
-        private static List<MatchResult> ProcessBasicModeMatOptimized(Mat sourceMat, Mat templateMat, double threshold, string monsterName)
+        private static List<MatchResult> ProcessBasicModeMat(Mat sourceMat, Mat templateMat, double threshold, string monsterName)
         {
             var results = new List<MatchResult>();
             try
             {
                 using var result = new Mat();
                 Cv2.MatchTemplate(sourceMat, templateMat, result, TemplateMatchModes.CCoeffNormed);
-
                 var locations = GetMatchingLocations(result, threshold, false);
                 foreach (var loc in locations)
                 {
@@ -197,10 +192,6 @@ namespace ArtaleAI.Detection
                         Confidence = score
                     });
                 }
-
-                // 🚀 應用模式專用 NMS
-                results = ApplyModeSpecificNMS(results, MonsterDetectionMode.Basic);
-
                 return results;
             }
             catch (Exception ex)
@@ -211,7 +202,7 @@ namespace ArtaleAI.Detection
         }
 
         // Mat 優化版 Grayscale 模式
-        private static List<MatchResult> ProcessGrayscaleModeMatOptimized(Mat sourceMat, Mat templateMat, double threshold, string monsterName)
+        private static List<MatchResult> ProcessGrayscaleModeMat(Mat sourceMat, Mat templateMat, double threshold, string monsterName)
         {
             var results = new List<MatchResult>();
             try
@@ -220,10 +211,8 @@ namespace ArtaleAI.Detection
                 using var templateGray = new Mat();
                 Cv2.CvtColor(sourceMat, sourceGray, ColorConversionCodes.BGR2GRAY);
                 Cv2.CvtColor(templateMat, templateGray, ColorConversionCodes.BGR2GRAY);
-
                 using var result = new Mat();
                 Cv2.MatchTemplate(sourceGray, templateGray, result, TemplateMatchModes.CCoeffNormed);
-
                 var locations = GetMatchingLocations(result, threshold, false);
                 foreach (var loc in locations)
                 {
@@ -238,9 +227,6 @@ namespace ArtaleAI.Detection
                     });
                 }
 
-                // 🚀 應用模式專用 NMS
-                results = ApplyModeSpecificNMS(results, MonsterDetectionMode.Grayscale);
-
                 return results;
             }
             catch (Exception ex)
@@ -250,53 +236,59 @@ namespace ArtaleAI.Detection
             }
         }
 
-        /// <summary>
-        /// 應用模式專用的 NMS 處理
-        /// </summary>
-        private static List<MatchResult> ApplyModeSpecificNMS(
-            List<MatchResult> results,
-            MonsterDetectionMode mode)
+        private static List<MatchResult> ProcessMultiScale(Mat sourceMat, Mat templateMat, MonsterDetectionMode mode, double threshold, string monsterName)
         {
-            if (!results.Any()) return results;
+            var allResults = new List<MatchResult>();
+            var scaleFactors = _settings?.MultiScaleFactors ?? new double[] { 1.0 };
 
-            // 獲取模式專用 NMS 設定
-            var nmsSettings = GetNmsSettingsForMode(mode);
+            Debug.WriteLine($"🔍 開始多尺度匹配，尺度因子: [{string.Join(", ", scaleFactors.Select(s => s.ToString("F1")))}]");
 
-            // 1. 先按信心度過濾
-            var filteredResults = results
-                .Where(r => r.Confidence >= nmsSettings.ConfidenceThreshold)
-                .ToList();
-
-            if (filteredResults.Count <= 1)
-                return filteredResults;
-
-            // 2. 應用 NMS
-            var nmsResults = UtilityHelper.ApplyNMS(
-                filteredResults,
-                nmsSettings.IouThreshold,
-                higherIsBetter: true);
-
-
-            // 3. 限制結果數量
-            var finalResults = nmsResults.Take(nmsSettings.MaxResults).ToList();
-
-            return finalResults;
-        }
-
-        /// <summary>
-        /// 獲取模式專用的 NMS 設定
-        /// </summary>
-        private static ModeSpecificNmsSettings GetNmsSettingsForMode(MonsterDetectionMode mode)
-        {
-            var modeString = mode.ToString();
-
-            if (_templateMatchingSettings?.ModeSpecificNms?.TryGetValue(modeString, out var settings) == true)
+            foreach (var scale in scaleFactors)
             {
-                return settings;
+                Mat scaledTemplate = null;
+                try
+                {
+                    // 縮放模板
+                    if (Math.Abs(scale - 1.0) > 0.01)
+                    {
+                        var newSize = new OpenCvSharp.Size((int)(templateMat.Width * scale), (int)(templateMat.Height * scale));
+                        scaledTemplate = new Mat();
+                        Cv2.Resize(templateMat, scaledTemplate, newSize, 0, 0, InterpolationFlags.Linear);
+                        Debug.WriteLine($"📏 模板縮放: {templateMat.Width}x{templateMat.Height} → {scaledTemplate.Width}x{scaledTemplate.Height}");
+                    }
+                    else
+                    {
+                        scaledTemplate = templateMat.Clone();
+                    }
+
+                    // 尺寸檢查
+                    if (scaledTemplate.Width > sourceMat.Width || scaledTemplate.Height > sourceMat.Height)
+                    {
+                        Debug.WriteLine($"⚠️ 尺度 {scale:F1}x 後模板過大 ({scaledTemplate.Width}x{scaledTemplate.Height} vs {sourceMat.Width}x{sourceMat.Height})");
+                        continue;
+                    }
+
+                    // 根據模式執行匹配
+                    var scaleResults = mode switch
+                    {
+                        MonsterDetectionMode.Basic => ProcessBasicModeMat(sourceMat, scaledTemplate, threshold, $"{monsterName}@{scale:F1}x"),
+                        MonsterDetectionMode.Color => ProcessColorModeMat(sourceMat, scaledTemplate, threshold, $"{monsterName}@{scale:F1}x"),
+                        MonsterDetectionMode.Grayscale => ProcessGrayscaleModeMat(sourceMat, scaledTemplate, threshold, $"{monsterName}@{scale:F1}x"),
+                        _ => new List<MatchResult>()
+                    };
+
+                    allResults.AddRange(scaleResults);
+                    Debug.WriteLine($"✅ 尺度 {scale:F1}x 完成，找到 {scaleResults.Count} 個匹配");
+                }
+                finally
+                {
+                    if (scaledTemplate != templateMat)
+                        scaledTemplate?.Dispose();
+                }
             }
 
-            // 如果找不到設定就拋出異常，不提供備用方案
-            throw new InvalidOperationException($"找不到模式 '{mode}' 的 NMS 設定，請檢查 config.yaml");
+            Debug.WriteLine($"🎯 多尺度匹配完成，總共找到 {allResults.Count} 個結果");
+            return allResults;
         }
 
         #endregion

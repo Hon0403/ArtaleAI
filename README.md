@@ -1,4 +1,4 @@
-# 🎮 ArtaleAI - 智能遊戲視覺輔助工具
+# 🎮 ArtaleAI - 遊戲電腦視覺輔助工具
 
 <div align="center">
 
@@ -6,7 +6,7 @@
 [![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.7.2+-blue.svg)](https://dotnet.microsoft.com/download/dotnet-framework)  
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.8.0-green.svg)](https://opencv.org/)
 
-**基於電腦視覺技術的智能遊戲輔助系統**
+**基於電腦視覺技術的遊戲輔助系統**
 
 </div>
 
@@ -20,7 +20,7 @@
 
 ## 🌟 核心特色
 
-- 🔍 **智能目標檢測**：多模式怪物識別（Basic / Color / Grayscale / ContourOnly / TemplateFree）  
+- 🔍 **目標檢測**：多模式怪物識別（Basic / Color / Grayscale / ContourOnly / TemplateFree）  
 - 🗺️ **小地圖分析**：自動檢測小地圖邊界、玩家位置與遊戲元素  
 - 📍 **路徑規劃**：視覺化地圖編輯器，支援路徑點、安全區域、限制區域、繩索標記  
 - 🩸 **血條檢測**：即時隊友血條識別與玩家追蹤  
@@ -63,6 +63,75 @@ dotnet run
 編輯 `Config/config.yaml`：
 - `gameWindowTitle`：遊戲視窗標題
 - 調整檢測閾值、頻率與效能參數
+
+---
+
+## ⚠️ 視窗陰影與解析度設定（必讀）
+
+> 若模板與遊戲畫面像素未完全對齊，範例閾值 0.30–0.35 可能匹配不到。請先完成下列設定，再執行機器人。
+
+### 1 . 關閉 Windows 視窗陰影
+
+Windows 11／10 預設在非最大化視窗加 1 px 半透明陰影，會導致截圖內容實寬多 1 px。  
+請依版本關閉：
+
+| 系統 | 操作路徑 |
+|------|----------|
+| Windows 10 / Windows 11 (所有版本) | 按 **Win + R** → 輸入 `sysdm.cpl ,3` → Enter → 視覺效果 → 取消勾選 **「在視窗下顯示陰影」** (Shadows under windows) → 確定。 |
+| Windows 11 22H2+ | 設定 → **輔助工具 → 視覺效果** → 關閉「視窗陰影」。 |
+
+### 2 . 固定縮放與解析度
+
+| 項目 | 建議值 |
+|------|--------|
+| Windows 顯示縮放 | 100 % |
+| MapleStory UI Scale | 100 % |
+| MapleStory 視窗大小 | 建議 **1600 × 900**（與模板 1 : 1 對應）或其它固定 16:9 解析度 |
+| MapleStory.exe 高 DPI 設定 | 右鍵 exe → 內容 → 相容性 → 高 DPI → 勾選「**覆寫高 DPI 縮放行為：應用程式**」 |
+
+> 完成後，以任何截圖工具擷取遊戲畫面，用 JS Paint 或 Image Measurement-Online 量測怪物尺寸，應與模板 PNG 完全一致（例如 65×70 px）。若仍差 1 px，請確認視窗未拖拉改尺寸，或直接使用全螢幕模式 (`Alt+Enter`)。
+
+### 3 . 推薦閾值與多尺度設定
+
+```yaml
+# config/config_default.yaml（範例）
+monster_detect:
+  mode:        color      # 或 grayscale
+  defaultThreshold: 0.35  # 解析度 1 : 1 時建議值
+  multiScaleFactors: [1.0]  # 已對齊無需額外倍率
+```
+
+若因硬體限制無法完全 1 : 1，可暫時改用：
+
+```yaml
+# 容忍 ±3 % 尺寸誤差
+multiScaleFactors: [0.97, 1.0, 1.03]
+defaultThreshold: 0.30
+```
+
+### 範本匹配快速自檢
+
+執行程式後，日誌應出現類似：
+
+```
+🎯 尺度 1.0x – 最高分數: 0.86
+🎯 多尺度匹配完成，總共找到 8 個怪物
+```
+
+若最高分數 < 0.50 或僅偵測到 1 隻怪，請重新檢查本節設定。
+
+### 作者當前測試環境
+
+| 項目 | 數值 |
+|------|------|
+| 螢幕實體解析度 | 1,920 × 1,080 |
+| MapleStory 視窗大小 | 1,600 × 900 |
+| Windows 顯示縮放 | 100 % |
+| Windows 視窗陰影 | 已關閉 |
+| 偵測閾值 | 0.35 (color) / 0.33 (grayscale) |
+| 多尺度列表 | [1.0] |
+
+在此環境下，彩色與灰階模式皆可得到 0.80–0.90 的匹配分數，無需低於 0.30 的閾值。
 
 ---
 
@@ -193,7 +262,7 @@ overlayStyle:
 
 ## 🛠️ 技術棧
 
-- **語言**：C# 8.0+
+- **語言**：C# 6.0
 - **UI**：Windows Forms
 - **影像處理**：OpenCvSharp 4.8.0
 - **設定**：YamlDotNet
@@ -224,42 +293,3 @@ overlayStyle:
 4. **調整檢測模式**：根據環境選擇最佳檢測模式
 
 ---
-
-## 🤝 貢獻指南
-
-1. Fork 本項目
-2. 創建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交變更 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 開啟 Pull Request
-
----
-
-## 📝 授權
-
-此項目采用 MIT 授權 - 詳見 [LICENSE](LICENSE) 文件
-
----
-
-## 📞 支援
-
-如有問題或建議，請透過以下方式聯繫：
-
-- 🐛 **問題回報**：[Issues](https://github.com/[Your-Username]/ArtaleAI/issues)
-- 💡 **功能建議**：[Feature Requests](https://github.com/[Your-Username]/ArtaleAI/discussions)
-
----
-
-## 🙏 致謝
-
-- OpenCV 社區提供的強大影像處理庫
-- MapleStory.io API 提供的遊戲資源
-- 所有貢獻者的辛勤努力
-
----
-
-<div align="center">
-
-**⭐ 如果這個項目對您有幫助，請給個 Star！⭐**
-
-</div>
