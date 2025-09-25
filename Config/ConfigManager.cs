@@ -11,7 +11,7 @@ namespace ArtaleAI.Config
     public class ConfigManager
     {
         private readonly MainForm _mainForm;
-        private static readonly string DefaultPath = UtilityHelper.GetConfigFilePath();
+        private static readonly string DefaultPath = PathManager.ConfigFilePath;
         public AppConfig? CurrentConfig { get; private set; }
 
         public ConfigManager(MainForm mainForm)

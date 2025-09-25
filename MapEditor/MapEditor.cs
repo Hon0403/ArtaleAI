@@ -274,7 +274,7 @@ namespace ArtaleAI.Minimap
 
         private void HandleDeleteAction(PointF clickPosition)
         {
-            float deletionRadius = _settings?.DeletionRadius ?? 10.0f;
+            float deletionRadius = _settings.DeletionRadius;
 
             // 刪除路徑點
             if (_currentMapData.WaypointPaths?.Any() == true)

@@ -113,7 +113,7 @@ namespace ArtaleAI.Detection
         {
             if (_cachedMonsterTemplates.TryGetValue(monsterName, out var templates))
             {
-                UtilityHelper.SafeDispose(templates.ToArray());
+                CacheManager.SafeDispose(templates.ToArray());
                 _cachedMonsterTemplates.Remove(monsterName);
             }
         }

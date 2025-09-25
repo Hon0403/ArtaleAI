@@ -2,6 +2,10 @@
 using ArtaleAI.Models;
 using ArtaleAI.Utils;
 using OpenCvSharp;
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Linq;
 
 namespace ArtaleAI.Detection
 {
@@ -36,8 +40,8 @@ namespace ArtaleAI.Detection
         /// </summary>
         public static Mat CreateRedMask(Mat hsvImage, PartyRedBarSettings config)
         {
-            var lowerRed = UtilityHelper.ToOpenCvHsv((config.LowerRedHsv[0], config.LowerRedHsv[1], config.LowerRedHsv[2]));
-            var upperRed = UtilityHelper.ToOpenCvHsv((config.UpperRedHsv[0], config.UpperRedHsv[1], config.UpperRedHsv[2]));
+            var lowerRed = OpenCvProcessor.ToOpenCvHsv(config.LowerRedHsv[0], config.LowerRedHsv[1], config.LowerRedHsv[2]);
+            var upperRed = OpenCvProcessor.ToOpenCvHsv(config.UpperRedHsv[0], config.UpperRedHsv[1], config.UpperRedHsv[2]);
             var redMask = new Mat();
             Cv2.InRange(hsvImage, lowerRed, upperRed, redMask);
             return redMask;
@@ -53,6 +57,7 @@ namespace ArtaleAI.Detection
             Cv2.FindContours(redMask, out contours, hierarchy, RetrievalModes.External, ContourApproximationModes.ApproxSimple);
 
             var candidates = new List<(Rectangle rect, int area)>();
+
             foreach (var contour in contours)
             {
                 var boundingRect = Cv2.BoundingRect(contour);
@@ -62,9 +67,11 @@ namespace ArtaleAI.Detection
                 {
                     candidates.Add((rect, rect.Width * rect.Height));
                 }
+
                 contour.Dispose();
             }
 
+            hierarchy.Dispose();
             return candidates.OrderByDescending(c => c.area).FirstOrDefault().rect;
         }
 

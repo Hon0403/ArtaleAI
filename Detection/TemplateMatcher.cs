@@ -107,7 +107,7 @@ namespace ArtaleAI.Detection
 
                 try
                 {
-                    using var templateMat = UtilityHelper.BitmapToThreeChannelMat(templateBitmap);
+                    using var templateMat = OpenCvProcessor.BitmapToThreeChannelMat(templateBitmap);
                     var results = FindMonstersMatToMat(sourceMat, templateMat, mode, threshold, monsterName);
 
                     // 🚀 使用 AddRange 批次新增
@@ -239,13 +239,14 @@ namespace ArtaleAI.Detection
         private static List<MatchResult> ProcessMultiScale(Mat sourceMat, Mat templateMat, MonsterDetectionMode mode, double threshold, string monsterName)
         {
             var allResults = new List<MatchResult>();
-            var scaleFactors = _settings?.MultiScaleFactors ?? new double[] { 1.0 };
+            var scaleFactors = _settings.MultiScaleFactors;
 
             Debug.WriteLine($"🔍 開始多尺度匹配，尺度因子: [{string.Join(", ", scaleFactors.Select(s => s.ToString("F1")))}]");
 
             foreach (var scale in scaleFactors)
             {
                 Mat scaledTemplate = null;
+                bool needDispose = false;
                 try
                 {
                     // 縮放模板
@@ -254,11 +255,13 @@ namespace ArtaleAI.Detection
                         var newSize = new OpenCvSharp.Size((int)(templateMat.Width * scale), (int)(templateMat.Height * scale));
                         scaledTemplate = new Mat();
                         Cv2.Resize(templateMat, scaledTemplate, newSize, 0, 0, InterpolationFlags.Linear);
+                        needDispose = true;
                         Debug.WriteLine($"📏 模板縮放: {templateMat.Width}x{templateMat.Height} → {scaledTemplate.Width}x{scaledTemplate.Height}");
                     }
                     else
                     {
-                        scaledTemplate = templateMat.Clone();
+                        scaledTemplate = templateMat;  // 直接使用，不複製
+                        needDispose = false;  // 不需要釋放
                     }
 
                     // 尺寸檢查
@@ -282,7 +285,7 @@ namespace ArtaleAI.Detection
                 }
                 finally
                 {
-                    if (scaledTemplate != templateMat)
+                    if (needDispose)  // 🎯 明確的釋放條件
                         scaledTemplate?.Dispose();
                 }
             }

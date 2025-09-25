@@ -72,7 +72,7 @@ namespace ArtaleAI.Detection
                         if (!originalTemplate.Empty())
                         {
                             // 🚀 舊版本方式：統一使用BGR格式，不強制轉RGB
-                            var template = UtilityHelper.EnsureThreeChannels(originalTemplate);
+                            var template = OpenCvProcessor.EnsureThreeChannels(originalTemplate);
                             originalTemplate.Dispose();
                             _templates[kvp.Key] = template;
                             Debug.WriteLine($"✅ 已載入BGR模板: {kvp.Key} ({template.Width}x{template.Height}, {template.Channels()} 通道)");
@@ -107,7 +107,7 @@ namespace ArtaleAI.Detection
             try
             {
                 // 🚀 舊版本方式：直接使用BGR格式
-                using var frameMat = UtilityHelper.BitmapToThreeChannelMat(fullFrameBitmap);
+                using var frameMat = OpenCvProcessor.BitmapToThreeChannelMat(fullFrameBitmap);
                 var cornerThreshold = _config.Templates.Minimap.CornerThreshold;
 
                 Debug.WriteLine($"🔍 開始小地圖檢測（兩角匹配方式）");
@@ -241,8 +241,8 @@ namespace ArtaleAI.Detection
                     // 🚀 舊版本方式：使用灰階匹配提高穩定性
                     if (useGrayscale)
                     {
-                        using var inputGray = UtilityHelper.ConvertToGrayscale(inputMat);
-                        using var templateGray = UtilityHelper.ConvertToGrayscale(template);
+                        using var inputGray = OpenCvProcessor.ConvertToGrayscale(inputMat);
+                        using var templateGray = OpenCvProcessor.ConvertToGrayscale(template);
                         Cv2.MatchTemplate(inputGray, templateGray, result, TemplateMatchModes.CCoeffNormed);
                     }
                     else
@@ -392,7 +392,7 @@ namespace ArtaleAI.Detection
 
         public void Dispose()
         {
-            UtilityHelper.SafeDispose(_templates);
+            CacheManager.SafeDispose(_templates);
             Debug.WriteLine("🗑️ MapDetector 模板已釋放");
         }
     }

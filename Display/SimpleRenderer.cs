@@ -1,4 +1,5 @@
 ﻿using ArtaleAI.Models;
+using ArtaleAI.Utils;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
@@ -29,42 +30,46 @@ namespace ArtaleAI.Display
 
             try
             {
-                // 🚀 方案三：建立透明疊加層
-                var overlay = new Bitmap(baseBitmap.Width, baseBitmap.Height, PixelFormat.Format32bppArgb);
-                using (var gOverlay = Graphics.FromImage(overlay))
+                // 🎯 使用 ResourceManager 管理覆蓋層
+                return ResourceManager.CreateAndUseBitmap(baseBitmap.Width, baseBitmap.Height, overlay =>
                 {
-                    // 清除為完全透明
-                    gOverlay.Clear(Color.Transparent);
-
-                    // 設定高品質繪製
-                    gOverlay.SmoothingMode = SmoothingMode.AntiAlias;
-                    gOverlay.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
-
-                    // 在透明層上一次性完成所有繪製
-                    foreach (var item in allItems)
+                    using (var gOverlay = Graphics.FromImage(overlay))
                     {
-                        RenderSingleItemWithGraphics(gOverlay, item);
+                        gOverlay.Clear(Color.Transparent);
+                        gOverlay.SmoothingMode = SmoothingMode.AntiAlias;
+                        gOverlay.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+
+                        foreach (var item in allItems)
+                        {
+                            RenderSingleItemWithGraphics(gOverlay, item);
+                        }
                     }
-                }
 
-                // 🚀 最終合成：只需要兩次 DrawImage
-                var result = new Bitmap(baseBitmap.Width, baseBitmap.Height, PixelFormat.Format32bppArgb);
-                using (var gFinal = Graphics.FromImage(result))
-                {
-                    gFinal.DrawImage(baseBitmap, 0, 0);    // 貼底圖
-                    gFinal.DrawImage(overlay, 0, 0);       // 疊加透明層
-                }
-
-                overlay.Dispose(); // 釋放疊加層
-                return result;
+                    // 🎯 創建最終結果並自動管理
+                    return ResourceManager.CreateAndUseBitmap(baseBitmap.Width, baseBitmap.Height, result =>
+                    {
+                        using (var gFinal = Graphics.FromImage(result))
+                        {
+                            gFinal.DrawImage(baseBitmap, 0, 0);
+                            gFinal.DrawImage(overlay, 0, 0);
+                        }
+                        return new Bitmap(result);  // 返回副本
+                    });
+                });
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"透明疊加層渲染失敗: {ex.Message}");
-                return new Bitmap(baseBitmap);
+                System.Diagnostics.Debug.WriteLine($"渲染失敗: {ex.Message}");
+                try
+                {
+                    return new Bitmap(baseBitmap);
+                }
+                catch
+                {
+                    return null;
+                }
             }
         }
-
 
         private static void RenderSingleItemWithGraphics(Graphics g, IRenderItem item)
         {
