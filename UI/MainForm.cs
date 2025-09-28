@@ -118,11 +118,16 @@ namespace ArtaleAI
 
         private void UpdateDisplaySafely(Bitmap newFrame)
         {
+            if (newFrame == null) return;
+
             if (InvokeRequired)
             {
-                // ✅ 重要：必須創建副本，因為跨執行緒傳遞
-                var frameCopy = new Bitmap(newFrame);
-                BeginInvoke(new Action<Bitmap>(UpdateFrameInternal), frameCopy);
+                // ✅ 重要：跨執行緒時創建副本並自動釋放原始
+                ResourceManager.SafeUseBitmap(newFrame, originalFrame =>
+                {
+                    var frameCopy = new Bitmap(originalFrame);
+                    BeginInvoke(new Action<Bitmap>(UpdateFrameInternal), frameCopy);
+                });
             }
             else
             {
@@ -138,21 +143,22 @@ namespace ArtaleAI
                 return;
             }
 
+            // 🚀 安全的交換顯示圖像
             var oldImage = pictureBoxLiveView.Image;
             var oldFrame = _currentDisplayFrame;
 
             _currentDisplayFrame = newFrame;
             pictureBoxLiveView.Image = newFrame;
 
-            // 只釋放舊的資源
-            if (oldImage != newFrame)
+            // 只釋放真正的舊資源（避免重複釋放）
+            if (oldImage != null && oldImage != newFrame)
             {
-                oldImage?.Dispose();
+                oldImage.Dispose();
             }
 
-            if (oldFrame != newFrame)
+            if (oldFrame != null && oldFrame != newFrame && oldFrame != oldImage)
             {
-                oldFrame?.Dispose();
+                oldFrame.Dispose();
             }
         }
 
@@ -714,14 +720,10 @@ namespace ArtaleAI
                 var config = _configurationManager?.CurrentConfig;
                 if (!ShouldDetectBloodBar(DateTime.UtcNow, config.DetectionPerformance)) return;
 
-                // 🎯 直接使用BGR Mat
-                using var cameraArea = BloodBarDetector.ExtractCameraArea(frameMat, null, config.PartyRedBar, out int cameraOffsetY);
+                // 🚀 使用完全自動化的血條檢測
+                var bloodBarRect = BloodBarDetector.DetectBloodBarSafe(
+                    frameMat, null, config.PartyRedBar, out int cameraOffsetY);
 
-                // 🚀 關鍵：從RGB轉HSV
-                using var hsvImage = OpenCvProcessor.ConvertToHSV(cameraArea); // 這裡已經是RGB2HSV
-                using var redMask = BloodBarDetector.CreateRedMask(hsvImage, config.PartyRedBar);
-
-                var bloodBarRect = BloodBarDetector.FindBestRedBar(redMask, config.PartyRedBar);
                 if (bloodBarRect.HasValue)
                 {
                     var screenBloodBar = BloodBarDetector.ToScreenCoordinates(bloodBarRect.Value, cameraOffsetY);
@@ -729,15 +731,14 @@ namespace ArtaleAI
                     _currentDetectionBoxes = BloodBarDetector.CalculateDetectionBoxes(screenBloodBar, config.PartyRedBar);
                     _currentAttackRangeBoxes = BloodBarDetector.CalculateAttackRangeBoxes(screenBloodBar, config.AttackRange);
                     _lastBloodBarDetection = DateTime.UtcNow;
-
-                    OnStatusMessage($"✅ BGR優化血條檢測成功: {screenBloodBar}");
                 }
             }
             catch (Exception ex)
             {
-                OnStatusMessage($"❌ BGR血條檢測異常: {ex.Message}");
+                OnStatusMessage($"❌ 血條檢測異常: {ex.Message}");
             }
         }
+
 
         // 🚀 優化版怪物檢測
         private void ProcessMonstersOptimized(Mat frameMat)
@@ -761,42 +762,43 @@ namespace ArtaleAI
                 }
 
                 var allResults = new List<MonsterRenderInfo>();
+                var frameBounds = new Rect(0, 0, frameMat.Width, frameMat.Height);
+
                 foreach (var detectionBox in _currentDetectionBoxes)
                 {
-                    // 裁切BGR檢測區域
-                    var frameBounds = new Rect(0, 0, frameMat.Width, frameMat.Height);
                     var cropRect = new Rect(detectionBox.X, detectionBox.Y, detectionBox.Width, detectionBox.Height);
                     var validCropRect = frameBounds & cropRect;
 
                     if (validCropRect.Width < 10 || validCropRect.Height < 10) continue;
 
-                    using var croppedMat = frameMat[validCropRect].Clone();
-
-                    var results = TemplateMatcher.FindMonstersWithMatOptimized(
-                        croppedMat,
-                        templateData.Templates,
-                        Enum.Parse<MonsterDetectionMode>(templateData.DetectionMode),
-                        templateData.Threshold,
-                        templateData.SelectedMonsterName);
-
-                    // 轉換座標到全局
-                    foreach (var result in results)
+                    // 🚀 使用 ResourceManager 自動管理裁切區域
+                    ResourceManager.SafeUseMat(frameMat[validCropRect].Clone(), croppedMat =>
                     {
-                        var monster = new MonsterRenderInfo
+                        var results = TemplateMatcher.FindMonstersWithMatOptimized(
+                            croppedMat,
+                            templateData.Templates,
+                            Enum.Parse<MonsterDetectionMode>(templateData.DetectionMode),
+                            templateData.Threshold,
+                            templateData.SelectedMonsterName);
+
+                        // 轉換座標到全局
+                        foreach (var result in results)
                         {
-                            MonsterName = result.Name,
-                            Location = new SdPoint(result.Position.X + validCropRect.X, result.Position.Y + validCropRect.Y),
-                            Size = result.Size,
-                            Confidence = result.Confidence
-                        };
-                        allResults.Add(monster);
-                    }
+                            var monster = new MonsterRenderInfo
+                            {
+                                MonsterName = result.Name,
+                                Location = new SdPoint(result.Position.X + validCropRect.X, result.Position.Y + validCropRect.Y),
+                                Size = result.Size,
+                                Confidence = result.Confidence
+                            };
+                            allResults.Add(monster);
+                        }
+                    });
                 }
 
-                // 🎯 新增：全局NMS去重處理
+                // 🎯 全局NMS去重處理
                 if (allResults.Count > 1)
                 {
-                    // 使用較嚴格的IoU閾值進行全局NMS
                     var dedupedResults = GeometryCalculator.ApplyNMS(allResults, iouThreshold: 0.3, higherIsBetter: true);
                     _currentMonsters = dedupedResults;
                     OnStatusMessage($"🎯 全局NMS處理：{allResults.Count} → {dedupedResults.Count} 個怪物");
@@ -810,7 +812,7 @@ namespace ArtaleAI
             }
             catch (Exception ex)
             {
-                OnStatusMessage($"❌ BGR怪物檢測異常: {ex.Message}");
+                OnStatusMessage($"❌ 怪物檢測異常: {ex.Message}");
             }
         }
 
@@ -819,19 +821,23 @@ namespace ArtaleAI
         {
             try
             {
-                // 🎯 使用 ResourceManager 自動管理 displayBitmap
+                var config = _configurationManager?.CurrentConfig;
+                if (config?.OverlayStyle == null)
+                {
+                    // 🚀 直接安全轉換並顯示
+                    ResourceManager.SafeUseBitmap(frameMat.ToBitmap(), bitmap =>
+                    {
+                        UpdateDisplaySafely(new Bitmap(bitmap));
+                    });
+                    return;
+                }
+
+                // 🚀 使用 ResourceManager 自動管理原始 displayBitmap
                 ResourceManager.SafeUseBitmap(frameMat.ToBitmap(), displayBitmap =>
                 {
-                    var config = _configurationManager?.CurrentConfig;
-                    if (config?.OverlayStyle == null)
-                    {
-                        UpdateDisplaySafely(new Bitmap(displayBitmap));
-                        return;  // ✅ displayBitmap 會自動釋放
-                    }
-
-                    // 收集所有要繪製的項目（你原本的邏輯）
+                    // 收集所有要繪製的項目
                     int totalItems = _currentBloodBars.Count + _currentDetectionBoxes.Count +
-                                    _currentAttackRangeBoxes.Count + _currentMonsters.Count;
+                                   _currentAttackRangeBoxes.Count + _currentMonsters.Count;
 
                     var allItems = new List<IRenderItem>(totalItems);
 
@@ -839,12 +845,11 @@ namespace ArtaleAI
                     if (_currentBloodBars.Count > 0)
                     {
                         var bloodBarStyle = config.OverlayStyle.PartyRedBar;
-                        var bloodBarsArray = _currentBloodBars.ToArray();
-                        for (int i = 0; i < bloodBarsArray.Length; i++)
+                        for (int i = 0; i < _currentBloodBars.Count; i++)
                         {
                             allItems.Add(new PartyRedBarRenderItem(bloodBarStyle)
                             {
-                                BoundingBox = bloodBarsArray[i]
+                                BoundingBox = _currentBloodBars[i]
                             });
                         }
                     }
@@ -853,13 +858,11 @@ namespace ArtaleAI
                     if (_currentDetectionBoxes.Count > 0)
                     {
                         var boxStyle = config.OverlayStyle.DetectionBox;
-                        var boxesArray = _currentDetectionBoxes.ToArray();
-                        Span<Rectangle> boxSpan = boxesArray.AsSpan();
-                        for (int i = 0; i < boxSpan.Length; i++)
+                        for (int i = 0; i < _currentDetectionBoxes.Count; i++)
                         {
                             allItems.Add(new DetectionBoxRenderItem(boxStyle)
                             {
-                                BoundingBox = boxSpan[i]
+                                BoundingBox = _currentDetectionBoxes[i]
                             });
                         }
                     }
@@ -868,12 +871,11 @@ namespace ArtaleAI
                     if (_currentAttackRangeBoxes.Count > 0)
                     {
                         var attackRangeStyle = config.OverlayStyle.AttackRange;
-                        var attackRangeArray = _currentAttackRangeBoxes.ToArray();
-                        for (int i = 0; i < attackRangeArray.Length; i++)
+                        for (int i = 0; i < _currentAttackRangeBoxes.Count; i++)
                         {
                             allItems.Add(new AttackRangeRenderItem(attackRangeStyle)
                             {
-                                BoundingBox = attackRangeArray[i]
+                                BoundingBox = _currentAttackRangeBoxes[i]
                             });
                         }
                     }
@@ -882,10 +884,9 @@ namespace ArtaleAI
                     if (_currentMonsters.Count > 0)
                     {
                         var monsterStyle = config.OverlayStyle.Monster;
-                        var monstersArray = _currentMonsters.ToArray();
-                        for (int i = 0; i < monstersArray.Length; i++)
+                        for (int i = 0; i < _currentMonsters.Count; i++)
                         {
-                            var m = monstersArray[i];
+                            var m = _currentMonsters[i];
                             allItems.Add(new MonsterRenderItem(monsterStyle)
                             {
                                 BoundingBox = new Rectangle(m.Location.X, m.Location.Y, m.Size.Width, m.Size.Height),
@@ -895,8 +896,9 @@ namespace ArtaleAI
                         }
                     }
 
-                    // 一次性渲染
+                    // 🚀 一次性渲染，SimpleRenderer 內部管理記憶體
                     var renderedFrame = SimpleRenderer.RenderOverlays(displayBitmap, allItems, null, null, null, null);
+
                     if (renderedFrame != null)
                     {
                         UpdateDisplaySafely(renderedFrame);
@@ -906,14 +908,14 @@ namespace ArtaleAI
                         UpdateDisplaySafely(new Bitmap(displayBitmap));
                     }
 
-                    // 📍 執行到這裡時，displayBitmap 會自動釋放
+                    // 📍 離開這裡時，displayBitmap 會自動釋放
                 });
             }
             catch (Exception ex)
             {
                 OnError($"渲染失敗: {ex.Message}");
 
-                // 異常處理：嘗試顯示原始畫面
+                // 🚀 異常處理：安全顯示原始畫面
                 try
                 {
                     ResourceManager.SafeUseBitmap(frameMat.ToBitmap(), fallbackBitmap =>

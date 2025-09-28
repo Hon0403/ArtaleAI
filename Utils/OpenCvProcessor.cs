@@ -6,12 +6,13 @@ using System.Drawing;
 namespace ArtaleAI.Utils
 {
     /// <summary>
-    /// OpenCV 圖像處理專用類別
+    /// OpenCV 圖像處理專用類別 - 記憶體優化版
     /// </summary>
     public static class OpenCvProcessor
     {
         private static readonly object ConversionLock = new object();
 
+        #region 原始方法（保持向後兼容）
         /// <summary>
         /// 將 BGR 圖像轉換為 HSV
         /// </summary>
@@ -99,7 +100,140 @@ namespace ArtaleAI.Utils
             using var originalMat = BitmapConverter.ToMat(bitmap);
             return EnsureThreeChannels(originalMat);
         }
+        #endregion
 
+        #region 記憶體安全版本
+        /// <summary>
+        /// 安全轉換 BGR 到 HSV，自動管理記憶體
+        /// </summary>
+        public static TResult SafeConvertToHSV<TResult>(Mat bgrMat, Func<Mat, TResult> processor)
+        {
+            return ResourceManager.SafeUseMat(
+                ConvertToHSV(bgrMat),
+                hsvMat => processor(hsvMat)
+            );
+        }
+
+        /// <summary>
+        /// 安全轉換 BGR 到灰階，自動管理記憶體
+        /// </summary>
+        public static TResult SafeConvertToGrayscale<TResult>(Mat bgrMat, Func<Mat, TResult> processor)
+        {
+            return ResourceManager.SafeUseMat(
+                ConvertToGrayscale(bgrMat),
+                grayMat => processor(grayMat)
+            );
+        }
+
+        /// <summary>
+        /// 安全創建黑色像素遮罩，自動管理記憶體
+        /// </summary>
+        public static TResult SafeCreateBlackPixelMask<TResult>(Mat img, Func<Mat, TResult> processor)
+        {
+            return ResourceManager.SafeUseMat(
+                CreateBlackPixelMask(img),
+                mask => processor(mask)
+            );
+        }
+
+        /// <summary>
+        /// 安全確保三通道格式，自動管理記憶體
+        /// </summary>
+        public static TResult SafeEnsureThreeChannels<TResult>(Mat input, Func<Mat, TResult> processor)
+        {
+            return ResourceManager.SafeUseMat(
+                EnsureThreeChannels(input),
+                output => processor(output)
+            );
+        }
+
+        /// <summary>
+        /// 安全 Bitmap 轉三通道 Mat，自動管理記憶體
+        /// </summary>
+        public static TResult SafeBitmapToThreeChannelMat<TResult>(Bitmap bitmap, Func<Mat, TResult> processor)
+        {
+            return ResourceManager.SafeUseMat(
+                BitmapToThreeChannelMat(bitmap),
+                mat => processor(mat)
+            );
+        }
+
+        /// <summary>
+        /// 安全組合操作：BGR → HSV → 處理，自動管理記憶體
+        /// </summary>
+        public static TResult SafeProcessWithHSV<TResult>(Mat bgrMat, Func<Mat, Mat, TResult> processor)
+        {
+            return ResourceManager.SafeUseMat(
+                ConvertToHSV(bgrMat),
+                hsvMat => processor(bgrMat, hsvMat)
+            );
+        }
+
+        /// <summary>
+        /// 安全組合操作：BGR → Grayscale → 處理，自動管理記憶體
+        /// </summary>
+        public static TResult SafeProcessWithGrayscale<TResult>(Mat bgrMat, Func<Mat, Mat, TResult> processor)
+        {
+            return ResourceManager.SafeUseMat(
+                ConvertToGrayscale(bgrMat),
+                grayMat => processor(bgrMat, grayMat)
+            );
+        }
+
+        /// <summary>
+        /// 複雜流程：BGR → HSV → Grayscale，全程記憶體管理
+        /// </summary>
+        public static TResult SafeProcessMultiFormat<TResult>(
+            Mat bgrMat,
+            Func<Mat, Mat, Mat, TResult> processor)
+        {
+            return ResourceManager.SafeUseMat(
+                ConvertToHSV(bgrMat),
+                hsvMat => ResourceManager.SafeUseMat(
+                    ConvertToGrayscale(bgrMat),
+                    grayMat => processor(bgrMat, hsvMat, grayMat)
+                )
+            );
+        }
+
+        /// <summary>
+        /// 批次處理多個轉換，統一記憶體管理
+        /// </summary>
+        public static TResult SafeBatchProcess<TResult>(
+            Mat sourceMat,
+            bool needHsv,
+            bool needGrayscale,
+            bool needMask,
+            Func<Mat, Mat?, Mat?, Mat?, TResult> processor)
+        {
+            Mat? hsvMat = null;
+            Mat? grayMat = null;
+            Mat? maskMat = null;
+
+            try
+            {
+                if (needHsv)
+                    hsvMat = ConvertToHSV(sourceMat);
+
+                if (needGrayscale)
+                    grayMat = ConvertToGrayscale(sourceMat);
+
+                if (needMask)
+                    maskMat = CreateBlackPixelMask(sourceMat);
+
+                return processor(sourceMat, hsvMat, grayMat, maskMat);
+            }
+            finally
+            {
+                // 🎯 統一釋放所有中間結果
+                hsvMat?.Dispose();
+                grayMat?.Dispose();
+                maskMat?.Dispose();
+            }
+        }
+        #endregion
+
+        #region 輔助方法（無記憶體問題）
         /// <summary>
         /// HSV 顏色值轉換為 OpenCV Scalar
         /// </summary>
@@ -115,5 +249,6 @@ namespace ArtaleAI.Utils
         {
             return ((int)hsv.Val0, (int)hsv.Val1, (int)hsv.Val2);
         }
+        #endregion
     }
 }
