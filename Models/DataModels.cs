@@ -1,9 +1,15 @@
 ﻿using ArtaleAI.Config;
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Text.Json;
 using Windows.Graphics.Capture;
+using OpenCvSharp;
+using SdPoint = System.Drawing.Point;
+using SdSize = System.Drawing.Size;
+using SdRectangle = System.Drawing.Rectangle;
+using SdBitmap = System.Drawing.Bitmap;
+using CvPoint = OpenCvSharp.Point;
+using CvSize = OpenCvSharp.Size;
 
 namespace ArtaleAI.Models
 {
@@ -11,10 +17,10 @@ namespace ArtaleAI.Models
 
     public class MinimapSnapshot
     {
-        public Bitmap MinimapImage { get; set; } = null!;
-        public Point? PlayerPosition { get; set; }
+        public SdBitmap MinimapImage { get; set; } = null!;
+        public SdPoint? PlayerPosition { get; set; }
         public GraphicsCaptureItem CaptureItem { get; set; } = null!;
-        public Rectangle? MinimapScreenRect { get; set; }
+        public SdRectangle? MinimapScreenRect { get; set; }
     }
 
     public class MinimapLoadResult
@@ -31,10 +37,10 @@ namespace ArtaleAI.Models
 
     public class MinimapSnapshotResult
     {
-        public Bitmap MinimapImage { get; set; } = null!;
-        public Point? PlayerPosition { get; set; }
+        public SdBitmap MinimapImage { get; set; } = null!;
+        public SdPoint? PlayerPosition { get; set; }
         public GraphicsCaptureItem CaptureItem { get; set; } = null!;
-        public Rectangle? MinimapScreenRect { get; set; }
+        public SdRectangle? MinimapScreenRect { get; set; }
     }
 
     #endregion
@@ -47,7 +53,7 @@ namespace ArtaleAI.Models
     public class TemplateData
     {
         public string SelectedMonsterName { get; set; }
-        public List<Bitmap> Templates { get; set; }
+        public List<Mat> Templates { get; set; }
         public string DetectionMode { get; set; }
         public double Threshold { get; set; }
         public int TemplateCount { get; set; }
@@ -56,8 +62,8 @@ namespace ArtaleAI.Models
     public class MatchResult
     {
         public string Name { get; set; } = "";
-        public Point Position { get; set; }
-        public Size Size { get; set; }
+        public SdPoint Position { get; set; }
+        public SdSize Size { get; set; }
         public double Score { get; set; }
         public double Confidence { get; set; }
         public bool IsOccluded { get; set; }
@@ -67,23 +73,23 @@ namespace ArtaleAI.Models
     public class DetectionResult
     {
         public string Name { get; set; } = "";
-        public Point Position { get; set; }
-        public Size Size { get; set; }
+        public SdPoint Position { get; set; }
+        public SdSize Size { get; set; }
         public double Score { get; set; }
         public double Confidence { get; set; }
     }
 
     public class TemplateMatch
     {
-        public Point Location { get; }
+        public SdPoint Location { get; }
         public double Confidence { get; }
-        public Rectangle BoundingBox { get; }
+        public SdRectangle BoundingBox { get; }
 
-        public TemplateMatch(Point location, double confidence, Size templateSize)
+        public TemplateMatch(SdPoint location, double confidence, SdSize templateSize)
         {
             Location = location;
             Confidence = confidence;
-            BoundingBox = new Rectangle(location.X, location.Y, templateSize.Width, templateSize.Height);
+            BoundingBox = new SdRectangle(location.X, location.Y, templateSize.Width, templateSize.Height);
         }
     }
 

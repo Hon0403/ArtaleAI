@@ -23,47 +23,33 @@ namespace ArtaleAI.Detection
             PartyRedBarSettings config,
             Func<Mat, Mat, Rectangle?, int, TResult> processor)
         {
-            return ResourceManager.SafeUseMat(
-                ExtractCameraArea(frameMat, uiExcludeRect, config, out int offsetY),
-                cameraArea =>
-                {
-                    return ResourceManager.SafeUseMat(
-                        OpenCvProcessor.ConvertToHSV(cameraArea),
-                        hsvImage =>
-                        {
-                            return ResourceManager.SafeUseMat(
-                                CreateRedMask(hsvImage, config),
-                                redMask =>
-                                {
-                                    var bestBar = FindBestRedBar(redMask, config);
-                                    return processor(cameraArea, redMask, bestBar, offsetY);
-                                });
-                        });
-                });
+            using var cameraArea = ExtractCameraArea(frameMat, uiExcludeRect, config, out int offsetY);
+            using var hsvImage = OpenCvProcessor.ConvertToHSV(cameraArea);
+            using var redMask = CreateRedMask(hsvImage, config);
+
+            var bestBar = FindBestRedBar(redMask, config);
+            return processor(cameraArea, redMask, bestBar, offsetY);
         }
 
         /// <summary>
-        /// 簡化版本：直接返回血條位置，自動管理記憶體
+        /// 直接返回血條位置
         /// </summary>
-        public static Rectangle? DetectBloodBarSafe(
+        public static Rectangle? DetectBloodBar(
             Mat frameMat,
             Rectangle? uiExcludeRect,
             PartyRedBarSettings config,
             out int cameraOffsetY)
         {
-            int localOffsetY = 0;
-            var result = ProcessBloodBarDetection(frameMat, uiExcludeRect, config,
-                (cameraArea, redMask, bestBar, offsetY) =>
-                {
-                    localOffsetY = offsetY;
-                    return bestBar.HasValue
-                        ? (Rectangle?)ToScreenCoordinates(bestBar.Value, offsetY)
-                        : null;
-                });
+            using var cameraArea = ExtractCameraArea(frameMat, uiExcludeRect, config, out cameraOffsetY);
+            using var hsvImage = OpenCvProcessor.ConvertToHSV(cameraArea);
+            using var redMask = CreateRedMask(hsvImage, config);
 
-            cameraOffsetY = localOffsetY;
-            return result;
+            var bestBar = FindBestRedBar(redMask, config);
+            return bestBar.HasValue
+                ? ToScreenCoordinates(bestBar.Value, cameraOffsetY)
+                : null;
         }
+
 
         /// <summary>
         /// 提取相機區域（排除UI）- 記憶體優化版
@@ -114,7 +100,6 @@ namespace ArtaleAI.Detection
 
                 var candidates = new List<(Rectangle rect, int area)>();
 
-                // 🚀 使用 for 迴圈取代 foreach 提升效能
                 for (int i = 0; i < contours.Length; i++)
                 {
                     var contour = contours[i];
@@ -132,12 +117,10 @@ namespace ArtaleAI.Detection
                     }
                     finally
                     {
-                        // 🎯 確保每個 contour 都被釋放
                         contour?.Dispose();
                     }
                 }
 
-                // 🚀 使用陣列操作取代 LINQ 提升效能
                 if (candidates.Count == 0)
                     return null;
 
@@ -152,10 +135,8 @@ namespace ArtaleAI.Detection
             }
             finally
             {
-                // 🎯 統一釋放資源
                 hierarchy?.Dispose();
 
-                // 🚀 修正：正確釋放 Mat 陣列
                 if (contours != null)
                 {
                     foreach (var contour in contours)

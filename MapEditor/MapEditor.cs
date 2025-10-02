@@ -19,9 +19,6 @@ namespace ArtaleAI.Minimap
         private PointF? _startPoint = null;
         private PointF? _previewPoint = null;
 
-
-        public bool IsDrawing => _isDrawing;
-
         public MapEditor(MapEditorSettings? settings = null, TrajectorySettings? trajectorySettings = null)
         {
             _settings = settings;
@@ -330,7 +327,6 @@ namespace ArtaleAI.Minimap
                 }
             }
         }
-
 
         public static float CalculateDistance(PointF p1, PointF p2)
         {

@@ -86,18 +86,12 @@ namespace ArtaleAI.Detection
 
             try
             {
-                // 🚀 使用 ResourceManager 安全載入模板
-                ResourceManager.SafeUseMat(
-                    Cv2.ImRead(templatePath, ImreadModes.Unchanged),
-                    originalTemplate =>
-                    {
-                        if (!originalTemplate.Empty())
-                        {
-                            // 使用 OpenCvProcessor 安全版本
-                            _templates[templateName] = OpenCvProcessor.EnsureThreeChannels(originalTemplate);
-                            Debug.WriteLine($"✅ 已載入BGR模板: {templateName} ({_templates[templateName].Width}x{_templates[templateName].Height}, {_templates[templateName].Channels()} 通道)");
-                        }
-                    });
+                using var originalTemplate = Cv2.ImRead(templatePath, ImreadModes.Unchanged);
+                if (!originalTemplate.Empty())
+                {
+                    _templates[templateName] = OpenCvProcessor.EnsureThreeChannels(originalTemplate);
+                    Debug.WriteLine($"✅ 已載入BGR模板: {templateName}");
+                }
             }
             catch (Exception ex)
             {
@@ -116,30 +110,28 @@ namespace ArtaleAI.Detection
 
             try
             {
-                // 🚀 使用 OpenCvProcessor 安全版本
-                return OpenCvProcessor.SafeBitmapToThreeChannelMat(fullFrameBitmap, frameMat =>
+                using var frameMat = OpenCvProcessor.BitmapToThreeChannelMat(fullFrameBitmap);
+
+                var cornerThreshold = _config.Templates.Minimap.CornerThreshold;
+                Debug.WriteLine($"🔍 開始小地圖檢測（兩角匹配方式）");
+                Debug.WriteLine($"📊 捕捉畫面大小: {fullFrameBitmap.Width}x{fullFrameBitmap.Height}");
+                Debug.WriteLine($"🎯 使用閾值: {cornerThreshold}");
+
+                // 🎯 兩角匹配：只匹配對角線的兩個角落
+                var topLeft = MatchTemplateInternal(frameMat, "TopLeft", cornerThreshold, false);
+                var bottomRight = MatchTemplateInternal(frameMat, "BottomRight", cornerThreshold, false);
+
+                Debug.WriteLine($"🔍 TopLeft 匹配結果: {(topLeft.HasValue ? $"成功 ({topLeft.Value.Location.X}, {topLeft.Value.Location.Y})" : "失敗")}");
+                Debug.WriteLine($"🔍 BottomRight 匹配結果: {(bottomRight.HasValue ? $"成功 ({bottomRight.Value.Location.X}, {bottomRight.Value.Location.Y})" : "失敗")}");
+
+                // 🎯 兩角匹配計算
+                if (topLeft.HasValue && bottomRight.HasValue)
                 {
-                    var cornerThreshold = _config.Templates.Minimap.CornerThreshold;
-                    Debug.WriteLine($"🔍 開始小地圖檢測（兩角匹配方式）");
-                    Debug.WriteLine($"📊 捕捉畫面大小: {fullFrameBitmap.Width}x{fullFrameBitmap.Height}");
-                    Debug.WriteLine($"🎯 使用閾值: {cornerThreshold}");
+                    return CalculateMinimapRect(frameMat, topLeft.Value, bottomRight.Value);
+                }
 
-                    // 🎯 兩角匹配：只匹配對角線的兩個角落
-                    var topLeft = MatchTemplateInternal(frameMat, "TopLeft", cornerThreshold, false);
-                    var bottomRight = MatchTemplateInternal(frameMat, "BottomRight", cornerThreshold, false);
-
-                    Debug.WriteLine($"🔍 TopLeft 匹配結果: {(topLeft.HasValue ? $"成功 ({topLeft.Value.Location.X}, {topLeft.Value.Location.Y})" : "失敗")}");
-                    Debug.WriteLine($"🔍 BottomRight 匹配結果: {(bottomRight.HasValue ? $"成功 ({bottomRight.Value.Location.X}, {bottomRight.Value.Location.Y})" : "失敗")}");
-
-                    // 🎯 兩角匹配計算
-                    if (topLeft.HasValue && bottomRight.HasValue)
-                    {
-                        return CalculateMinimapRect(frameMat, topLeft.Value, bottomRight.Value);
-                    }
-
-                    Debug.WriteLine($"❌ 角落匹配不足 - TopLeft: {topLeft.HasValue}, BottomRight: {bottomRight.HasValue}");
-                    return (Rectangle?)null;
-                });
+                Debug.WriteLine($"❌ 角落匹配不足 - TopLeft: {topLeft.HasValue}, BottomRight: {bottomRight.HasValue}");
+                return null;
             }
             catch (Exception ex)
             {
@@ -197,7 +189,7 @@ namespace ArtaleAI.Detection
         /// </summary>
         private void VisualizeTwoCornersSafe(Mat frameMat, SdPoint topLeft, SdPoint bottomRight, Rectangle calculatedRect)
         {
-            ResourceManager.SafeUseMat(frameMat.Clone(), visMat =>
+            using var visMat = frameMat.Clone();
             {
                 // TopLeft - 綠色
                 var tlCenter = new CvPoint(topLeft.X, topLeft.Y);
@@ -228,7 +220,7 @@ namespace ArtaleAI.Detection
                 string fileName = $"debug_two_corners_{DateTime.Now:HHmmss}.png";
                 Cv2.ImWrite(fileName, visMat);
                 Debug.WriteLine($"✅ 已保存兩角匹配可視化圖片: {fileName}");
-            });
+            }
         }
 
         /// <summary>
@@ -251,16 +243,12 @@ namespace ArtaleAI.Detection
                     return null;
                 }
 
-                // 🚀 使用 OpenCvProcessor 安全版本
+                // ✅ 使用直接的 using 語句處理灰階轉換
                 if (useGrayscale)
                 {
-                    return OpenCvProcessor.SafeProcessWithGrayscale(inputMat, (original, grayInput) =>
-                    {
-                        return OpenCvProcessor.SafeConvertToGrayscale(template, grayTemplate =>
-                        {
-                            return PerformTemplateMatch(grayInput, grayTemplate, templateName, threshold);
-                        });
-                    });
+                    using var grayInput = OpenCvProcessor.ConvertToGrayscale(inputMat);
+                    using var grayTemplate = OpenCvProcessor.ConvertToGrayscale(template);
+                    return PerformTemplateMatch(grayInput, grayTemplate, templateName, threshold);
                 }
                 else
                 {
@@ -280,20 +268,16 @@ namespace ArtaleAI.Detection
         private (System.Drawing.Point Location, double MaxValue)? PerformTemplateMatch(
             Mat inputMat, Mat templateMat, string templateName, double threshold)
         {
-            return ResourceManager.SafeUseMat(new Mat(), result =>
+            using var result = new Mat();
+            Cv2.MatchTemplate(inputMat, templateMat, result, TemplateMatchModes.CCoeffNormed);
+            Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out OpenCvSharp.Point maxLoc);
+
+            Debug.WriteLine($"🎯 {templateName} 匹配分數: {maxVal:F4} (閾值: {threshold:F4})");
+            if (maxVal >= threshold)
             {
-                Cv2.MatchTemplate(inputMat, templateMat, result, TemplateMatchModes.CCoeffNormed);
-                Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out OpenCvSharp.Point maxLoc);
-
-                Debug.WriteLine($"🎯 {templateName} 匹配分數: {maxVal:F4} (閾值: {threshold:F4})");
-
-                if (maxVal >= threshold)
-                {
-                    return ((System.Drawing.Point Location, double MaxValue)?)(new System.Drawing.Point(maxLoc.X, maxLoc.Y), maxVal);
-                }
-
-                return null;
-            });
+                return (new System.Drawing.Point(maxLoc.X, maxLoc.Y), maxVal);
+            }
+            return null;
         }
         #endregion
 
@@ -318,32 +302,29 @@ namespace ArtaleAI.Detection
                 capturer = new GraphicsCapturer(selectedItem);
                 await Task.Delay(100);
 
-                // 🚀 使用 ResourceManager 安全處理 Bitmap
-                return ResourceManager.SafeUseBitmap(capturer.TryGetNextFrame(), fullFrame =>
+                //  使用 ResourceManager 安全處理 Bitmap
+                using var fullFrame = capturer.TryGetNextFrame();
+                if (fullFrame == null)
                 {
-                    if (fullFrame == null)
-                    {
-                        progressReporter?.Invoke("無法擷取畫面");
-                        return null;
-                    }
+                    progressReporter?.Invoke("無法擷取畫面");
+                    return null;
+                }
 
-                    var minimapRect = FindMinimapOnScreen(fullFrame);
-                    if (!minimapRect.HasValue)
-                    {
-                        progressReporter?.Invoke("找不到小地圖");
-                        throw new Exception("無法偵測到小地圖區域");
-                    }
+                var minimapRect = FindMinimapOnScreen(fullFrame);
+                if (!minimapRect.HasValue)
+                {
+                    progressReporter?.Invoke("找不到小地圖");
+                    throw new Exception("無法偵測到小地圖區域");
+                }
 
-                    // 🚀 安全裁切小地圖
-                    return ResourceManager.SafeUseBitmap(
-                        fullFrame.Clone(minimapRect.Value, fullFrame.PixelFormat),
-                        minimapBitmap => new MinimapSnapshotResult
-                        {
-                            MinimapImage = new Bitmap(minimapBitmap), // 創建副本
-                            CaptureItem = selectedItem,
-                            MinimapScreenRect = minimapRect.Value
-                        });
-                });
+                // 安全裁切小地圖
+                using var minimapBitmap = fullFrame.Clone(minimapRect.Value, fullFrame.PixelFormat);
+                return new MinimapSnapshotResult
+                {
+                    MinimapImage = new Bitmap(minimapBitmap),
+                    CaptureItem = selectedItem,
+                    MinimapScreenRect = minimapRect.Value
+                };
             }
             finally
             {

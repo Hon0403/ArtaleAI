@@ -31,7 +31,6 @@ namespace ArtaleAI.GameWindow
 
         public static GraphicsCaptureItem? TryCreateItemForWindow(string windowTitle, Action<string>? progressReporter = null)
         {
-            // 直接使用 FindWindow，不再有命名衝突
             var hwnd = FindWindow(null, windowTitle);
             if (hwnd == IntPtr.Zero) return null;
 

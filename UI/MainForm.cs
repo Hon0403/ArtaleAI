@@ -20,18 +20,12 @@ namespace ArtaleAI
     {
 
         #region Private Fields - 完整版
-        private ConfigManager? _configurationManager;
-
-        public ConfigManager? ConfigurationManager => _configurationManager;
+        public ConfigManager _configManager;
         private MapDetector? _mapDetector;
         private GraphicsCaptureItem? _selectedCaptureItem;
         private MapEditor? _mapEditor;
-        private List<Bitmap> _currentMonsterTemplates = new();
-        private string? _currentMonsterName;
 
-        private int _consecutiveSkippedFrames = 0;
         // 檢測狀態管理
-        private Rectangle? _currentMinimapRect;
         private List<Rectangle> _currentBloodBars = new();
         private List<Rectangle> _currentDetectionBoxes = new();
         private List<Rectangle> _currentAttackRangeBoxes = new();
@@ -51,6 +45,8 @@ namespace ArtaleAI
         private FloatingMagnifier? _floatingMagnifier;
         private MapFileManager? _mapFileManager;
         private MonsterImageFetcher? _monsterDownloader;
+
+        private List<Mat> currentMonsterMatTemplates = new();
         #endregion
 
         #region Constructor & Initialization
@@ -65,41 +61,54 @@ namespace ArtaleAI
 
         private void InitializeServices()
         {
-            _configurationManager = new ConfigManager(this);
-            _configurationManager.Load();
+            try
+            {
+                _configManager = new ConfigManager(this);
+                _configManager.Load();
+                var config = _configManager.CurrentConfig;
 
-            var mapEditorSettings = _configurationManager?.CurrentConfig?.MapEditor;
-            var trajectorySettings = _configurationManager?.CurrentConfig?.Trajectory;
-            _mapEditor = new MapEditor(mapEditorSettings, trajectorySettings);
+                if (config == null)
+                {
+                    MsgLog.ShowError(textBox1,"配置載入失敗");
+                    return;
+                }
 
-            // 初始化檢測服務
-            var detectionSettings = _configurationManager?.CurrentConfig?.Templates?.MonsterDetection;
-            var templateMatchingSettings = _configurationManager?.CurrentConfig?.TemplateMatching;
+                _mapEditor = new MapEditor(config.MapEditor, config.Trajectory);
+                _mapDetector = new MapDetector(config);
+                _mapFileManager = new MapFileManager(cbo_MapFiles, _mapEditor, this);
+                _floatingMagnifier = new FloatingMagnifier(this, config.Ui);
+                _monsterDownloader = new MonsterImageFetcher(this);
 
-            TemplateMatcher.Initialize(detectionSettings, templateMatchingSettings, _configurationManager?.CurrentConfig);
-            _mapDetector = new MapDetector(_configurationManager?.CurrentConfig ?? new AppConfig());
+                TemplateMatcher.Initialize(config.Templates?.MonsterDetection, config.TemplateMatching, config);
+                InitializeMonsterTemplateSystem();
+                InitializeDetectionModeDropdown();
 
-            // 其他服務
-            var uiSettings = _configurationManager?.CurrentConfig?.Ui;
-            _floatingMagnifier = new FloatingMagnifier(this, uiSettings);
-            _mapFileManager = new MapFileManager(cbo_MapFiles, _mapEditor, this);
-            _mapFileManager.InitializeMapFilesDropdown();
-            _monsterDownloader = new MonsterImageFetcher(this);
+                // 訂閱事件
+                _configManager.ConfigChanged += UpdateConfigUI;
+                _configManager.ErrorOccurred += message => MsgLog.ShowError(textBox1, message);
+                _mapFileManager.MapSaved += OnMapSaved;
+                _mapFileManager.MapLoaded += fileName => MsgLog.ShowStatus(textBox1,$"載入地圖: {fileName}");
+                _mapFileManager.ErrorOccurred += message => MsgLog.ShowError(textBox1, message);
+                _mapFileManager.StatusMessage += message => MsgLog.ShowStatus(textBox1, message);
 
-            InitializeMonsterTemplateSystem();
-
-            InitializeDetectionModeDropdown();
+                MsgLog.ShowStatus(textBox1,"✅ 所有服務初始化完成");
+            }
+            catch (Exception ex)
+            {
+                MsgLog.ShowError(textBox1,$"初始化失敗: {ex.Message}");
+            }
         }
+
 
         private void InitializeMonsterTemplateSystem()
         {
-            var monsterNames = MonsterTemplateStore.GetAvailableMonsterNames(GetMonstersDirectory());
+            var monsterNames = MonsterTemplateStore.GetAvailableMonsterNames(PathManager.MonstersDirectory);
             cbo_MonsterTemplates.Items.Clear();
             foreach (var name in monsterNames)
                 cbo_MonsterTemplates.Items.Add(name);
 
             cbo_MonsterTemplates.SelectedIndexChanged += OnMonsterSelectionChanged;
-            OnStatusMessage($"成功載入 {monsterNames.Count} 種怪物模板選項");
+            MsgLog.ShowStatus(textBox1,$"成功載入 {monsterNames.Count} 種怪物模板選項");
         }
 
         // 血條檢測條件判斷
@@ -109,57 +118,39 @@ namespace ArtaleAI
             return elapsed >= config.BloodBarDetectIntervalMs || _currentBloodBars.Count == 0;
         }
 
-        // 怪物檢測條件判斷
         private bool ShouldDetectMonster(DateTime now, DetectionPerformanceSettings config)
         {
             var elapsed = (now - _lastMonsterDetection).TotalMilliseconds;
             return elapsed >= config.MonsterDetectIntervalMs || _currentMonsters.Count == 0;
         }
 
-        private void UpdateDisplaySafely(Bitmap newFrame)
+        // 怪物檢測條件判斷
+        private void UpdateDisplay(Bitmap newFrame)
         {
             if (newFrame == null) return;
 
-            if (InvokeRequired)
-            {
-                // ✅ 重要：跨執行緒時創建副本並自動釋放原始
-                ResourceManager.SafeUseBitmap(newFrame, originalFrame =>
+            Action updateAction = () => {
+                if (pictureBoxLiveView.IsDisposed)
                 {
-                    var frameCopy = new Bitmap(originalFrame);
-                    BeginInvoke(new Action<Bitmap>(UpdateFrameInternal), frameCopy);
-                });
-            }
+                    newFrame?.Dispose();
+                    return;
+                }
+
+                var oldImage = pictureBoxLiveView.Image;
+                pictureBoxLiveView.Image = newFrame;
+
+                if (oldImage != null && oldImage != newFrame)
+                {
+                    oldImage.Dispose();
+                }
+
+                _currentDisplayFrame = newFrame;
+            };
+
+            if (InvokeRequired)
+                BeginInvoke(updateAction);
             else
-            {
-                UpdateFrameInternal(newFrame);
-            }
-        }
-
-        private void UpdateFrameInternal(Bitmap newFrame)
-        {
-            if (pictureBoxLiveView.IsDisposed)
-            {
-                newFrame?.Dispose();
-                return;
-            }
-
-            // 🚀 安全的交換顯示圖像
-            var oldImage = pictureBoxLiveView.Image;
-            var oldFrame = _currentDisplayFrame;
-
-            _currentDisplayFrame = newFrame;
-            pictureBoxLiveView.Image = newFrame;
-
-            // 只釋放真正的舊資源（避免重複釋放）
-            if (oldImage != null && oldImage != newFrame)
-            {
-                oldImage.Dispose();
-            }
-
-            if (oldFrame != null && oldFrame != newFrame && oldFrame != oldImage)
-            {
-                oldFrame.Dispose();
-            }
+                updateAction();
         }
 
         private void BindEvents()
@@ -201,7 +192,31 @@ namespace ArtaleAI
             }
 
             numericUpDownZoom.Value = config.General.ZoomFactor;
-            OnStatusMessage("配置檔案載入完成");
+            MsgLog.ShowStatus(textBox1,"配置檔案載入完成");
+        }
+
+        public void OnMapSaved(string fileName, bool isNewFile)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(() => OnMapSaved(fileName, isNewFile));
+                return;
+            }
+
+            string message = isNewFile ? "新地圖儲存成功！" : "儲存成功！";
+            MessageBox.Show(message, "地圖檔案管理", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MsgLog.ShowStatus(textBox1,$"地圖儲存: {fileName}");
+        }
+
+        private void UpdateConfigUI(AppConfig config)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(() => UpdateConfigUI(config));
+                return;
+            }
+            numericUpDownZoom.Value = config.General.ZoomFactor;
+            MsgLog.ShowStatus(textBox1,"配置已更新");
         }
 
         public void OnConfigSaved(AppConfig config)
@@ -212,12 +227,12 @@ namespace ArtaleAI
                 return;
             }
 
-            OnStatusMessage("設定已儲存");
+            MsgLog.ShowStatus(textBox1,"設定已儲存");
         }
 
         public void OnConfigError(string errorMessage)
         {
-            OnError($"設定錯誤: {errorMessage}");
+            MsgLog.ShowError(textBox1,$"設定錯誤: {errorMessage}");
         }
 
         #endregion
@@ -231,7 +246,7 @@ namespace ArtaleAI
         {
             cbo_DetectMode.Items.Clear();
 
-            var config = _configurationManager.CurrentConfig;
+            var config = _configManager.CurrentConfig;
             var detectionModes = config.DetectionModes;
 
             if (detectionModes?.DisplayOrder != null && detectionModes.DisplayNames != null)
@@ -254,16 +269,16 @@ namespace ArtaleAI
                         cbo_DetectMode.SelectedItem = defaultDisplay;
                     }
 
-                    OnStatusMessage($"智慧辨識模式初始化完成，預設：{defaultMode}");
+                    MsgLog.ShowStatus(textBox1,$"智慧辨識模式初始化完成，預設：{defaultMode}");
                 }
                 catch (Exception ex)
                 {
-                    OnError($"辨識模式設定檔格式錯誤: {ex.Message}");
+                    MsgLog.ShowError(textBox1,$"辨識模式設定檔格式錯誤: {ex.Message}");
                 }
             }
             else
             {
-                OnError("辨識模式設定檔缺少必要配置，使用預設模式");
+                MsgLog.ShowError(textBox1,"辨識模式設定檔缺少必要配置，使用預設模式");
             }
 
             // 綁定事件
@@ -281,7 +296,7 @@ namespace ArtaleAI
                 var selectedMode = ExtractModeFromDisplayText(selectedDisplayText);
                 var optimalOcclusion = GetOptimalOcclusionForMode(selectedMode);
 
-                _configurationManager?.SetValue(cfg =>
+                _configManager?.SetValue(cfg =>
                 {
                     if (cfg.Templates?.MonsterDetection != null)
                     {
@@ -290,30 +305,21 @@ namespace ArtaleAI
                     }
                 }, autoSave: true);
 
-                OnStatusMessage($"辨識模式已切換至: {selectedMode} (自動使用 {optimalOcclusion} 遮擋處理)");
+                MsgLog.ShowStatus(textBox1,$"辨識模式已切換至: {selectedMode} (自動使用 {optimalOcclusion} 遮擋處理)");
             }
         }
 
         /// <summary>
         /// 從顯示文字提取模式
         /// </summary>
-        private string ExtractModeFromDisplayText(string displayText)
+        private string ExtractModeFromDisplayText(string? displayText)
         {
-            var config = _configurationManager.CurrentConfig;
-            var detectionModes = config.DetectionModes;
+            var detectionModes = _configManager.CurrentConfig.DetectionModes;
 
-            //  優先使用設定檔映射
-            if (detectionModes?.DisplayNames != null)
-            {
-                var mode = detectionModes.DisplayNames.FirstOrDefault(kvp => kvp.Value == displayText).Key;
-                if (!string.IsNullOrEmpty(mode))
-                {
-                    return mode;
-                }
-            }
-
-            OnError($"辨識模式設定檔讀取失敗或格式錯誤：'{displayText}'");
-            return config.DetectionModes.DefaultMode;
+            return detectionModes?.DisplayNames?
+                .FirstOrDefault(kvp => kvp.Value == displayText).Key
+                ?? detectionModes?.DefaultMode
+                ?? "default";
         }
 
         /// <summary>
@@ -321,7 +327,7 @@ namespace ArtaleAI
         /// </summary>
         private OcclusionHandling GetOptimalOcclusionForMode(string mode)
         {
-            var config = _configurationManager?.CurrentConfig;
+            var config = _configManager?.CurrentConfig;
             var occlusionMappings = config?.DetectionModes?.OcclusionMappings;
 
             if (occlusionMappings?.TryGetValue(mode, out var occlusionString) == true)
@@ -331,38 +337,13 @@ namespace ArtaleAI
                     : OcclusionHandling.None;
             }
 
-            OnError($"找不到模式 '{mode}' 的遮擋處理設定");
+            MsgLog.ShowError(textBox1,$"找不到模式 '{mode}' 的遮擋處理設定");
             return OcclusionHandling.None;
         }
 
         #endregion
 
         #region IMapFileEventHandler 實作
-
-        public string GetMapDataDirectory() => PathManager.MapDataDirectory;
-
-        public void OnMapLoaded(string mapFileName)
-        {
-            OnStatusMessage($"成功載入地圖: {mapFileName}");
-        }
-
-        public void OnMapSaved(string mapFileName, bool isNewFile)
-        {
-            if (InvokeRequired)
-            {
-                Invoke(new Action<string, bool>(OnMapSaved), mapFileName, isNewFile);
-                return;
-            }
-
-            string message = isNewFile ? "新地圖儲存成功！" : "儲存成功！";
-            MessageBox.Show(message, "地圖檔案管理", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            OnStatusMessage($"地圖儲存: {mapFileName}");
-        }
-
-        public void OnNewMapCreated()
-        {
-            OnStatusMessage("已建立新地圖");
-        }
 
         public void UpdateWindowTitle(string title)
         {
@@ -390,11 +371,6 @@ namespace ArtaleAI
 
         #region IApplicationEventHandler 實作
 
-        // 放大鏡功能
-        public Bitmap? GetSourceImage() => pictureBoxMinimap.Image as Bitmap;
-
-        public decimal GetZoomFactor() =>
-            _configurationManager.CurrentConfig.General.ZoomFactor;
 
         public PointF? ConvertToImageCoordinates(SdPoint mouseLocation)
         {
@@ -424,51 +400,13 @@ namespace ArtaleAI
             return new PointF(imageX, imageY);
         }
 
-
-        // 怪物模板功能
-        public string GetMonstersDirectory() => PathManager.MonstersDirectory;
-
-        public void OnTemplatesLoaded(string monsterName, int templateCount)
-        {
-            OnStatusMessage($"成功載入 {templateCount} 個 '{monsterName}' 的模板");
-        }
-
-        #endregion
-
-        #region 統一狀態訊息處理
-
-        public void OnStatusMessage(string message)
-        {
-            if (InvokeRequired)
-            {
-                Invoke(new Action<string>(OnStatusMessage), message);
-                return;
-            }
-
-            textBox1.AppendText($"{DateTime.Now:HH:mm:ss} - {message}\r\n");
-            textBox1.ScrollToCaret();
-        }
-
-        public void OnError(string errorMessage)
-        {
-            if (InvokeRequired)
-            {
-                Invoke(new Action<string>(OnError), errorMessage);
-                return;
-            }
-
-            textBox1.AppendText($"{DateTime.Now:HH:mm:ss} - ❌ {errorMessage}\r\n");
-            textBox1.ScrollToCaret();
-            MessageBox.Show(errorMessage, "發生錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-
         #endregion
 
         #region UI 事件處理
 
         private void numericUpDownZoom_ValueChanged(object? sender, EventArgs e)
         {
-            _configurationManager?.SetValue(cfg =>
+            _configManager?.SetValue(cfg =>
             {
                 if (cfg.General != null)
                     cfg.General.ZoomFactor = numericUpDownZoom.Value;
@@ -497,12 +435,12 @@ namespace ArtaleAI
         /// </summary>
         private async Task StartPathEditingModeAsync()
         {
-            OnStatusMessage("🗺️ 路徑編輯模式：載入靜態小地圖（Mat域優化）");
+            MsgLog.ShowStatus(textBox1,"🗺️ 路徑編輯模式：載入靜態小地圖（Mat域優化）");
             tabControl1.Enabled = false;
 
             try
             {
-                // 🚀 使用修改後的Mat域處理流程
+                //  使用修改後的Mat域處理流程
                 var result = await LoadMinimapWithMatOptimized(MinimapUsage.PathEditing);
 
                 if (result?.MinimapImage != null)
@@ -511,16 +449,16 @@ namespace ArtaleAI
                     pictureBoxMinimap.Image?.Dispose();
                     pictureBoxMinimap.Image = result.MinimapImage;
 
-                    OnStatusMessage("✅ 路徑編輯模式就緒（Mat域無損精度）");
+                    MsgLog.ShowStatus(textBox1,"✅ 路徑編輯模式就緒（Mat域無損精度）");
                 }
                 else
                 {
-                    OnError("無法載入小地圖");
+                    MsgLog.ShowError(textBox1,"無法載入小地圖");
                 }
             }
             catch (Exception ex)
             {
-                OnError($"路徑編輯模式啟動失敗: {ex.Message}");
+                MsgLog.ShowError(textBox1,$"路徑編輯模式啟動失敗: {ex.Message}");
             }
             finally
             {
@@ -530,28 +468,28 @@ namespace ArtaleAI
 
         private async Task<MinimapSnapshotResult?> LoadMinimapWithMatOptimized(MinimapUsage usage)
         {
-            var config = _configurationManager?.CurrentConfig ?? new AppConfig();
+            var config = _configManager?.CurrentConfig ?? new AppConfig();
 
             try
             {
-                OnStatusMessage("🎯 建立捕捉器");
+                MsgLog.ShowStatus(textBox1,"🎯 建立捕捉器");
 
                 // 🎯 建立捕捉器
                 var captureItem = WindowFinder.TryCreateItemForWindow(config.General.GameWindowTitle);
                 if (captureItem == null)
                 {
-                    OnError($"找不到遊戲視窗: {config.General.GameWindowTitle}");
+                    MsgLog.ShowError(textBox1,$"找不到遊戲視窗: {config.General.GameWindowTitle}");
                     return null;
                 }
 
-                OnStatusMessage("📸 執行Mat域小地圖處理");
+                MsgLog.ShowStatus(textBox1,"📸 執行Mat域小地圖處理");
 
-                // 🚀 使用修改後的Mat域處理方法
-                return await _mapDetector?.GetSnapshotAsync(this.Handle, config, captureItem, OnStatusMessage);
+                //  使用修改後的Mat域處理方法
+                return await _mapDetector?.GetSnapshotAsync(this.Handle, config, captureItem, message => MsgLog.ShowStatus(textBox1, message));
             }
             catch (Exception ex)
             {
-                OnError($"Mat域小地圖載入失敗: {ex.Message}");
+                MsgLog.ShowError(textBox1,$"Mat域小地圖載入失敗: {ex.Message}");
                 return null;
             }
         }
@@ -561,47 +499,46 @@ namespace ArtaleAI
         /// </summary>
         private async Task StartLiveViewModeAsync()
         {
-            OnStatusMessage("📺 即時顯示模式：啟動");
-            var config = _configurationManager?.CurrentConfig ?? new AppConfig();
+            MsgLog.ShowStatus(textBox1,"📺 即時顯示模式：啟動");
+            var config = _configManager?.CurrentConfig ?? new AppConfig();
 
             try
             {
                 await StartLiveViewAsync(config);
-                OnStatusMessage("✅ 即時顯示模式就緒");
+                MsgLog.ShowStatus(textBox1,"✅ 即時顯示模式就緒");
             }
             catch (Exception ex)
             {
-                OnError($"即時顯示模式啟動失敗: {ex.Message}");
+                MsgLog.ShowError(textBox1,$"即時顯示模式啟動失敗: {ex.Message}");
             }
         }
-        public bool IsLiveViewRunning => _isLiveViewRunning;
 
         public async Task StartLiveViewAsync(AppConfig config)
         {
             if (_isLiveViewRunning)
             {
-                OnStatusMessage("即時顯示已經在運行中");
+                MsgLog.ShowStatus(textBox1,"即時顯示已經在運行中");
                 return;
             }
 
             try
             {
-                OnStatusMessage("正在尋找遊戲視窗...");
+                MsgLog.ShowStatus(textBox1,"正在尋找遊戲視窗...");
 
                 // 尋找遊戲視窗
                 var captureItem = WindowFinder.TryCreateItemForWindow(config.General.GameWindowTitle);
                 if (captureItem == null)
                 {
-                    OnError($"找不到名為 '{config.General.GameWindowTitle}' 的遊戲視窗");
+                    MsgLog.ShowError(textBox1,$"找不到名為 '{config.General.GameWindowTitle}' 的遊戲視窗");
                     return;
                 }
 
-                OnStatusMessage("✅ 成功找到遊戲視窗");
+                MsgLog.ShowStatus(textBox1,"✅ 成功找到遊戲視窗");
 
                 // 建立捕捉器
                 _capturer = new GraphicsCapturer(captureItem);
                 _cancellationTokenSource = new CancellationTokenSource();
-                OnStatusMessage("🎥 即時顯示已啟動");
+                MsgLog.ShowStatus(textBox1,"🎥 即時顯示已啟動");
                 _isLiveViewRunning = true;
 
                 // 開始捕捉任務
@@ -610,7 +547,7 @@ namespace ArtaleAI
             }
             catch (Exception ex)
             {
-                OnError($"啟動即時顯示失敗: {ex.Message}");
+                MsgLog.ShowError(textBox1,$"啟動即時顯示失敗: {ex.Message}");
                 await StopLiveViewAsync();
             }
         }
@@ -629,7 +566,7 @@ namespace ArtaleAI
                     await _captureTask;
                 }
 
-                OnStatusMessage("🛑 即時顯示已停止");
+                MsgLog.ShowStatus(textBox1,"🛑 即時顯示已停止");
             }
             catch (TaskCanceledException)
             {
@@ -637,7 +574,7 @@ namespace ArtaleAI
             }
             catch (Exception ex)
             {
-                OnError($"停止即時顯示時發生錯誤: {ex.Message}");
+                MsgLog.ShowError(textBox1,$"停止即時顯示時發生錯誤: {ex.Message}");
             }
             finally
             {
@@ -653,17 +590,17 @@ namespace ArtaleAI
         {
             try
             {
-                var config = _configurationManager?.CurrentConfig;
+                var config = _configManager?.CurrentConfig;
                 int targetFPS = config.WindowCapture.CaptureFrameRate;
                 int captureDelayMs = 1000 / targetFPS;
 
-                OnStatusMessage($"🎥 BGR優化捕捉設定: {targetFPS} FPS (間隔 {captureDelayMs}ms)");
+                MsgLog.ShowStatus(textBox1,$"🎥 BGR優化捕捉設定: {targetFPS} FPS (間隔 {captureDelayMs}ms)");
 
                 await Task.Yield();
 
                 while (!cancellationToken.IsCancellationRequested && _capturer != null)
                 {
-                    // 🚀 直接獲取最高效的 BGR Mat
+                    //  直接獲取最高效的 BGR Mat
                     using var frameMat = _capturer.TryGetNextMat();
                     if (frameMat != null)
                     {
@@ -684,80 +621,74 @@ namespace ArtaleAI
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                OnError($"BGR捕捉過程發生錯誤: {ex.Message}");
+                MsgLog.ShowError(textBox1,$"BGR捕捉過程發生錯誤: {ex.Message}");
             }
         }
 
-        // 🚀 新增：優化版的幀處理方法
+        // 優化版的幀處理方法
         public void OnFrameAvailableOptimized(Mat frameMat)
         {
             if (frameMat?.Empty() != false) return;
 
-            // 🔍 驗證格式正確性
             Debug.Assert(frameMat.Channels() == 3, "期望 BGR 三通道格式");
             Debug.Assert(frameMat.Type() == MatType.CV_8UC3, "期望 CV_8UC3 類型");
 
             try
             {
-                var config = _configurationManager?.CurrentConfig;
+                var config = _configManager?.CurrentConfig;
                 if (config?.DetectionPerformance == null) return;
 
-                // 🎯 只保留必要的處理，移除角色檢測
                 ProcessBloodBarsOptimized(frameMat);
                 ProcessMonstersOptimized(frameMat);
                 RenderAndDisplayOverlays(frameMat);
             }
             catch (Exception ex)
             {
-                OnStatusMessage($"BGR幀處理失敗: {ex.Message}");
+                MsgLog.ShowStatus(textBox1,$"BGR幀處理失敗: {ex.Message}");
             }
         }
 
         private void ProcessBloodBarsOptimized(Mat frameMat)
         {
-            try
-            {
-                var config = _configurationManager?.CurrentConfig;
-                if (!ShouldDetectBloodBar(DateTime.UtcNow, config.DetectionPerformance)) return;
+            var config = _configManager?.CurrentConfig;
+            var now = DateTime.UtcNow;
 
-                // 🚀 使用完全自動化的血條檢測
-                var bloodBarRect = BloodBarDetector.DetectBloodBarSafe(
-                    frameMat, null, config.PartyRedBar, out int cameraOffsetY);
+            if (!ShouldDetectBloodBar(now, config?.DetectionPerformance)) return;
 
-                if (bloodBarRect.HasValue)
-                {
-                    var screenBloodBar = BloodBarDetector.ToScreenCoordinates(bloodBarRect.Value, cameraOffsetY);
-                    _currentBloodBars = new List<Rectangle> { screenBloodBar };
-                    _currentDetectionBoxes = BloodBarDetector.CalculateDetectionBoxes(screenBloodBar, config.PartyRedBar);
-                    _currentAttackRangeBoxes = BloodBarDetector.CalculateAttackRangeBoxes(screenBloodBar, config.AttackRange);
-                    _lastBloodBarDetection = DateTime.UtcNow;
-                }
-            }
-            catch (Exception ex)
+            var bloodBarRect = BloodBarDetector.DetectBloodBar(
+                frameMat, null, config.PartyRedBar, out int cameraOffsetY);
+
+            if (bloodBarRect.HasValue)
             {
-                OnStatusMessage($"❌ 血條檢測異常: {ex.Message}");
+                var screenBloodBar = BloodBarDetector.ToScreenCoordinates(bloodBarRect.Value, cameraOffsetY);
+
+                _currentBloodBars.Clear();
+                _currentBloodBars.Add(screenBloodBar);
+
+                _currentDetectionBoxes = BloodBarDetector.CalculateDetectionBoxes(screenBloodBar, config.PartyRedBar);
+                _currentAttackRangeBoxes = BloodBarDetector.CalculateAttackRangeBoxes(screenBloodBar, config.AttackRange);
+                _lastBloodBarDetection = now;
             }
         }
 
-
-        // 🚀 優化版怪物檢測
+        //  優化版怪物檢測
         private void ProcessMonstersOptimized(Mat frameMat)
         {
             try
             {
-                var config = _configurationManager?.CurrentConfig;
-                if (!ShouldDetectMonster(DateTime.UtcNow, config.DetectionPerformance)) return;
+                var config = _configManager?.CurrentConfig;
+                if (!ShouldDetectMonster(DateTime.UtcNow, config?.DetectionPerformance)) return;
 
                 if (!_currentDetectionBoxes.Any())
                 {
-                    OnStatusMessage("❌ 無檢測區域，等待血條檢測成功");
+                    MsgLog.ShowStatus(textBox1,"❌ 無檢測區域，等待血條檢測成功");
                     return;
                 }
 
                 var templateData = GetTemplateDataSafely();
                 if (string.IsNullOrEmpty(templateData.SelectedMonsterName) || !templateData.Templates.Any())
                 {
-                    OnStatusMessage("❌ 沒有可用模板!");
+                    MsgLog.ShowStatus(textBox1,"❌ 沒有可用模板!");
                     return;
                 }
 
@@ -768,40 +699,37 @@ namespace ArtaleAI
                 {
                     var cropRect = new Rect(detectionBox.X, detectionBox.Y, detectionBox.Width, detectionBox.Height);
                     var validCropRect = frameBounds & cropRect;
-
                     if (validCropRect.Width < 10 || validCropRect.Height < 10) continue;
 
-                    // 🚀 使用 ResourceManager 自動管理裁切區域
-                    ResourceManager.SafeUseMat(frameMat[validCropRect].Clone(), croppedMat =>
-                    {
-                        var results = TemplateMatcher.FindMonstersWithMatOptimized(
-                            croppedMat,
-                            templateData.Templates,
-                            Enum.Parse<MonsterDetectionMode>(templateData.DetectionMode),
-                            templateData.Threshold,
-                            templateData.SelectedMonsterName);
+                    using var croppedMat = frameMat[validCropRect].Clone();
 
-                        // 轉換座標到全局
-                        foreach (var result in results)
+                    var results = TemplateMatcher.FindMonstersWithMatOptimized(
+                        croppedMat,
+                        templateData.Templates,
+                        Enum.Parse<MonsterDetectionMode>(templateData.DetectionMode),
+                        templateData.Threshold,
+                        templateData.SelectedMonsterName);
+
+                    // 轉換座標到全局
+                    foreach (var result in results)
+                    {
+                        var monster = new MonsterRenderInfo
                         {
-                            var monster = new MonsterRenderInfo
-                            {
-                                MonsterName = result.Name,
-                                Location = new SdPoint(result.Position.X + validCropRect.X, result.Position.Y + validCropRect.Y),
-                                Size = result.Size,
-                                Confidence = result.Confidence
-                            };
-                            allResults.Add(monster);
-                        }
-                    });
+                            MonsterName = result.Name,
+                            Location = new System.Drawing.Point(result.Position.X + validCropRect.X, result.Position.Y + validCropRect.Y),
+                            Size = result.Size,
+                            Confidence = result.Confidence
+                        };
+                        allResults.Add(monster);
+                    }
                 }
 
-                // 🎯 全局NMS去重處理
+                // NMS 去重處理
                 if (allResults.Count > 1)
                 {
                     var dedupedResults = GeometryCalculator.ApplyNMS(allResults, iouThreshold: 0.3, higherIsBetter: true);
                     _currentMonsters = dedupedResults;
-                    OnStatusMessage($"🎯 全局NMS處理：{allResults.Count} → {dedupedResults.Count} 個怪物");
+                    MsgLog.ShowStatus(textBox1,$"🎯 Mat優化完成：{allResults.Count} → {dedupedResults.Count} 個怪物");
                 }
                 else
                 {
@@ -812,122 +740,76 @@ namespace ArtaleAI
             }
             catch (Exception ex)
             {
-                OnStatusMessage($"❌ 怪物檢測異常: {ex.Message}");
+                MsgLog.ShowStatus(textBox1,$"❌ 怪物檢測異常: {ex.Message}");
             }
         }
 
-        // 🚀 優化版渲染方法
+        //  優化版渲染方法
         private void RenderAndDisplayOverlays(Mat frameMat)
         {
             try
             {
-                var config = _configurationManager?.CurrentConfig;
-                if (config?.OverlayStyle == null)
-                {
-                    // 🚀 直接安全轉換並顯示
-                    ResourceManager.SafeUseBitmap(frameMat.ToBitmap(), bitmap =>
-                    {
-                        UpdateDisplaySafely(new Bitmap(bitmap));
-                    });
-                    return;
-                }
+                var config = _configManager?.CurrentConfig;
 
-                // 🚀 使用 ResourceManager 自動管理原始 displayBitmap
-                ResourceManager.SafeUseBitmap(frameMat.ToBitmap(), displayBitmap =>
-                {
-                    // 收集所有要繪製的項目
-                    int totalItems = _currentBloodBars.Count + _currentDetectionBoxes.Count +
-                                   _currentAttackRangeBoxes.Count + _currentMonsters.Count;
+                using var baseBitmap = frameMat.ToBitmap();
+                var allItems = CollectRenderItems(config);
+                var renderedFrame = SimpleRenderer.RenderOverlays(baseBitmap, allItems);
 
-                    var allItems = new List<IRenderItem>(totalItems);
-
-                    // 血條項目
-                    if (_currentBloodBars.Count > 0)
-                    {
-                        var bloodBarStyle = config.OverlayStyle.PartyRedBar;
-                        for (int i = 0; i < _currentBloodBars.Count; i++)
-                        {
-                            allItems.Add(new PartyRedBarRenderItem(bloodBarStyle)
-                            {
-                                BoundingBox = _currentBloodBars[i]
-                            });
-                        }
-                    }
-
-                    // 檢測框
-                    if (_currentDetectionBoxes.Count > 0)
-                    {
-                        var boxStyle = config.OverlayStyle.DetectionBox;
-                        for (int i = 0; i < _currentDetectionBoxes.Count; i++)
-                        {
-                            allItems.Add(new DetectionBoxRenderItem(boxStyle)
-                            {
-                                BoundingBox = _currentDetectionBoxes[i]
-                            });
-                        }
-                    }
-
-                    // 攻擊範圍框
-                    if (_currentAttackRangeBoxes.Count > 0)
-                    {
-                        var attackRangeStyle = config.OverlayStyle.AttackRange;
-                        for (int i = 0; i < _currentAttackRangeBoxes.Count; i++)
-                        {
-                            allItems.Add(new AttackRangeRenderItem(attackRangeStyle)
-                            {
-                                BoundingBox = _currentAttackRangeBoxes[i]
-                            });
-                        }
-                    }
-
-                    // 怪物項目
-                    if (_currentMonsters.Count > 0)
-                    {
-                        var monsterStyle = config.OverlayStyle.Monster;
-                        for (int i = 0; i < _currentMonsters.Count; i++)
-                        {
-                            var m = _currentMonsters[i];
-                            allItems.Add(new MonsterRenderItem(monsterStyle)
-                            {
-                                BoundingBox = new Rectangle(m.Location.X, m.Location.Y, m.Size.Width, m.Size.Height),
-                                MonsterName = m.MonsterName,
-                                Confidence = m.Confidence
-                            });
-                        }
-                    }
-
-                    // 🚀 一次性渲染，SimpleRenderer 內部管理記憶體
-                    var renderedFrame = SimpleRenderer.RenderOverlays(displayBitmap, allItems, null, null, null, null);
-
-                    if (renderedFrame != null)
-                    {
-                        UpdateDisplaySafely(renderedFrame);
-                    }
-                    else
-                    {
-                        UpdateDisplaySafely(new Bitmap(displayBitmap));
-                    }
-
-                    // 📍 離開這裡時，displayBitmap 會自動釋放
-                });
+                UpdateDisplay(renderedFrame ?? new Bitmap(baseBitmap));
             }
             catch (Exception ex)
             {
-                OnError($"渲染失敗: {ex.Message}");
-
-                // 🚀 異常處理：安全顯示原始畫面
-                try
-                {
-                    ResourceManager.SafeUseBitmap(frameMat.ToBitmap(), fallbackBitmap =>
-                    {
-                        UpdateDisplaySafely(new Bitmap(fallbackBitmap));
-                    });
-                }
-                catch
-                {
-                    // 完全失敗時不做任何操作
-                }
+                MsgLog.ShowError(textBox1,$"渲染失敗: {ex.Message}");
             }
+        }
+
+        private List<IRenderItem> CollectRenderItems(AppConfig config)
+        {
+            var overlay = config.OverlayStyle;
+            var allItems = new List<IRenderItem>();
+
+            //  統一處理所有類型的矩形項目
+            var renderMappings = new[]
+            {
+                (_currentBloodBars, (Func<IRenderItem>)(() => RenderItem.CreateBloodBar(overlay.PartyRedBar))),
+                (_currentDetectionBoxes, (Func<IRenderItem>)(() => RenderItem.CreateDetectionBox(overlay.DetectionBox))),
+                (_currentAttackRangeBoxes, (Func<IRenderItem>)(() => RenderItem.CreateAttackRange(overlay.AttackRange)))
+            };
+
+            foreach (var (rectangles, factory) in renderMappings)
+            {
+                allItems.AddRange(rectangles.Select(rect =>
+                {
+                    var item = factory();
+                    item.BoundingBox = rect;
+                    return item;
+                }));
+            }
+
+            // 怪物項目特殊處理
+            allItems.AddRange(_currentMonsters.Select(monster =>
+            {
+                var item = RenderItem.CreateMonster(overlay.Monster, monster.MonsterName, monster.Confidence);
+                item.BoundingBox = new Rectangle(monster.Location.X, monster.Location.Y,
+                    monster.Size.Width, monster.Size.Height);
+                return item;
+            }));
+
+            return allItems;
+        }
+
+
+        private static IEnumerable<IRenderItem> CreateRenderItems<TStyle>(
+        IEnumerable<Rectangle> rectangles,
+        TStyle style,
+        Func<TStyle, RenderItem> factory)
+        {
+            return rectangles.Select(rect =>
+            {
+                var item = factory(style);
+                item.BoundingBox = rect;
+                return item;
+            });
         }
 
         /// <summary>
@@ -948,11 +830,11 @@ namespace ArtaleAI
                 pictureBoxLiveView.Image = null;
                 oldLiveImage?.Dispose();
 
-                OnStatusMessage("🗑️ 資源已清理");
+                MsgLog.ShowStatus(textBox1, "🗑️ 資源已清理");
             }
             catch (Exception ex)
             {
-                OnError($"清理資源時發生錯誤: {ex.Message}");
+                MsgLog.ShowError(textBox1,$"清理資源時發生錯誤: {ex.Message}");
             }
         }
 
@@ -963,13 +845,13 @@ namespace ArtaleAI
         {
             try
             {
-                OnStatusMessage($"🗺️ 正在載入小地圖 ({usage} 模式)...");
+                MsgLog.ShowStatus(textBox1,$"🗺️ 正在載入小地圖 ({usage} 模式)...");
 
                 var snapshot = await _mapDetector!.GetSnapshotAsync(
                     this.Handle,
-                    _configurationManager!.CurrentConfig!,
+                    _configManager!.CurrentConfig!,
                     _selectedCaptureItem,
-                    OnStatusMessage
+                    message => MsgLog.ShowStatus(textBox1, message)
                 );
 
                 if (snapshot?.MinimapImage != null)
@@ -980,12 +862,12 @@ namespace ArtaleAI
                     pictureBoxMinimap.Image?.Dispose();
                     pictureBoxMinimap.Image = snapshot.MinimapImage;
 
-                    OnStatusMessage($"✅ 路徑編輯小地圖尺寸: {snapshot.MinimapImage.Width}x{snapshot.MinimapImage.Height}");
+                    MsgLog.ShowStatus(textBox1,$"✅ 路徑編輯小地圖尺寸: {snapshot.MinimapImage.Width}x{snapshot.MinimapImage.Height}");
                 }
             }
             catch (Exception ex)
             {
-                OnError($"載入小地圖失敗: {ex.Message}");
+                MsgLog.ShowError(textBox1,$"載入小地圖失敗: {ex.Message}");
                 throw;
             }
         }
@@ -1003,7 +885,7 @@ namespace ArtaleAI
                 // 檢查動態辨識是否成功
                 if (!result.MinimapScreenRect.HasValue)
                 {
-                    OnError("動態小地圖位置辨識失敗，無法設置疊加層");
+                    MsgLog.ShowError(textBox1,"動態小地圖位置辨識失敗，無法設置疊加層");
                     return;
                 }
 
@@ -1018,18 +900,18 @@ namespace ArtaleAI
                 {
                     // 如果沒有玩家位置，使用空矩形
                     playerRect = Rectangle.Empty;
-                    OnStatusMessage("⚠️ 未檢測到玩家位置");
+                    MsgLog.ShowStatus(textBox1,"⚠️ 未檢測到玩家位置");
                 }
 
                 //  直接使用動態偵測到的小地圖螢幕位置
                 Rectangle minimapOnScreen = result.MinimapScreenRect.Value;
 
 
-                OnStatusMessage($" 小地圖疊加層已設置 ({minimapOnScreen.Width}x{minimapOnScreen.Height})");
+                MsgLog.ShowStatus(textBox1,$" 小地圖疊加層已設置 ({minimapOnScreen.Width}x{minimapOnScreen.Height})");
             }
             catch (Exception ex)
             {
-                OnError($"設置小地圖疊加層失敗: {ex.Message}");
+                MsgLog.ShowError(textBox1,$"設置小地圖疊加層失敗: {ex.Message}");
             }
         }
 
@@ -1055,7 +937,7 @@ namespace ArtaleAI
             _mapEditor.SetEditMode(selectedMode);
             pictureBoxMinimap.Invalidate();
 
-            OnStatusMessage($"編輯模式切換至: {selectedMode}");
+            MsgLog.ShowStatus(textBox1,$"編輯模式切換至: {selectedMode}");
 
         }
 
@@ -1125,7 +1007,7 @@ namespace ArtaleAI
             }
             catch (Exception ex)
             {
-                OnError($"儲存地圖時發生錯誤: {ex.Message}");
+                MsgLog.ShowError(textBox1,$"儲存地圖時發生錯誤: {ex.Message}");
             }
         }
 
@@ -1137,7 +1019,7 @@ namespace ArtaleAI
             }
             catch (Exception ex)
             {
-                OnError($"建立新地圖時發生錯誤: {ex.Message}");
+                MsgLog.ShowError(textBox1,$"建立新地圖時發生錯誤: {ex.Message}");
             }
         }
 
@@ -1146,6 +1028,17 @@ namespace ArtaleAI
 
         #region 清理與釋放
 
+        /// <summary>
+        /// 清理當前 Mat 模板
+        /// </summary>
+        private void ClearCurrentMonsterMatTemplates()
+        {
+            foreach (var template in currentMonsterMatTemplates)
+            {
+                template?.Dispose();
+            }
+            currentMonsterMatTemplates.Clear();
+        }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
@@ -1154,8 +1047,8 @@ namespace ArtaleAI
                 _currentDisplayFrame?.Dispose();
                 _currentDisplayFrame = null;
 
-                ClearCurrentMonsterTemplates();
-                CacheManager.ClearMonsterTemplateCache();
+                ClearCurrentMonsterMatTemplates();
+                MonsterTemplateStore.ClearAllMatCache();
 
                 // 清理其他資源
                 _floatingMagnifier?.Dispose();
@@ -1164,7 +1057,7 @@ namespace ArtaleAI
                 pictureBoxMinimap.Image?.Dispose();
                 pictureBoxLiveView.Image?.Dispose();
 
-                OnStatusMessage("應用程式已清理完成");
+                MsgLog.ShowStatus(textBox1,"✅ Mat統一系統清理完成");
             }
             catch (Exception ex)
             {
@@ -1185,15 +1078,15 @@ namespace ArtaleAI
                 return (TemplateData)Invoke(() => GetTemplateDataSafely());
 
             var selectedMonster = cbo_MonsterTemplates.SelectedItem?.ToString();
-            var selectedModeDisplay = cbo_DetectMode.SelectedItem?.ToString() ;
+            var selectedModeDisplay = cbo_DetectMode.SelectedItem?.ToString();
 
             return new TemplateData
             {
-                SelectedMonsterName = selectedMonster,                 // 空字串代表未選擇
-                Templates = GetCurrentMonsterTemplates(),              // 可能為空清單
-                DetectionMode = ExtractModeFromDisplayText(selectedModeDisplay), // 內部已回退到預設
-                Threshold = _configurationManager.CurrentConfig.Templates.MonsterDetection.DefaultThreshold,
-                TemplateCount = GetMonsterTemplateCount()
+                SelectedMonsterName = selectedMonster,
+                Templates = currentMonsterMatTemplates.ToList(),
+                DetectionMode = ExtractModeFromDisplayText(selectedModeDisplay),
+                Threshold = _configManager.CurrentConfig.Templates.MonsterDetection.DefaultThreshold,
+                TemplateCount = currentMonsterMatTemplates.Count
             };
         }
 
@@ -1220,42 +1113,26 @@ namespace ArtaleAI
 
         private async void OnMonsterSelectionChanged(object? sender, EventArgs e)
         {
-            if (cbo_MonsterTemplates.SelectedItem == null) return;
-
-            string selectedMonster = cbo_MonsterTemplates.SelectedItem.ToString();
-            if (!string.IsNullOrEmpty(selectedMonster))
+            try
             {
-                OnStatusMessage($"🔄 切換怪物模板：{selectedMonster}（BGR格式）");
-                ClearCurrentMonsterTemplates();
+                if (cbo_MonsterTemplates.SelectedItem == null) return;
+                string selectedMonster = cbo_MonsterTemplates.SelectedItem.ToString()!;
 
-                // 🚀 確保模板以BGR格式載入
-                _currentMonsterTemplates = await MonsterTemplateStore.LoadMonsterTemplatesAsync(
-                    selectedMonster, GetMonstersDirectory(), OnStatusMessage);
+                if (!string.IsNullOrEmpty(selectedMonster))
+                {
+                    MsgLog.ShowStatus(textBox1,$"正在載入 {selectedMonster} 模板...");
+                    ClearCurrentMonsterMatTemplates();
 
-                _currentMonsterName = selectedMonster;
-                OnTemplatesLoaded(selectedMonster, _currentMonsterTemplates.Count);
-                OnStatusMessage($"✅ 所有模板已轉換為BGR格式");
+                    currentMonsterMatTemplates = await MonsterTemplateStore.LoadMonsterMatTemplatesAsync(
+                        selectedMonster, PathManager.MonstersDirectory, message => MsgLog.ShowStatus(textBox1, message));
+
+                }
             }
-        }
-
-        private void ClearCurrentMonsterTemplates()
-        {
-            foreach (var template in _currentMonsterTemplates)
+            catch (Exception ex)
             {
-                template?.Dispose();
+                MsgLog.ShowError(textBox1,$"載入怪物模板失敗: {ex.Message}");
+                currentMonsterMatTemplates.Clear();
             }
-            _currentMonsterTemplates.Clear();
-            _currentMonsterName = null;
-        }
-
-        public List<Bitmap> GetCurrentMonsterTemplates()
-        {
-            return _currentMonsterTemplates.ToList(); // 返回副本
-        }
-
-        public int GetMonsterTemplateCount()
-        {
-            return _currentMonsterTemplates.Count;
         }
 
         private async void btn_DownloadMonster_Click(object sender, EventArgs e)
@@ -1272,17 +1149,17 @@ namespace ArtaleAI
                 var result = await _monsterDownloader.DownloadMonsterAsync(monsterName);
                 if (result?.Success == true)
                 {
-                    var monsterNames = MonsterTemplateStore.GetAvailableMonsterNames(GetMonstersDirectory());
+                    var monsterNames = MonsterTemplateStore.GetAvailableMonsterNames(PathManager.MonstersDirectory);
                     cbo_MonsterTemplates.Items.Clear();
                     foreach (var name in monsterNames)
                         cbo_MonsterTemplates.Items.Add(name);
 
-                    OnStatusMessage($"下載完成！處理了 {result.DownloadedCount} 個檔案");
+                    MsgLog.ShowStatus(textBox1,$"下載完成！處理了 {result.DownloadedCount} 個檔案");
                 }
             }
             catch (Exception ex)
             {
-                OnError($"下載怪物時發生錯誤: {ex.Message}");
+                MsgLog.ShowError(textBox1,$"下載怪物時發生錯誤: {ex.Message}");
             }
             finally
             {
@@ -1292,4 +1169,3 @@ namespace ArtaleAI
         }
     }
 }
-

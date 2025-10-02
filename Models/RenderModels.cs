@@ -1,22 +1,12 @@
 ﻿using System;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using ArtaleAI.Config;
 
 namespace ArtaleAI.Models
 {
     #region 渲染工具類
-
-    /// <summary>
-    /// 統一的顏色解析工具類
-    /// </summary>
     public static class ColorHelper
     {
-        /// <summary>
-        /// 根據字串解析顏色 (支援RGB格式：「255,0,0」)
-        /// </summary>
-        /// <param name="colorString">顏色字串</param>
-        /// <returns>解析出的顏色</returns>
         public static Color ParseColor(string colorString)
         {
             try
@@ -41,103 +31,92 @@ namespace ArtaleAI.Models
             return Color.Yellow;
         }
     }
-
     #endregion
 
-    #region 渲染項目實現
-
+    #region 統一渲染項目 - 大幅簡化
     /// <summary>
-    /// 怪物渲染項目
+    /// 統一渲染項目 - 取代所有特定類型的渲染項目
     /// </summary>
-    public class MonsterRenderItem : IRenderItem
+    public class RenderItem : IRenderItem
     {
         public Rectangle BoundingBox { get; set; }
-        public string MonsterName { get; set; } = "";
-        public double Confidence { get; set; }
-        private readonly MonsterOverlayStyle _style;
+        public string DisplayText { get; set; } = string.Empty;
+        public Color FrameColor { get; set; }
+        public Color TextColor { get; set; }
+        public int FrameThickness { get; set; }
+        public double TextScale { get; set; }
+        public int TextThickness { get; set; }
 
-        public MonsterRenderItem(MonsterOverlayStyle style)
+        //  工廠方法模式 - 取代繼承
+        public static RenderItem CreateMonster(MonsterOverlayStyle style, string name, double confidence)
         {
-            _style = style ?? throw new ArgumentNullException(nameof(style));
+            return new RenderItem
+            {
+                DisplayText = style.ShowConfidence
+                    ? string.Format(style.TextFormat, name, confidence)
+                    : name,
+                FrameColor = ColorHelper.ParseColor(style.FrameColor),
+                TextColor = ColorHelper.ParseColor(style.TextColor),
+                FrameThickness = style.FrameThickness,
+                TextScale = style.TextScale,
+                TextThickness = style.TextThickness
+            };
         }
 
-        public string DisplayText => _style.ShowConfidence
-            ? string.Format(_style.TextFormat, MonsterName, Confidence)
-            : MonsterName;
-        public Color FrameColor => ColorHelper.ParseColor(_style.FrameColor);
-        public Color TextColor => ColorHelper.ParseColor(_style.TextColor);
-        public int FrameThickness => _style.FrameThickness;
-        public double TextScale => _style.TextScale;
-        public int TextThickness => _style.TextThickness;
-    }
-
-    /// <summary>
-    /// 隊友血條渲染項目
-    /// </summary>
-    public class PartyRedBarRenderItem : IRenderItem
-    {
-        public Rectangle BoundingBox { get; set; }
-        private readonly PartyRedBarOverlayStyle _style;
-
-        public PartyRedBarRenderItem(PartyRedBarOverlayStyle style)
+        public static RenderItem CreateBloodBar(PartyRedBarOverlayStyle style)
         {
-            _style = style ?? throw new ArgumentNullException(nameof(style));
+            return new RenderItem
+            {
+                DisplayText = style.RedBarDisplayName,
+                FrameColor = ColorHelper.ParseColor(style.FrameColor),
+                TextColor = ColorHelper.ParseColor(style.TextColor),
+                FrameThickness = style.FrameThickness,
+                TextScale = style.TextScale,
+                TextThickness = style.TextThickness
+            };
         }
 
-        public string DisplayText => _style.RedBarDisplayName;
-        public Color FrameColor => ColorHelper.ParseColor(_style.FrameColor);
-        public Color TextColor => ColorHelper.ParseColor(_style.TextColor);
-        public int FrameThickness => _style.FrameThickness;
-        public double TextScale => _style.TextScale;
-        public int TextThickness => _style.TextThickness;
-    }
-
-    /// <summary>
-    /// 檢測框渲染項目
-    /// </summary>
-    public class DetectionBoxRenderItem : IRenderItem
-    {
-        public Rectangle BoundingBox { get; set; }
-        private readonly DetectionBoxOverlayStyle _style;
-
-        public DetectionBoxRenderItem(DetectionBoxOverlayStyle style)
+        public static RenderItem CreateDetectionBox(DetectionBoxOverlayStyle style)
         {
-            _style = style ?? throw new ArgumentNullException(nameof(style));
+            return new RenderItem
+            {
+                DisplayText = style.BoxDisplayName,
+                FrameColor = ColorHelper.ParseColor(style.FrameColor),
+                TextColor = ColorHelper.ParseColor(style.TextColor),
+                FrameThickness = style.FrameThickness,
+                TextScale = style.TextScale,
+                TextThickness = style.TextThickness
+            };
         }
 
-        public string DisplayText => _style.BoxDisplayName;
-        public Color FrameColor => ColorHelper.ParseColor(_style.FrameColor);
-        public Color TextColor => ColorHelper.ParseColor(_style.TextColor);
-        public int FrameThickness => _style.FrameThickness;
-        public double TextScale => _style.TextScale;
-        public int TextThickness => _style.TextThickness;
-    }
-
-    /// <summary>
-    /// 攻擊範圍渲染項目
-    /// </summary>
-    public class AttackRangeRenderItem : IRenderItem
-    {
-        public Rectangle BoundingBox { get; set; }
-        private readonly AttackRangeOverlayStyle _style;
-
-        public AttackRangeRenderItem(AttackRangeOverlayStyle style)
+        public static RenderItem CreateAttackRange(AttackRangeOverlayStyle style)
         {
-            _style = style ?? throw new ArgumentNullException(nameof(style));
+            return new RenderItem
+            {
+                DisplayText = style.RangeDisplayName,
+                FrameColor = ColorHelper.ParseColor(style.FrameColor),
+                TextColor = ColorHelper.ParseColor(style.TextColor),
+                FrameThickness = style.FrameThickness,
+                TextScale = style.TextScale,
+                TextThickness = style.TextThickness
+            };
         }
 
-        public string DisplayText => _style.RangeDisplayName;
-        public Color FrameColor => ColorHelper.ParseColor(_style.FrameColor);
-        public Color TextColor => ColorHelper.ParseColor(_style.TextColor);
-        public int FrameThickness => _style.FrameThickness;
-        public double TextScale => _style.TextScale;
-        public int TextThickness => _style.TextThickness;
+        public static RenderItem CreateMinimap(MinimapOverlayStyle style)
+        {
+            return new RenderItem
+            {
+                FrameColor = ColorHelper.ParseColor(style.FrameColor),
+                TextColor = ColorHelper.ParseColor(style.TextColor),
+                FrameThickness = (int)style.FrameThickness,
+                TextScale = style.TextScale,
+                TextThickness = 1
+            };
+        }
     }
-
     #endregion
 
-    #region 渲染相關模型
-
+    #region 其他模型 - 保持不變
     public class MonsterRenderInfo
     {
         public Point Location { get; set; }
@@ -145,6 +124,5 @@ namespace ArtaleAI.Models
         public string MonsterName { get; set; } = "";
         public double Confidence { get; set; }
     }
-
     #endregion
 }

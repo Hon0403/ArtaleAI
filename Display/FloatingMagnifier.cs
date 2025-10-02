@@ -57,40 +57,32 @@ namespace ArtaleAI.Display
         public void UpdateMagnifier(Point mouseLocation, Control sourceControl)
         {
             if (_zoomWindow == null || _floatingZoomBox == null)
-            {
-                Hide();
                 return;
-            }
 
-            var sourceImage = _mainForm.GetSourceImage();
+            var sourceImage = _mainForm.pictureBoxMinimap.Image as Bitmap;
             if (sourceImage == null)
-            {
-                Hide();
                 return;
-            }
 
             var zoomedImage = CreateZoomImage(sourceImage, mouseLocation);
-            if (zoomedImage != null)
+            if (zoomedImage == null)
+                return;
+
+            UpdateMagnifierDisplay(zoomedImage, mouseLocation, sourceControl);
+        }
+
+        private void UpdateMagnifierDisplay(Bitmap zoomedImage, Point mouseLocation, Control sourceControl)
+        {
+            _floatingZoomBox!.Image?.Dispose();
+            _floatingZoomBox.Image = zoomedImage;
+
+            var screenPoint = sourceControl.PointToScreen(mouseLocation);
+            var magnifierPosition = CalculateMagnifierPosition(screenPoint);
+            _zoomWindow!.Location = magnifierPosition;
+
+            if (!_zoomWindow.Visible)
             {
-                // 更新放大鏡圖像
-                _floatingZoomBox.Image?.Dispose();
-                _floatingZoomBox.Image = zoomedImage;
-
-                // 計算放大鏡視窗位置
-                var screenPoint = sourceControl.PointToScreen(mouseLocation);
-                var magnifierPosition = CalculateMagnifierPosition(screenPoint);
-
-                _zoomWindow.Location = magnifierPosition;
-
-                if (!_zoomWindow.Visible)
-                {
-                    _zoomWindow.Show();
-                    _isVisible = true;
-                }
-            }
-            else
-            {
-                Hide();
+                _zoomWindow.Show();
+                _isVisible = true;
             }
         }
 
@@ -118,7 +110,7 @@ namespace ArtaleAI.Display
 
             var imagePointInt = new Point((int)imagePoint.Value.X, (int)imagePoint.Value.Y);
 
-            var zoomFactor = _mainForm.GetZoomFactor();
+            var zoomFactor = _mainForm._configManager.CurrentConfig.General.ZoomFactor;
             if (zoomFactor <= 0) return null;
 
             var magnifierSize = _floatingZoomBox!.Size;
@@ -197,7 +189,7 @@ namespace ArtaleAI.Display
             int w = _floatingZoomBox.Width;
             int h = _floatingZoomBox.Height;
 
-            int crosshairSize = _uiSettings.CrosshairSize; //  使用設定檔參數
+            int crosshairSize = _uiSettings.CrosshairSize;
 
             // 繪製十字線
             using (var pen = new Pen(Color.Red, crosshairSize))

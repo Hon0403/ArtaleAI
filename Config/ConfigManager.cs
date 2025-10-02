@@ -12,6 +12,8 @@ namespace ArtaleAI.Config
     {
         private readonly MainForm _mainForm;
         private static readonly string DefaultPath = PathManager.ConfigFilePath;
+        public event Action<AppConfig>? ConfigChanged;
+        public event Action<string>? ErrorOccurred;
         public AppConfig? CurrentConfig { get; private set; }
 
         public ConfigManager(MainForm mainForm)
@@ -21,69 +23,79 @@ namespace ArtaleAI.Config
 
         #region 載入配置
 
+        /// <summary>
+        /// 從指定路徑載入 YAML 配置檔
+        /// </summary>
+        /// <param name="path">配置檔路徑</param>
         public void Load(string? path = null)
         {
             try
             {
-                CurrentConfig = LoadFromFile(path);
+                var configPath = path ?? DefaultPath;
+
+                if (!File.Exists(configPath))
+                {
+                    throw new FileNotFoundException($"找不到設定檔！路徑：{configPath}", configPath);
+                }
+
+                var yamlContent = File.ReadAllText(configPath, Encoding.UTF8);
+                var deserializer = new DeserializerBuilder()
+                    .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                    .Build();
+
+                CurrentConfig = deserializer.Deserialize<AppConfig>(yamlContent) ?? new AppConfig();
+
                 _mainForm.OnConfigLoaded(CurrentConfig!);
+                ConfigChanged?.Invoke(CurrentConfig!);
             }
             catch (Exception ex)
             {
                 _mainForm.OnConfigError($"讀取設定檔失敗: {ex.Message}");
+                ErrorOccurred?.Invoke($"讀取設定檔失敗: {ex.Message}");
             }
         }
 
-        private AppConfig LoadFromFile(string? path = null)
-        {
-            var configPath = path ?? DefaultPath;
-            if (!File.Exists(configPath))
-            {
-                throw new FileNotFoundException($"找不到設定檔！路徑：{configPath}", configPath);
-            }
-
-            var yamlContent = File.ReadAllText(configPath, Encoding.UTF8);
-            var deserializer = new DeserializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                .Build();
-            return deserializer.Deserialize<AppConfig>(yamlContent) ?? new AppConfig();
-        }
 
         #endregion
 
         #region 儲存配置
 
+        /// <summary>
+        /// 將當前配置儲存到指定路徑
+        /// </summary>
+        /// <param name="path">儲存路徑</param>
         public void Save(string? path = null)
         {
             try
             {
-                if (CurrentConfig != null)
+                if (CurrentConfig == null) return;
+
+                var configPath = path ?? DefaultPath;
+
+                // 確保目錄存在
+                var directory = Path.GetDirectoryName(configPath);
+                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                 {
-                    SaveToFile(CurrentConfig, path);
-                    _mainForm.OnConfigSaved(CurrentConfig);
+                    Directory.CreateDirectory(directory);
                 }
+
+                // 序列化並儲存
+                var serializer = new SerializerBuilder()
+                    .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                    .Build();
+
+                var yamlContent = serializer.Serialize(CurrentConfig);
+                File.WriteAllText(configPath, yamlContent, Encoding.UTF8);
+
+                _mainForm.OnConfigSaved(CurrentConfig);
             }
             catch (Exception ex)
             {
                 _mainForm.OnConfigError($"儲存設定檔失敗: {ex.Message}");
+                ErrorOccurred?.Invoke($"儲存設定檔失敗: {ex.Message}");
             }
         }
 
-        private void SaveToFile(AppConfig config, string? path = null)
-        {
-            var configPath = path ?? DefaultPath;
-            var serializer = new SerializerBuilder()
-                .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                .Build();
-            var yamlContent = serializer.Serialize(config);
-            var directory = Path.GetDirectoryName(configPath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            File.WriteAllText(configPath, yamlContent, Encoding.UTF8);
-        }
 
         #endregion
 
@@ -173,7 +185,7 @@ namespace ArtaleAI.Config
             }
             catch (Exception ex)
             {
-                _mainForm.OnError($"載入地圖檔案失敗: {ex.Message}");
+                MsgLog.ShowError(_mainForm.textBox1,$"載入地圖檔案失敗: {ex.Message}");
                 return null;
             }
         }

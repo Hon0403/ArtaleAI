@@ -28,37 +28,37 @@ namespace ArtaleAI.Models
         /// <summary>
         /// 邊界框
         /// </summary>
-        Rectangle BoundingBox { get; }
+        Rectangle BoundingBox { get; set; }
 
         /// <summary>
         /// 顯示文字
         /// </summary>
-        string DisplayText { get; }
+        string DisplayText { get; set; }
 
         /// <summary>
         /// 框架顏色
         /// </summary>
-        Color FrameColor { get; }
+        Color FrameColor { get; set; }
 
         /// <summary>
         /// 文字顏色
         /// </summary>
-        Color TextColor { get; }
+        Color TextColor { get; set; }
 
         /// <summary>
         /// 框架粗細
         /// </summary>
-        int FrameThickness { get; }
+        int FrameThickness { get; set; }
 
         /// <summary>
         /// 文字縮放
         /// </summary>
-        double TextScale { get; }
+        double TextScale { get; set; }
 
         /// <summary>
         /// 文字粗細
         /// </summary>
-        int TextThickness { get; }
+        int TextThickness { get; set; }
     }
 
     #endregion

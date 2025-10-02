@@ -8,7 +8,6 @@ using Windows.Graphics.DirectX;
 using Windows.Graphics.DirectX.Direct3D11;
 using WinRT;
 using OpenCvSharp;
-using OpenCvSharp.Extensions; // 🚀 新增：支援 Mat.ToBitmap()
 
 namespace ArtaleAI.GameWindow
 {
@@ -52,7 +51,7 @@ namespace ArtaleAI.GameWindow
             _session.StartCapture();
         }
 
-        // 🚀 新方法：直接返回 Mat，跳過 Bitmap 轉換
+        // 直接返回 Mat，跳過 Bitmap 轉換
         public Mat? TryGetNextMat()
         {
             using var frame = _framePool.TryGetNextFrame();
@@ -72,7 +71,7 @@ namespace ArtaleAI.GameWindow
             return ConvertToMat(frame);
         }
 
-        // 🎯 核心方法：直接從 Direct3D11CaptureFrame 轉換到 Mat
+        // 直接從 Direct3D11CaptureFrame 轉換到 Mat
         private Mat ConvertToMat(Direct3D11CaptureFrame frame)
         {
             using var sourceTexture = GetSharpDXTexture2D(frame.Surface);
@@ -219,7 +218,6 @@ namespace ArtaleAI.GameWindow
             }
         }
 
-        // 原有的輔助方法保持不變
         [DllImport("d3d11.dll", EntryPoint = "CreateDirect3D11DeviceFromDXGIDevice")]
         private static extern uint CreateDirect3D11DeviceFromDXGIDevice(IntPtr dxgiDevice, out IntPtr graphicsDevice);
 

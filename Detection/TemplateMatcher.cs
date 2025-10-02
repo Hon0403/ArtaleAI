@@ -17,10 +17,11 @@ namespace ArtaleAI.Detection
         private static TemplateMatchingSettings? _templateMatchingSettings;
         private static AppConfig? _currentConfig;
 
+
         public static void Initialize(MonsterDetectionSettings? settings, TemplateMatchingSettings? templateMatchingSettings = null, AppConfig? config = null)
         {
-            _settings = settings ?? new MonsterDetectionSettings();
-            _templateMatchingSettings = templateMatchingSettings ?? new TemplateMatchingSettings();
+            _settings = settings;
+            _templateMatchingSettings = templateMatchingSettings;
             _currentConfig = config;
             System.Diagnostics.Debug.WriteLine($"✅ TemplateMatcher 已初始化（簡化版）");
         }
@@ -29,9 +30,11 @@ namespace ArtaleAI.Detection
 
         private static List<CvPoint> GetMatchingLocations(Mat result, double threshold, bool useLessEqual)
         {
+            if (result?.Empty() != false)
+                return new List<CvPoint>();
+
             int maxResults = _settings.MaxDetectionResults;
 
-            // 🚀 使用 OpenCV 內建函數直接產生遮罩
             using var mask = new Mat();
             if (useLessEqual)
             {
@@ -42,25 +45,23 @@ namespace ArtaleAI.Detection
                 Cv2.Threshold(result, mask, threshold, 255, ThresholdTypes.Binary);
             }
 
-            // 🚀 修正：正確使用 FindNonZero 方法（需要 OutputArray 參數）
             using var nonZeroPoints = new Mat();
             Cv2.FindNonZero(mask, nonZeroPoints);
 
-            // 🚀 檢查是否找到點
+            // 檢查是否找到點
             if (nonZeroPoints.Empty())
                 return new List<CvPoint>();
 
-            // 🚀 轉換為 Point 陣列
+            //  轉換為 Point 陣列
             var matchingPoints = new CvPoint[nonZeroPoints.Rows];
             for (int i = 0; i < nonZeroPoints.Rows; i++)
             {
                 matchingPoints[i] = nonZeroPoints.At<CvPoint>(i);
             }
 
-            // 🚀 使用陣列操作處理分數
+            
             var candidatesArray = new (CvPoint location, float score)[matchingPoints.Length];
 
-            // 🚀 使用 Span<T> 提升記憶體效能
             Span<CvPoint> pointSpan = matchingPoints.AsSpan();
             for (int i = 0; i < pointSpan.Length; i++)
             {
@@ -69,11 +70,9 @@ namespace ArtaleAI.Detection
                 candidatesArray[i] = (pt, score);
             }
 
-            // 🚀 陣列排序比 LINQ 快
             Array.Sort(candidatesArray, (a, b) =>
                 useLessEqual ? a.score.CompareTo(b.score) : b.score.CompareTo(a.score));
 
-            // 🚀 預分配結果陣列
             int resultCount = Math.Min(maxResults, candidatesArray.Length);
             var results = new List<CvPoint>(resultCount);
 
@@ -87,42 +86,35 @@ namespace ArtaleAI.Detection
 
         public static List<MatchResult> FindMonstersWithMatOptimized(
             Mat sourceMat,
-            List<Bitmap> templateBitmaps,
+            List<Mat> templateMats, 
             MonsterDetectionMode mode,
             double threshold = 0.7,
             string monsterName = "")
         {
-            if (templateBitmaps?.Count == 0) return new List<MatchResult>();
+            if (templateMats?.Count == 0) return new List<MatchResult>();
 
-            // 🚀 預分配容量避免動態擴展
-            var allResults = new List<MatchResult>(templateBitmaps.Count * 3);
+            var allResults = new List<MatchResult>(templateMats.Count * 3);
 
-            // 🚀 轉換為陣列，陣列索引比 foreach 快
-            var templateArray = templateBitmaps.ToArray();
-
-            for (int i = 0; i < templateArray.Length; i++)
+            foreach (var templateMat in templateMats)
             {
-                var templateBitmap = templateArray[i];
-                if (templateBitmap == null) continue;
+                if (templateMat == null || templateMat.Empty()) continue;
 
                 try
                 {
-                    using var templateMat = OpenCvProcessor.BitmapToThreeChannelMat(templateBitmap);
+                    // 🎯 直接使用 Mat，無轉換開銷
                     var results = FindMonstersMatToMat(sourceMat, templateMat, mode, threshold, monsterName);
-
-                    // 🚀 使用 AddRange 批次新增
                     allResults.AddRange(results);
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"❌ 模板 {i} 匹配失敗: {ex.Message}");
+                    Debug.WriteLine($"❌ Mat模板匹配失敗: {ex.Message}");
                 }
             }
 
             return allResults;
         }
 
-        // 🚀 Mat 到 Mat 的直接匹配
+        //  Mat 到 Mat 的直接匹配
         private static List<MatchResult> FindMonstersMatToMat(
             Mat sourceMat,
             Mat templateMat,
@@ -130,19 +122,19 @@ namespace ArtaleAI.Detection
             double threshold,
             string monsterName)
         {
-            var results = mode switch
+            if (_settings?.MultiScaleFactors?.Length > 1)
             {
-                MonsterDetectionMode.Basic => ProcessBasicModeMat(sourceMat, templateMat, threshold, monsterName),
-                MonsterDetectionMode.Color => ProcessColorModeMat(sourceMat, templateMat, threshold, monsterName),
-                MonsterDetectionMode.Grayscale => ProcessGrayscaleModeMat(sourceMat, templateMat, threshold, monsterName),
-                _ => new List<MatchResult>()
-            };
+                return ProcessMultiScale(sourceMat, templateMat, mode, threshold, monsterName);
+            }
 
-            return ProcessMultiScale(sourceMat, templateMat, mode, threshold, monsterName);
+            //  只有灰階需要特殊處理，其他都相同
+            return mode == MonsterDetectionMode.Grayscale
+                ? ProcessGrayscaleModeMat(sourceMat, templateMat, threshold, monsterName)
+                : ProcessColorOrBasicMode(sourceMat, templateMat, threshold, monsterName);
         }
 
-        // 🚀 Mat 優化版 Color 模式
-        private static List<MatchResult> ProcessColorModeMat(Mat sourceMat, Mat templateMat, double threshold, string monsterName)
+        //  Mat 優化版 Color 模式
+        private static List<MatchResult> ProcessColorOrBasicMode(Mat sourceMat, Mat templateMat, double threshold, string monsterName)
         {
             var results = new List<MatchResult>();
             try
@@ -150,36 +142,7 @@ namespace ArtaleAI.Detection
                 using var result = new Mat();
                 Cv2.MatchTemplate(sourceMat, templateMat, result, TemplateMatchModes.CCoeffNormed);
                 var locations = GetMatchingLocations(result, threshold, false);
-                foreach (var loc in locations)
-                {
-                    float score = result.At<float>(loc.Y, loc.X);
-                    results.Add(new MatchResult
-                    {
-                        Name = monsterName,
-                        Position = new SdPoint(loc.X, loc.Y),
-                        Size = new System.Drawing.Size(templateMat.Width, templateMat.Height),
-                        Score = score,
-                        Confidence = score
-                    });
-                }
 
-                return results;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"❌ Mat Color優化失敗: {ex.Message}");
-                return results;
-            }
-        }
-
-        private static List<MatchResult> ProcessBasicModeMat(Mat sourceMat, Mat templateMat, double threshold, string monsterName)
-        {
-            var results = new List<MatchResult>();
-            try
-            {
-                using var result = new Mat();
-                Cv2.MatchTemplate(sourceMat, templateMat, result, TemplateMatchModes.CCoeffNormed);
-                var locations = GetMatchingLocations(result, threshold, false);
                 foreach (var loc in locations)
                 {
                     float score = result.At<float>(loc.Y, loc.X);
@@ -196,7 +159,7 @@ namespace ArtaleAI.Detection
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"❌ Mat Basic優化失敗: {ex.Message}");
+                Debug.WriteLine($"❌ 模板匹配失敗: {ex.Message}");
                 return results;
             }
         }
@@ -241,56 +204,45 @@ namespace ArtaleAI.Detection
             var allResults = new List<MatchResult>();
             var scaleFactors = _settings.MultiScaleFactors;
 
-            Debug.WriteLine($"🔍 開始多尺度匹配，尺度因子: [{string.Join(", ", scaleFactors.Select(s => s.ToString("F1")))}]");
-
             foreach (var scale in scaleFactors)
             {
                 Mat scaledTemplate = null;
                 bool needDispose = false;
+
                 try
                 {
-                    // 縮放模板
+                    // 縮放處理
                     if (Math.Abs(scale - 1.0) > 0.01)
                     {
                         var newSize = new OpenCvSharp.Size((int)(templateMat.Width * scale), (int)(templateMat.Height * scale));
                         scaledTemplate = new Mat();
                         Cv2.Resize(templateMat, scaledTemplate, newSize, 0, 0, InterpolationFlags.Linear);
                         needDispose = true;
-                        Debug.WriteLine($"📏 模板縮放: {templateMat.Width}x{templateMat.Height} → {scaledTemplate.Width}x{scaledTemplate.Height}");
                     }
                     else
                     {
-                        scaledTemplate = templateMat;  // 直接使用，不複製
-                        needDispose = false;  // 不需要釋放
+                        scaledTemplate = templateMat;
+                        needDispose = false;
                     }
 
                     // 尺寸檢查
                     if (scaledTemplate.Width > sourceMat.Width || scaledTemplate.Height > sourceMat.Height)
-                    {
-                        Debug.WriteLine($"⚠️ 尺度 {scale:F1}x 後模板過大 ({scaledTemplate.Width}x{scaledTemplate.Height} vs {sourceMat.Width}x{sourceMat.Height})");
                         continue;
-                    }
 
-                    // 根據模式執行匹配
-                    var scaleResults = mode switch
-                    {
-                        MonsterDetectionMode.Basic => ProcessBasicModeMat(sourceMat, scaledTemplate, threshold, $"{monsterName}@{scale:F1}x"),
-                        MonsterDetectionMode.Color => ProcessColorModeMat(sourceMat, scaledTemplate, threshold, $"{monsterName}@{scale:F1}x"),
-                        MonsterDetectionMode.Grayscale => ProcessGrayscaleModeMat(sourceMat, scaledTemplate, threshold, $"{monsterName}@{scale:F1}x"),
-                        _ => new List<MatchResult>()
-                    };
+                    //  直接使用現有的簡化方法
+                    var scaleResults = mode == MonsterDetectionMode.Grayscale
+                        ? ProcessGrayscaleModeMat(sourceMat, scaledTemplate, threshold, $"{monsterName}@{scale:F1}x")
+                        : ProcessColorOrBasicMode(sourceMat, scaledTemplate, threshold, $"{monsterName}@{scale:F1}x");
 
                     allResults.AddRange(scaleResults);
-                    Debug.WriteLine($"✅ 尺度 {scale:F1}x 完成，找到 {scaleResults.Count} 個匹配");
                 }
                 finally
                 {
-                    if (needDispose)  // 🎯 明確的釋放條件
+                    if (needDispose)
                         scaledTemplate?.Dispose();
                 }
             }
 
-            Debug.WriteLine($"🎯 多尺度匹配完成，總共找到 {allResults.Count} 個結果");
             return allResults;
         }
 
