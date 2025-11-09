@@ -1,0 +1,15 @@
+# API 專用設定檔
+monsterDownload:
+  baseUrl: https://maplestory.io
+  defaultRegion: GMS
+  defaultVersion: 65
+  timeoutSeconds: 30
+  maxRetryAttempts: 3
+  skipDeathAnimations: true
+  supportedImageFormats: [png, jpg, jpeg, bmp]
+
+imageProcessing:
+  convertTransparentPixels: true
+  replacementColorRgb: 255,255,255
+  enableImageOptimization: true
+  maxImageSize: 1024

@@ -190,7 +190,7 @@ ArtaleAI/
 ├── 📂 Utils/                  # 工具函式庫 (大幅擴展)
 │   ├── 📄 CacheManager.cs         # 快取管理器
 │   ├── 📄 GeometryCalculator.cs   # 幾何計算器
-│   ├── 📄 OpenCvProcessor.cs      # OpenCV 處理器
+│   ├── 📄 VisionCore.cs      # OpenCV 處理器
 │   ├── 📄 PathManager.cs          # 路徑管理器
 │   └── 📄 ResourceManager.cs      # 資源管理器
 ├── 📂 templates/              # 模板資源庫 (小寫)
@@ -260,7 +260,7 @@ partyRedBar:
       "bounds": [50, 50, 100, 100]
     }
   ],
-  "restrictedPoints": [
+  "RestrictedZones": [
     [75.5, 125.0]
   ],
   "ropes": [

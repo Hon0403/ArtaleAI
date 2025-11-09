@@ -9,6 +9,12 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="MapData\**" />
+    <EmbeddedResource Remove="MapData\**" />
+    <None Remove="MapData\**" />
+    <Page Remove="MapData\**" />
+  </ItemGroup>
   
   <ItemGroup>
     <!-- 明確指定 System.Drawing.Common 8.0.0 以解決版本衝突 -->
@@ -32,7 +38,10 @@
   </ItemGroup>
   
   <ItemGroup>
-    <None Update="Config\config.yaml">
+    <None Update="API\ApiConfig.yaml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Data\config.yaml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="templates\minimap\bottom_left.png">
@@ -54,6 +63,12 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="templates\minimap\topright.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="templates\minimap\top_left.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="templates\minimap\top_right.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="templates\monsters\octopus\octopus_1.png">
@@ -92,8 +107,10 @@
   </ItemGroup>
   
   <ItemGroup>
-    <Folder Include="MapData\" />
     <Folder Include="Templates\" />
-    <Folder Include="Config\" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <PRIResource Remove="MapData\**" />
   </ItemGroup>
 </Project>

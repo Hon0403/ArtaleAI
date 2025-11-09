@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace ArtaleAI.Models
+namespace ArtaleAI.Config
 {
     #region 檢測相關枚舉
 

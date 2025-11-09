@@ -1,4 +1,6 @@
-﻿using ArtaleAI.API.Models;
+﻿using ArtaleAI.API.Config;
+using ArtaleAI.API.Models;
+using ArtaleAI.Config;
 using ArtaleAI.Utils;
 using Newtonsoft.Json;
 using OpenCvSharp;
@@ -20,18 +22,12 @@ namespace ArtaleAI.API
 
         public MonsterImageFetcher(MainForm eventHandler)
         {
-            _mainForm = eventHandler ?? throw new ArgumentNullException(nameof(eventHandler));
+            _mainForm = eventHandler;
             _httpClient = new HttpClient();
 
-            var config = (eventHandler as MainForm)?._configManager?.CurrentConfig;
-
-            if (config?.MonsterDownload == null)
-                throw new InvalidOperationException("MonsterDownload 設定未載入，請檢查 config.yaml");
-            if (config?.ImageProcessing == null)
-                throw new InvalidOperationException("ImageProcessing 設定未載入，請檢查 config.yaml");
-
-            _downloadSettings = config.MonsterDownload;
-            _imageSettings = config.ImageProcessing;
+            var apiConfig = ApiConfig.Instance;
+            _downloadSettings = apiConfig.MonsterDownload;
+            _imageSettings = apiConfig.ImageProcessing;
 
             _httpClient.Timeout = TimeSpan.FromSeconds(_downloadSettings.TimeoutSeconds);
         }
@@ -41,9 +37,9 @@ namespace ArtaleAI.API
             ImageProcessingSettings imageSettings,
             MonsterDownloadSettings downloadSettings)
         {
-            _mainForm = eventHandler ?? throw new ArgumentNullException(nameof(eventHandler));
-            _imageSettings = imageSettings ?? throw new ArgumentNullException(nameof(imageSettings));
-            _downloadSettings = downloadSettings ?? throw new ArgumentNullException(nameof(downloadSettings));
+            _mainForm = eventHandler;
+            _imageSettings = imageSettings;
+            _downloadSettings = downloadSettings;
 
             _httpClient = new HttpClient
             {

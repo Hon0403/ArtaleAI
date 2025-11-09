@@ -16,6 +16,8 @@
         private void InitializeComponent()
         {
             panel1 = new Panel();
+            cbo_LoadPathFile = new ComboBox();
+            ckB_Start = new CheckBox();
             cbo_DetectMode = new ComboBox();
             btn_DownloadMonster = new Button();
             groupBox5 = new GroupBox();
@@ -32,7 +34,6 @@
             label2 = new Label();
             groupBox8 = new GroupBox();
             groupBox9 = new GroupBox();
-            rdo_Start = new RadioButton();
             panel2 = new Panel();
             splitter1 = new Splitter();
             textBox1 = new TextBox();
@@ -82,6 +83,8 @@
             // 
             // panel1
             // 
+            panel1.Controls.Add(cbo_LoadPathFile);
+            panel1.Controls.Add(ckB_Start);
             panel1.Controls.Add(cbo_DetectMode);
             panel1.Controls.Add(btn_DownloadMonster);
             panel1.Controls.Add(groupBox5);
@@ -89,12 +92,32 @@
             panel1.Controls.Add(groupBox7);
             panel1.Controls.Add(groupBox8);
             panel1.Controls.Add(groupBox9);
-            panel1.Controls.Add(rdo_Start);
             panel1.Dock = DockStyle.Left;
             panel1.Location = new Point(3, 3);
             panel1.Name = "panel1";
             panel1.Size = new Size(238, 554);
             panel1.TabIndex = 2;
+            // 
+            // cbo_LoadPathFile
+            // 
+            cbo_LoadPathFile.FormattingEnabled = true;
+            cbo_LoadPathFile.Location = new Point(5, 117);
+            cbo_LoadPathFile.Name = "cbo_LoadPathFile";
+            cbo_LoadPathFile.Size = new Size(121, 23);
+            cbo_LoadPathFile.TabIndex = 7;
+            cbo_LoadPathFile.Text = "載入路徑檔";
+            cbo_LoadPathFile.SelectedIndexChanged += cbo_LoadPathFile_SelectedIndexChanged;
+            // 
+            // ckB_Start
+            // 
+            ckB_Start.AutoSize = true;
+            ckB_Start.Location = new Point(3, 59);
+            ckB_Start.Name = "ckB_Start";
+            ckB_Start.Size = new Size(74, 19);
+            ckB_Start.TabIndex = 6;
+            ckB_Start.Text = "自動打怪";
+            ckB_Start.UseVisualStyleBackColor = true;
+            ckB_Start.CheckedChanged += ckB_Start_CheckedChanged;
             // 
             // cbo_DetectMode
             // 
@@ -253,17 +276,6 @@
             groupBox9.TabIndex = 0;
             groupBox9.TabStop = false;
             groupBox9.Text = "輔助技能設定";
-            // 
-            // rdo_Start
-            // 
-            rdo_Start.AutoSize = true;
-            rdo_Start.Location = new Point(5, 63);
-            rdo_Start.Name = "rdo_Start";
-            rdo_Start.Size = new Size(73, 19);
-            rdo_Start.TabIndex = 3;
-            rdo_Start.TabStop = true;
-            rdo_Start.Text = "自動打怪";
-            rdo_Start.UseVisualStyleBackColor = true;
             // 
             // panel2
             // 
@@ -457,7 +469,7 @@
             // labelZoomFactor
             // 
             labelZoomFactor.AutoSize = true;
-            labelZoomFactor.Font = new Font("Microsoft JhengHei UI", 9F, FontStyle.Bold, GraphicsUnit.Point);
+            labelZoomFactor.Font = new Font("Microsoft JhengHei UI", 9F, FontStyle.Bold);
             labelZoomFactor.Location = new Point(-2, 24);
             labelZoomFactor.Name = "labelZoomFactor";
             labelZoomFactor.Size = new Size(58, 15);
@@ -519,6 +531,7 @@
             cbo_MapFiles.Name = "cbo_MapFiles";
             cbo_MapFiles.Size = new Size(141, 23);
             cbo_MapFiles.TabIndex = 0;
+            cbo_MapFiles.SelectedIndexChanged += cbo_MapFiles_SelectedIndexChanged;
             // 
             // panel3
             // 
@@ -539,10 +552,9 @@
             pictureBoxMinimap.TabIndex = 0;
             pictureBoxMinimap.TabStop = false;
             pictureBoxMinimap.Paint += pictureBoxMinimap_Paint;
-            pictureBoxMinimap.MouseDown += pictureBoxMinimap_MouseDown;
+            pictureBoxMinimap.MouseClick += pictureBoxMinimap_Click;
             pictureBoxMinimap.MouseLeave += pictureBoxMinimap_MouseLeave;
             pictureBoxMinimap.MouseMove += pictureBoxMinimap_MouseMove;
-            pictureBoxMinimap.MouseUp += pictureBoxMinimap_MouseUp;
             // 
             // tabPage3
             // 
@@ -633,7 +645,6 @@
         private Label label1;
         private GroupBox groupBox5;
         private ComboBox cbo_MonsterTemplates;
-        private RadioButton rdo_Start;
         private GroupBox groupBox8;
         private GroupBox groupBox7;
         private GroupBox groupBox6;
@@ -650,5 +661,7 @@
         private Button btn_DownloadMonster;
         private ComboBox cbo_DetectMode;
         private PictureBox pictureBoxLiveView;
+        private CheckBox ckB_Start;
+        private ComboBox cbo_LoadPathFile;
     }
 }

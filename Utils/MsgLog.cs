@@ -8,43 +8,74 @@ namespace ArtaleAI.Utils
     /// </summary>
     public static class MsgLog
     {
-        #region 統一狀態訊息處理
-
         /// <summary>
-        /// 顯示狀態訊息到指定的文字框
+        /// 安全顯示狀態訊息到指定的文字框
         /// </summary>
-        /// <param name="textBox">目標文字框</param>  // ✅ 新增參數
-        /// <param name="message">訊息內容</param>
         public static void ShowStatus(TextBox textBox, string message)
         {
-            if (textBox.InvokeRequired)
-            {
-                textBox.Invoke(new Action<TextBox, string>(ShowStatus), textBox, message);
-                return;
-            }
-
-            textBox.AppendText($"{DateTime.Now:HH:mm:ss} - {message}\r\n");
-            textBox.ScrollToCaret();
+            SafeUpdateTextBox(textBox, $"{DateTime.Now:HH:mm:ss} - {message}", false);
         }
 
         /// <summary>
-        /// 顯示錯誤訊息到指定的文字框並彈出對話框
+        /// 安全顯示錯誤訊息到指定的文字框並彈出對話框
         /// </summary>
-        /// <param name="textBox">目標文字框</param>  // ✅ 新增參數
-        /// <param name="errorMessage">錯誤訊息內容</param>
-        public static void ShowError(TextBox textBox, string errorMessage) 
+        public static void ShowError(TextBox textBox, string errorMessage)
         {
-            if (textBox.InvokeRequired)
+            SafeUpdateTextBox(textBox, $"{DateTime.Now:HH:mm:ss} - ❌ {errorMessage}", true);
+
+            // 在主執行緒中顯示 MessageBox
+            try
             {
-                textBox.Invoke(new Action<TextBox, string>(ShowError), textBox, errorMessage);
+                if (textBox?.InvokeRequired == true)
+                {
+                    textBox.BeginInvoke(new Action(() =>
+                        MessageBox.Show(errorMessage, "發生錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                }
+                else
+                {
+                    MessageBox.Show(errorMessage, "發生錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error showing MessageBox: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 安全的文字框更新方法
+        /// </summary>
+        private static void SafeUpdateTextBox(TextBox textBox, string text, bool isError)
+        {
+            if (textBox == null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NULL TextBox] {text}");
                 return;
             }
 
-            textBox.AppendText($"{DateTime.Now:HH:mm:ss} - ❌ {errorMessage}\r\n");
-            textBox.ScrollToCaret();
-            MessageBox.Show(errorMessage, "發生錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
+            try
+            {
+                if (textBox.IsDisposed)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[DISPOSED TextBox] {text}");
+                    return;
+                }
 
-        #endregion
+                if (textBox.InvokeRequired)
+                {
+                    textBox.BeginInvoke(new Action(() => SafeUpdateTextBox(textBox, text, isError)));
+                    return;
+                }
+
+                // 實際更新文字框
+                textBox.AppendText(text + "\r\n");
+                textBox.ScrollToCaret();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"TextBox update error: {ex.Message} | Text: {text}");
+            }
+        }
     }
+
 }

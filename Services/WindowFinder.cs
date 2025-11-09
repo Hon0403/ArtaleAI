@@ -63,29 +63,29 @@ namespace ArtaleAI.GameWindow
         public static GraphicsCaptureItem? TryCreateItemWithFallback(AppConfig config, Action<string>? progressReporter = null)
         {
             progressReporter?.Invoke("=== 開始自動尋找視窗 ===");
-            progressReporter?.Invoke($"預設視窗標題: '{config.General.GameWindowTitle}'");
-            progressReporter?.Invoke($"上次記錄視窗: '{config.General.LastSelectedWindowName}'");
-            progressReporter?.Invoke($"上次記錄程序: '{config.General.LastSelectedProcessName}'");
+            progressReporter?.Invoke($"預設視窗標題: '{AppConfig.Instance.GameWindowTitle}'");
+            progressReporter?.Invoke($"上次記錄視窗: '{AppConfig.Instance.LastSelectedWindowName}'");
+            progressReporter?.Invoke($"上次記錄程序: '{AppConfig.Instance.LastSelectedProcessName}'");
 
             // 1. 優先嘗試原本的視窗標題
-            var item = TryCreateItemForWindow(config.General.GameWindowTitle, progressReporter);
+            var item = TryCreateItemForWindow(AppConfig.Instance.GameWindowTitle, progressReporter);
             if (item != null)
             {
-                progressReporter?.Invoke($"使用預設視窗標題找到: {config.General.GameWindowTitle}");
+                progressReporter?.Invoke($"使用預設視窗標題找到: {AppConfig.Instance.GameWindowTitle}");
                 return item;
             }
-            progressReporter?.Invoke($"預設視窗標題找不到: {config.General.GameWindowTitle}");
+            progressReporter?.Invoke($"預設視窗標題找不到: {AppConfig.Instance.GameWindowTitle}");
 
             // 2. 嘗試上次成功的視窗名稱
-            if (!string.IsNullOrEmpty(config.General.LastSelectedWindowName))
+            if (!string.IsNullOrEmpty(AppConfig.Instance.LastSelectedWindowName))
             {
-                item = TryCreateItemForWindow(config.General.LastSelectedWindowName, progressReporter);
+                item = TryCreateItemForWindow(AppConfig.Instance.LastSelectedWindowName, progressReporter);
                 if (item != null)
                 {
-                    progressReporter?.Invoke($"使用上次記錄的視窗: {config.General.LastSelectedWindowName}");
+                    progressReporter?.Invoke($"使用上次記錄的視窗: {AppConfig.Instance.LastSelectedWindowName}");
                     return item;
                 }
-                progressReporter?.Invoke($"上次記錄視窗找不到: {config.General.LastSelectedWindowName}");
+                progressReporter?.Invoke($"上次記錄視窗找不到: {AppConfig.Instance.LastSelectedWindowName}");
             }
             else
             {
@@ -93,11 +93,11 @@ namespace ArtaleAI.GameWindow
             }
 
             // 3. 嘗試透過程序名稱查找
-            if (!string.IsNullOrEmpty(config.General.LastSelectedProcessName))
+            if (!string.IsNullOrEmpty(AppConfig.Instance.LastSelectedProcessName))
             {
                 try
                 {
-                    var processes = Process.GetProcessesByName(config.General.LastSelectedProcessName);
+                    var processes = Process.GetProcessesByName(AppConfig.Instance.LastSelectedProcessName);
                     foreach (var process in processes)
                     {
                         if (process.MainWindowHandle != IntPtr.Zero && !string.IsNullOrEmpty(process.MainWindowTitle))
@@ -105,7 +105,7 @@ namespace ArtaleAI.GameWindow
                             item = TryCreateItemForWindow(process.MainWindowTitle, progressReporter);
                             if (item != null)
                             {
-                                progressReporter?.Invoke($"透過程序名稱找到視窗: {config.General.LastSelectedProcessName}");
+                                progressReporter?.Invoke($"透過程序名稱找到視窗: {AppConfig.Instance.LastSelectedProcessName}");
                                 return item;
                             }
                         }

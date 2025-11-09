@@ -1,9 +1,10 @@
-﻿using ArtaleAI.Models;
+﻿using ArtaleAI.Config;
+using ArtaleAI.UI;
 using ArtaleAI.Utils;
 
 
 
-namespace ArtaleAI.Minimap
+namespace ArtaleAI.Services
 {
     /// <summary>
     /// 地圖檔案管理器 - 負責地圖檔案的載入、儲存和UI綁定
@@ -61,7 +62,8 @@ namespace ArtaleAI.Minimap
 
                 foreach (var file in mapFiles)
                 {
-                    _mapFilesComboBox.Items.Add(Path.GetFileName(file));
+                    string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(file);
+                    _mapFilesComboBox.Items.Add(fileNameWithoutExtension);
                 }
 
                 MsgLog.ShowStatus(_mainForm.textBox1,$" 成功載入 {mapFiles.Length} 個地圖檔案選項");
@@ -85,7 +87,8 @@ namespace ArtaleAI.Minimap
                     return;
                 }
 
-                string mapFilePath = Path.Combine(PathManager.MapDataDirectory, fileName);
+                string mapFilePath = Path.Combine(PathManager.MapDataDirectory, $"{fileName}.json");
+
                 if (!File.Exists(mapFilePath))
                 {
                     MsgLog.ShowError(_mainForm.textBox1,$"檔案不存在: {mapFilePath}");
@@ -94,7 +97,7 @@ namespace ArtaleAI.Minimap
 
                 MsgLog.ShowStatus(_mainForm.textBox1,$"正在載入地圖檔案: {fileName}");
 
-                MapData? loadedData = _mainForm._configManager?.LoadMapFromFile(mapFilePath);
+                MapData? loadedData = AppConfig.Instance.LoadMapFromFile(mapFilePath);
 
                 if (loadedData != null)
                 {
@@ -129,7 +132,7 @@ namespace ArtaleAI.Minimap
                 if (HasCurrentMap)
                 {
                     var currentMapData = _mapEditor.GetCurrentMapData();
-                    _mainForm._configManager?.SaveMapToFile(currentMapData, _currentMapFilePath!);
+                    AppConfig.Instance.SaveMapToFile(currentMapData, _currentMapFilePath!);
                     _mainForm.OnMapSaved(CurrentMapFileName!, false);
                     MsgLog.ShowStatus(_mainForm.textBox1,$"✅ 地圖儲存成功: {CurrentMapFileName}");
                 }
@@ -162,7 +165,7 @@ namespace ArtaleAI.Minimap
                 {
                     var currentMapData = _mapEditor.GetCurrentMapData();
 
-                    _mainForm._configManager?.SaveMapToFile(currentMapData, saveFileDialog.FileName);
+                    AppConfig.Instance.SaveMapToFile(currentMapData, saveFileDialog.FileName);
 
                     _currentMapFilePath = saveFileDialog.FileName;
                     string fileName = Path.GetFileName(saveFileDialog.FileName);

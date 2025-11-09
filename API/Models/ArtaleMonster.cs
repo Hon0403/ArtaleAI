@@ -33,27 +33,38 @@ namespace ArtaleAI.API.Models
     /// </summary>
     public class MonsterDownloadSettings
     {
-        public string BaseUrl { get; set; }
-        public string DefaultRegion { get; set; }
-        public string DefaultVersion { get; set; }
-        public int TimeoutSeconds { get; set; }
-        public int MaxRetryAttempts { get; set; }
-        public bool SkipDeathAnimations { get; set; }
-        public string OutputDirectory { get; set; }
-        public bool ReplaceTransparentBackground { get; set; }
-        public string BackgroundColor { get; set; }
-        public string[] SupportedImageFormats { get; set; }
+        public string BaseUrl { get; set; }                    // https://maplestory.io
+        public string DefaultRegion { get; set; }              // GMS
+        public int DefaultVersion { get; set; }                // 65
+        public int TimeoutSeconds { get; set; }                // 30
+        public int MaxRetryAttempts { get; set; }              // 3
+        public bool SkipDeathAnimations { get; set; }          // true
+        public string OutputDirectory { get; set; }            // monster
+        public bool ReplaceTransparentBackground { get; set; } // true
+        public string BackgroundColor { get; set; }            // 0,255,0
+        public string[] SupportedImageFormats { get; set; }    // [png, jpg, jpeg, bmp]
     }
+
 
     /// <summary>
     /// 圖像處理設定
     /// </summary>
     public class ImageProcessingSettings
     {
+        // 是否將透明像素轉換為指定顏色
         public bool ConvertTransparentPixels { get; set; }
+
+        // 替換顏色 (RGB)
         public string ReplacementColorRgb { get; set; }
+
+        // 是否保留 Alpha 通道
         public bool PreserveAlphaChannel { get; set; }
+
+        // 輸出格式
         public string OutputFormat { get; set; }
+
+        // 壓縮品質
         public int CompressionQuality { get; set; }
     }
+
 }

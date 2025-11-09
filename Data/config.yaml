@@ -1,0 +1,226 @@
+﻿gameWindowTitle: "MapleStory Worlds-Artale (繁體中文版)"
+lastSelectedWindowName: "MapleStory Worlds-Artale (繁體中文版)"
+lastSelectedProcessName: "msw"
+lastSelectedProcessId: 25336
+minimapUpscaleFactor: 4
+zoomFactor: 15
+
+
+playerThreshold: 0.4
+cornerThreshold: 0.7
+playerMarker: "templates/minimap/player_marker.png"
+otherPlayers: "templates/minimap/other_players.png"
+topLeft: "templates/minimap/top_left.png"        
+topRight: "templates/minimap/top_right.png"      
+bottomLeft: "templates/minimap/bottom_left.png"  
+bottomRight: "templates/minimap/bottom_right.png"
+
+defaultThreshold: 0.5
+maxDetectionResults: 1
+detectionMode: Color
+# occlusionHandling: DynamicThreshold
+multiScaleFactors: [1.0]
+# NMS 參數
+nmsIouThreshold: 0.25
+
+
+defaultNmsThreshold: 0.1     # NMS 預設閾值
+confidenceThreshold: 0.8     # 信心度閾值比例
+defaultIouThreshold: 0.1
+grayscaleConfidenceMultiplier: 0.8
+basicModeNmsThreshold: 0.1
+basicModeDefaultNmsThreshold: 0.5
+
+
+iouThreshold: 0.4 # 全局NMS的IoU閾值
+maxResults: 3 # 最終保留的結果數量
+
+#  地圖編輯器配置
+# 滑鼠操作參數
+deletionRadius: 10.0
+waypointCircleRadius: 5
+previewLineWidth: 2
+
+# 顏色配置
+waypointColor: "0,0,255"    # 藍色
+safeZoneColor: "0,255,0"    # 綠色
+restrictedZoneColor: "255,0,0" # 紅色
+ropeColor: "255,255,0"      # 黃色
+previewColor: "0,255,255"   # 青色
+  
+# 繪製樣式
+waypointLineWidth: 2.0
+safeZoneLineWidth: 2.0
+ropeLineWidth: 3.0
+
+# 檢測性能控制
+bloodBarDetectIntervalMs: 150    # 血條檢測間隔 (毫秒)
+monsterDetectIntervalMs: 200     # 怪物檢測間隔 (毫秒)
+
+#  視窗捕捉配置
+# 捕捉性能參數
+captureFrameRate: 30
+  
+# 穩定化參數
+initialDelayMs: 100
+retryAttempts: 3
+retryDelayMs: 500
+
+#  玩家偵測配置擴展
+# 血條寬度分級閾值
+smallBarWidthLimit: 10
+mediumBarWidthLimit: 25
+  
+# 偵測品質參數
+minAspectRatio: 0.1
+maxAspectRatio: 10.0
+
+
+magnifierSize: 150           # 放大鏡尺寸
+magnifierOffset: 20          # 放大鏡偏移
+crosshairSize: 2             # 十字線粗細
+
+# 隊友血條偵測設定
+lowerRedHsv: [0, 120, 120] # HSV 顏色範圍 (紅色)
+upperRedHsv: [10, 255, 255]
+  
+# 血條尺寸限制
+minBarHeight: 4          # 稍微降低最小高度
+maxBarHeight: 8          # 稍微增加最大高度  
+minBarWidth: 1
+maxBarWidth: 60          # 增加最大寬度以支持更長的血條
+minBarArea: 8            # 降低最小面積要求
+minFillRate: 0.6         # 降低預設填充率要求
+  
+# 玩家位置偏移量（相對血條位置）
+playerOffsetY: -30
+  
+# UI排除設定
+uiHeightFromBottom: 200
+
+#辨識框設定
+dotOffsetY: 50           # 向下5像素
+detectionBoxWidth: 550   # 檢測框寬度
+detectionBoxHeight: 300   # 檢測框高度
+dynamicFillRateSmall: 0.2    # 寬度 <= 10 的血條填充率
+dynamicFillRateMedium: 0.4   # 寬度 <= 25 的血條填充率
+
+# 辨識框視覺樣式設定
+monster:
+  frameColor: 255,255,0      # 怪物框線顏色 (RGB: 黃色)
+  textColor: 255,0,0         # 怪物文字顏色 (RGB: 紅色)  
+  frameThickness: 2          # 框線粗細
+  textScale: 1.2             # 文字大小倍率
+  textThickness: 2           # 文字粗細
+  showConfidence: true       # 是否顯示信心度
+  textFormat: "{0} ({1:F2})" # 文字格式: 名稱 (信心度)
+    
+minimap:
+  frameColor: 0,255,255      # 小地圖框線顏色 (RGB: 青色)
+  textColor: 255,255,255     # 小地圖文字顏色 (RGB: 白色)
+  frameThickness: 2          # 框線粗細
+  textScale: 1.2             # 文字大小倍率
+  textThickness: 2           # 文字粗細
+  minimapDisplayName: "Minimap" # 小地圖顯示名稱
+
+minimapPlayer:
+  frameColor: "0,255,0"        # 綠色框
+  textColor: "255,255,255"      # 白色文字
+  frameThickness: 2
+  textScale: 1.0
+  textThickness: 2
+  playerDisplayName: "PLAYER"   # 玩家標記文字
+
+partyRedBar:  # ← 血條樣式
+  frameColor: 124,252,0    # 綠色框線
+  textColor: 255,255,255   # 白色文字
+  frameThickness: 2        # 框線粗細
+  textScale: 1.0           # 文字大小
+  textThickness: 2         # 文字粗細
+  redBarDisplayName: "Hp"  # 顯示名稱
+
+  # 檢測框樣式
+detectionBox:
+  frameColor: 0,191,255    # 藍色檢測框
+  textColor: 255,255,255   # 白色文字
+  frameThickness: 2        # 框線粗細
+  textScale: 1.0           # 文字大小
+  textThickness: 2         # 文字粗細
+  boxDisplayName: "MOB DETECT"  # 檢測框標籤
+
+# 攻擊範圍樣式
+attackRange:
+  width: 400                    # 攻擊範圍幾何設定
+  height: 150
+  offsetX: 0
+  offsetY: 50
+  frameColor: "255,0,0"      # 紅色框線
+  textColor: "255,255,255"   # 白色文字
+  frameThickness: 2          # 框線粗細
+  textScale: 1.0             # 文字大小
+  textThickness: 2           # 文字粗細
+  rangeDisplayName: "ATTACK RANGE" # 顯示名稱
+
+# 路徑規劃專用設定
+continuousDetectionIntervalMs: 200  # 持續檢測間隔 (毫秒)
+playerPositionThreshold: 0.7        # 玩家位置檢測閾值
+otherPlayersThreshold: 0.7          # 其他玩家檢測閾值
+enableOtherPlayersDetection: true   # 是否檢測其他玩家
+waypointReachDistance: 15.0         # 到達路徑點的距離閾值
+maxTrackingHistory: 100             # 最大追蹤歷史記錄數
+enableAutoPathFinding: false        # 是否啟用自動尋路
+
+# 圖像處理設定
+imageProcessing:
+  convertTransparentPixels: true
+  replacementColorRgb: 0,255,0
+  preserveAlphaChannel: true
+  outputFormat: png
+  compressionQuality: 90
+
+# 辨識模式映射設定
+# 模式映射 (字串 -> 枚舉)
+modeMapping:
+  "Basic": "Basic"
+  "ContourOnly": "ContourOnly" 
+  "Grayscale": "Grayscale"
+  "Color": "Color"
+  "TemplateFree": "TemplateFree"
+  
+# UI 顯示文字 (支援本地化)
+displayNames:
+  "Basic": "⚡ Basic - 基本匹配（最快）"
+  "ContourOnly": "🖼️ ContourOnly - 輪廓匹配（速度快）"
+  "Grayscale": "⚖️ Grayscale - 灰階匹配（平衡）"
+  "Color": "🎯 Color - 彩色匹配（推薦）"
+  "TemplateFree": "🔍 TemplateFree - 自由偵測（無需模板）"
+  
+#  遮擋處理映射
+occlusionMappings:
+  "Basic": "None"
+  "ContourOnly": "None"
+  "Grayscale": "None"
+  "Color": "None"
+  "TemplateFree": "MorphologyRepair"
+  
+#  模式描述
+modeDescriptions:
+  "Basic": "最快速的基本模板匹配，適合簡單場景"
+  "ContourOnly": "基於輪廓的匹配，速度快且抗干擾"
+  "Grayscale": "灰階匹配，平衡速度與準確度"
+  "Color": "彩色匹配，推薦日常使用"
+  "TemplateFree": "無需模板的自由偵測，適合未知目標"
+ 
+#  性能級別 (1=最快, 5=最準確)
+performanceLevels:
+  "Basic": 1
+  "ContourOnly": 2
+  "Grayscale": 3
+  "Color": 4
+  "TemplateFree": 5
+  
+# 預設模式
+defaultMode: "Color"
+  
+# 模式優先順序
+displayOrder: ["Basic", "ContourOnly", "Grayscale", "Color", "TemplateFree"]
