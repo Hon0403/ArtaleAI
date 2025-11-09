@@ -770,24 +770,35 @@ namespace ArtaleAI
                 using var graphics = Graphics.FromImage(bitmap);
                 graphics.SmoothingMode = SmoothingMode.AntiAlias;
 
-                // ✅ 使用統一方法繪製所有矩形
+                // 血條框
                 DrawingHelper.DrawRectangles(graphics, _currentBloodBars,
                     GameVisionCore.ParseColor(config.PartyRedBar.FrameColor),
-                    config.PartyRedBar.FrameThickness);
+                    config.PartyRedBar.FrameThickness,
+                    GameVisionCore.ParseColor(config.PartyRedBar.TextColor),
+                    config.PartyRedBar.RedBarDisplayName);
 
+                // 偵測框
                 DrawingHelper.DrawRectangles(graphics, _currentDetectionBoxes,
                     GameVisionCore.ParseColor(config.DetectionBox.FrameColor),
-                    config.DetectionBox.FrameThickness);
+                    config.DetectionBox.FrameThickness,
+                    GameVisionCore.ParseColor(config.DetectionBox.TextColor),
+                    config.DetectionBox.BoxDisplayName);
 
+                // 攻擊範圍框
                 DrawingHelper.DrawRectangles(graphics, _currentAttackRangeBoxes,
                     GameVisionCore.ParseColor(config.AttackRange.FrameColor),
-                    config.AttackRange.FrameThickness);
+                    config.AttackRange.FrameThickness,
+                    GameVisionCore.ParseColor(config.AttackRange.TextColor),
+                    config.AttackRange.RangeDisplayName);
 
+                // 小地圖框
                 DrawingHelper.DrawRectangles(graphics, _currentMinimapBoxes,
                     GameVisionCore.ParseColor(config.Minimap.FrameColor),
-                    config.Minimap.FrameThickness);
+                    config.Minimap.FrameThickness,
+                    GameVisionCore.ParseColor(config.Minimap.TextColor),
+                    config.Minimap.MinimapDisplayName);
 
-                // 怪物(需顯示名稱和置信度,保持獨立)
+                // 怪物
                 if (_currentMonsters.Any())
                 {
                     var style = config.Monster;
@@ -806,7 +817,7 @@ namespace ArtaleAI
                     }
                 }
 
-                // 小地圖玩家標記(圓點,保持獨立)
+                // 小地圖玩家標記
                 if (_currentMinimapMarkers.Any())
                 {
                     var style = config.MinimapPlayer;
@@ -817,7 +828,7 @@ namespace ArtaleAI
                     }
                 }
 
-                // 路徑點線段(保持獨立)
+                // 路徑點線段
                 if (_currentPathPoints.Count >= 2)
                 {
                     using var pen = new Pen(Color.Yellow, 2);
