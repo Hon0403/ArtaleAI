@@ -1,6 +1,7 @@
 ﻿using ArtaleAI.API.Config;
 using ArtaleAI.Config;
 using ArtaleAI.Utils;
+using System.Diagnostics;
 using System.Drawing.Drawing2D;
 using SdPoint = System.Drawing.Point;
 
@@ -39,22 +40,18 @@ namespace ArtaleAI.UI
         /// </summary>
         private void InitializeMagnifier()
         {
-            _zoomWindow = new Form
-            {
-                FormBorderStyle = FormBorderStyle.None,
-                TopMost = true,
-                ShowInTaskbar = false,
-                Size = new Size(_magnifierSize, _magnifierSize), 
-                BackColor = Color.White,
-                Visible = false
-            };
+            _zoomWindow = new Form();
+            _zoomWindow.FormBorderStyle = FormBorderStyle.None;
+            _zoomWindow.TopMost = true;
+            _zoomWindow.ShowInTaskbar = false;
+            _zoomWindow.Size = new Size(_magnifierSize, _magnifierSize);
+            _zoomWindow.BackColor = Color.White;
+            _zoomWindow.Visible = false;
 
-            _floatingZoomBox = new PictureBox
-            {
-                Dock = DockStyle.Fill,
-                SizeMode = PictureBoxSizeMode.StretchImage,
-                BorderStyle = BorderStyle.FixedSingle
-            };
+            _floatingZoomBox = new PictureBox();
+            _floatingZoomBox.Dock = DockStyle.Fill;
+            _floatingZoomBox.SizeMode = PictureBoxSizeMode.StretchImage;
+            _floatingZoomBox.BorderStyle = BorderStyle.FixedSingle;
 
             _zoomWindow.Controls.Add(_floatingZoomBox);
             _floatingZoomBox.Paint += FloatingZoomBox_Paint;
@@ -63,7 +60,6 @@ namespace ArtaleAI.UI
         private void FloatingZoomBox_Paint(object? sender, PaintEventArgs e)
         {
             if (_floatingZoomBox?.Image == null) return;
-
             var g = e.Graphics;
             int w = _floatingZoomBox.Width;
             int h = _floatingZoomBox.Height;
@@ -85,44 +81,55 @@ namespace ArtaleAI.UI
                 return;
 
             var sourceImage = _mainForm.pictureBoxMinimap.Image as Bitmap;
+
             if (sourceImage == null)
+            {
+                // 偵錯訊息或Log提示圖片不存在
+                Debug.WriteLine("FloatingMagnifier: Source image is null");
                 return;
+            }
 
             var zoomedImage = CreateZoomImage(sourceImage, mouseLocation);
-            if (zoomedImage == null)
-                return;
 
+            if (zoomedImage == null)
+            {
+                // 偵錯提示截圖區域無效
+                Debug.WriteLine("FloatingMagnifier: Zoomed image is null");
+                return;
+            }
+                
             UpdateMagnifierDisplay(zoomedImage, mouseLocation, sourceControl);
         }
 
         private void UpdateMagnifierDisplay(Bitmap zoomedImage, SdPoint mouseLocation, Control sourceControl)
         {
             _floatingZoomBox!.Image?.Dispose();
+
             _floatingZoomBox.Image = zoomedImage;
 
             var screenPoint = sourceControl.PointToScreen(mouseLocation);
 
             int offset = _magnifierOffset;
+
             var magnifierPosition = new SdPoint(
                 screenPoint.X + offset,
                 screenPoint.Y + offset
             );
 
             var screen = Screen.FromPoint(screenPoint);
-            // 避免超出右邊界
+
             if (magnifierPosition.X + _zoomWindow!.Width > screen.WorkingArea.Right)
                 magnifierPosition.X = screenPoint.X - _zoomWindow.Width - offset;
-            // 避免超出下邊界
+
             if (magnifierPosition.Y + _zoomWindow.Height > screen.WorkingArea.Bottom)
                 magnifierPosition.Y = screenPoint.Y - _zoomWindow.Height - offset;
 
             _zoomWindow.Location = magnifierPosition;
 
             if (!_zoomWindow.Visible)
-            {
                 _zoomWindow.Show();
-                _isVisible = true;
-            }
+
+            _isVisible = true;
         }
 
         /// <summary>
@@ -145,20 +152,21 @@ namespace ArtaleAI.UI
             if (sourceImage == null) return null;
 
             var pictureBox = _mainForm.pictureBoxMinimap;
-            if (pictureBox.Image == null) return null;
+            if (pictureBox?.Image == null) return null;
 
-            // 使用工具類別處理座標轉換 ✨
-            var displayRect = CoordinateHelper.GetDisplayRect(pictureBox);
-
-            // 檢查是否在顯示區域內
             if (!CoordinateHelper.IsPointInDisplayArea(mouseLocation, pictureBox))
+            {
+                Debug.WriteLine("FloatingMagnifier: Point not in display area");
                 return null;
+            }
 
-            // 轉換為圖片座標
             var imagePoint = CoordinateHelper.ControlToImagePoint(mouseLocation, pictureBox);
 
-            // 計算放大區域
-            int zoomAreaSize = 20; // 原圖 20x20 像素
+            // 使用 Config.ZoomFactor 來決定放大區域大小
+            // zoomFactor 越大，擷取區域越小，放大效果越強
+            var config = AppConfig.Instance;
+            int zoomAreaSize = (int)Math.Max(5, 100 / config.ZoomFactor); // 例如：zoomFactor=15 → size≈6
+
             var sourceRect = new Rectangle(
                 imagePoint.X - zoomAreaSize / 2,
                 imagePoint.Y - zoomAreaSize / 2,
@@ -166,19 +174,26 @@ namespace ArtaleAI.UI
                 zoomAreaSize
             );
 
-            // 限制在圖片範圍內
-            sourceRect = Rectangle.Intersect(sourceRect,
-                new Rectangle(0, 0, pictureBox.Image.Width, pictureBox.Image.Height));
+            sourceRect = Rectangle.Intersect(sourceRect, new Rectangle(0, 0, pictureBox.Image.Width, pictureBox.Image.Height));
 
-            if (sourceRect.Width <= 0 || sourceRect.Height <= 0)
+            if (sourceRect.Width == 0 || sourceRect.Height == 0)
+            {
+                Debug.WriteLine("FloatingMagnifier: Source rectangle out of range");
                 return null;
+            }
 
-            // 使用工具類別建立放大圖像 ✨
-            return DrawingHelper.CreateZoomedImage(
+            var zoomedBitmap = DrawingHelper.CreateZoomedImage(
                 sourceImage as Bitmap,
                 sourceRect,
                 new Size(_magnifierSize, _magnifierSize)
             );
+
+            if (zoomedBitmap == null)
+            {
+                Debug.WriteLine("FloatingMagnifier: DrawingHelper.CreateZoomedImage returned null");
+            }
+
+            return zoomedBitmap;
         }
 
         /// <summary>
@@ -200,7 +215,6 @@ namespace ArtaleAI.UI
 
             if (disposing)
             {
-                // ✅ 釋放託管資源
                 Hide();  // 確保視窗已隱藏
 
                 if (_floatingZoomBox != null)

@@ -77,10 +77,10 @@ namespace ArtaleAI.Config
     /// </summary>
     public class MapData
     {
-        public List<int[]> WaypointPaths { get; set; }
-        public List<int[]> SafeZones { get; set; }
-        public List<int[]> Ropes { get; set; }
-        public List<int[]> RestrictedZones { get; set; }
+        public List<int[]> WaypointPaths { get; set; } = new List<int[]>();
+        public List<int[]> SafeZones { get; set; } = new List<int[]>();
+        public List<int[]> Ropes { get; set; } = new List<int[]>();
+        public List<int[]> RestrictedZones { get; set; } = new List<int[]>();
     }
 
     /// <summary>

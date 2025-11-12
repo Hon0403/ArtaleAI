@@ -485,7 +485,7 @@
             numericUpDownZoom.Name = "numericUpDownZoom";
             numericUpDownZoom.Size = new Size(130, 23);
             numericUpDownZoom.TabIndex = 1;
-            numericUpDownZoom.Value = new decimal(new int[] { 5, 0, 0, 0 });
+
             // 
             // groupBox1
             // 

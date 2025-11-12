@@ -27,6 +27,7 @@ namespace ArtaleAI.Core
         public PathPlanningTracker(GameVisionCore gameVision)
         {
             _gameVision = gameVision;
+            _trackingHistory = new List<MinimapTrackingResult>();
         }
 
         /// <summary>
@@ -118,7 +119,7 @@ namespace ArtaleAI.Core
             // 檢查是否到達路徑點
             if (distance <= reachDistance)
             {
-                Debug.WriteLine($"✅ 到達路徑點 {CurrentPathState.CurrentWaypointIndex}: {nextWaypoint.Value}");
+                Debug.WriteLine($" 到達路徑點 {CurrentPathState.CurrentWaypointIndex}: {nextWaypoint.Value}");
                 OnWaypointReached?.Invoke(nextWaypoint.Value);
 
                 // 移動到下個路徑點

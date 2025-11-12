@@ -70,7 +70,7 @@ namespace ArtaleAI.Engine
                 // 3. 找最佳血條（保留，因為邏輯複雜）
                 var bestBar = FindBestRedBar(redMask, config);
 
-                // ✅ 直接返回轉換後的座標,不需要額外函數
+                //  直接返回轉換後的座標,不需要額外函數
                 return bestBar.HasValue
                     ? new Rectangle(bestBar.Value.X, bestBar.Value.Y + cameraOffsetY,
                                    bestBar.Value.Width, bestBar.Value.Height)
@@ -89,7 +89,7 @@ namespace ArtaleAI.Engine
 
             if (bloodBar.HasValue)
             {
-                // ✅ 一次計算兩種框架
+                //  一次計算兩種框架
                 var (detectionBoxes, attackRangeBoxes) =
                     CalculateBloodBarRelatedBoxes(bloodBar.Value, config);
 
@@ -153,7 +153,7 @@ namespace ArtaleAI.Engine
 
                 if (topLeft.HasValue && bottomRight.HasValue)
                 {
-                    // ✅ 內嵌計算邏輯
+                    //  內嵌計算邏輯
                     var tl = topLeft.Value.Location;
                     var br = bottomRight.Value.Location;
 
@@ -198,7 +198,7 @@ namespace ArtaleAI.Engine
                     minimapRect.Value.X, minimapRect.Value.Y,
                     minimapRect.Value.Width, minimapRect.Value.Height));
 
-                // ✅ 直接內嵌玩家位置檢測
+                //  直接內嵌玩家位置檢測
                 System.Drawing.Point? playerPos = null;
                 try
                 {
@@ -211,7 +211,7 @@ namespace ArtaleAI.Engine
                     Debug.WriteLine($"玩家位置檢測錯誤: {ex.Message}");
                 }
 
-                // ✅ 直接內嵌其他玩家檢測
+                //  直接內嵌其他玩家檢測
                 var otherPlayers = new List<System.Drawing.Point>();
                 if (AppConfig.Instance.EnableOtherPlayersDetection == true)
                 {
@@ -269,7 +269,7 @@ namespace ArtaleAI.Engine
 
                 try
                 {
-                    // ✅ 直接內嵌匹配邏輯
+                    //  直接內嵌匹配邏輯
                     using var result = new Mat();
 
                     if (mode == MonsterDetectionMode.Grayscale)
@@ -345,7 +345,7 @@ namespace ArtaleAI.Engine
                         if (tempBitmap == null || tempBitmap.Width < 5 || tempBitmap.Height < 5)
                             continue;
 
-                        // ✅ 直接內嵌轉換邏輯（不拆函數）
+                        //  直接內嵌轉換邏輯（不拆函數）
                         using var originalMat = BitmapConverter.ToMat(tempBitmap);
                         using var rgbMat = new Mat();
                         Cv2.CvtColor(originalMat, rgbMat, ColorConversionCodes.BGR2RGB);
@@ -405,7 +405,7 @@ namespace ArtaleAI.Engine
                         var rect = new Rectangle(boundingRect.X, boundingRect.Y,
                             boundingRect.Width, boundingRect.Height);
 
-                        // ✅ 內嵌驗證邏輯
+                        //  內嵌驗證邏輯
                         var width = rect.Width;
                         var height = rect.Height;
                         var area = width * height;
@@ -497,7 +497,7 @@ namespace ArtaleAI.Engine
                     using var rgbTemplate = new Mat();
                     Cv2.CvtColor(originalTemplate, rgbTemplate, ColorConversionCodes.BGR2RGB);
 
-                    // ✅ .NET 6 兼容的通道處理
+                    //  .NET 6 兼容的通道處理
                     Mat finalTemplate;
                     int channels = rgbTemplate.Channels();
 
@@ -521,7 +521,7 @@ namespace ArtaleAI.Engine
                     }
 
                     _mapTemplates[kvp.Key] = finalTemplate;
-                    Debug.WriteLine($"✅ 成功載入模板: {kvp.Key}");
+                    Debug.WriteLine($" 成功載入模板: {kvp.Key}");
                 }
                 catch (Exception ex)
                 {
@@ -706,7 +706,7 @@ namespace ArtaleAI.Engine
                 capturer = new GraphicsCapturer(selectedItem);
                 await Task.Delay(100);
 
-                // ✅ 使用 ResourceManager 安全處理 Mat
+                //  使用 ResourceManager 安全處理 Mat
                 using var fullFrame = capturer.TryGetNextMat();
                 if (fullFrame == null)
                 {
@@ -721,7 +721,7 @@ namespace ArtaleAI.Engine
                     throw new Exception("無法偵測到小地圖區域");
                 }
 
-                // ✅ 安全裁切小地圖
+                //  安全裁切小地圖
                 using var minimapMat = new Mat(fullFrame, new OpenCvSharp.Rect(
                     minimapRect.Value.X, minimapRect.Value.Y,
                     minimapRect.Value.Width, minimapRect.Value.Height));

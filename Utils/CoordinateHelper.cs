@@ -19,9 +19,11 @@ namespace ArtaleAI.Utils
             if (minimapBounds.Width == 0 || minimapBounds.Height == 0)
                 return pictureBoxPoint;
 
-            float x = (pictureBoxPoint.X / minimapBounds.Width) * 100f;
-            float y = (pictureBoxPoint.Y / minimapBounds.Height) * 100f;
+            float relativeX = pictureBoxPoint.X - minimapBounds.X;
+            float relativeY = pictureBoxPoint.Y - minimapBounds.Y;
 
+            float x = (relativeX / minimapBounds.Width) * 100f;
+            float y = (relativeY / minimapBounds.Height) * 100f;
             return new PointF(x, y);
         }
 
@@ -33,9 +35,11 @@ namespace ArtaleAI.Utils
             if (minimapBounds.Width == 0 || minimapBounds.Height == 0)
                 return minimapPoint;
 
-            float x = (minimapPoint.X / 100f) * minimapBounds.Width;
-            float y = (minimapPoint.Y / 100f) * minimapBounds.Height;
+            float relativeX = (minimapPoint.X / 100f) * minimapBounds.Width;
+            float relativeY = (minimapPoint.Y / 100f) * minimapBounds.Height;
 
+            float x = relativeX + minimapBounds.X;
+            float y = relativeY + minimapBounds.Y;
             return new PointF(x, y);
         }
 
@@ -145,5 +149,44 @@ namespace ArtaleAI.Utils
         }
 
         #endregion
+
+        public static PointF TranslateImagePointToControl(PointF imagePoint, PictureBox pb)
+        {
+            if (pb.Image == null) return PointF.Empty;
+
+            float pbWidth = pb.ClientSize.Width;
+            float pbHeight = pb.ClientSize.Height;
+            float imgWidth = pb.Image.Width;
+            float imgHeight = pb.Image.Height;
+
+            // 計算縮放比例 (保持長寬比)
+            float scale = Math.Min(pbWidth / imgWidth, pbHeight / imgHeight);
+
+            // 計算居中偏移
+            float scaledWidth = imgWidth * scale;
+            float scaledHeight = imgHeight * scale;
+            float offsetX = (pbWidth - scaledWidth) / 2;
+            float offsetY = (pbHeight - scaledHeight) / 2;
+
+            // 圖片座標 → PictureBox 座標
+            float controlX = imagePoint.X * scale + offsetX;
+            float controlY = imagePoint.Y * scale + offsetY;
+
+            return new PointF(controlX, controlY);
+        }
+
+        public static RectangleF TranslateImageRectToControl(RectangleF imageRect, PictureBox pb)
+        {
+            var topLeft = TranslateImagePointToControl(
+                new PointF(imageRect.X, imageRect.Y), pb);
+            var bottomRight = TranslateImagePointToControl(
+                new PointF(imageRect.Right, imageRect.Bottom), pb);
+
+            return new RectangleF(
+                topLeft.X,
+                topLeft.Y,
+                bottomRight.X - topLeft.X,
+                bottomRight.Y - topLeft.Y);
+        }
     }
 }

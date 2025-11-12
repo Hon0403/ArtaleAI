@@ -43,6 +43,7 @@ namespace ArtaleAI
         private List<Mat> currentMonsterMatTemplates = new(); 
         private DateTime _lastBloodBarDetection = DateTime.MinValue;
         private DateTime _lastMonsterDetection = DateTime.MinValue;
+        private PointF _lastMousePosition = PointF.Empty;
 
         private string _selectedMonsterName = string.Empty;
         private LiveViewManager? liveViewManager;
@@ -124,8 +125,9 @@ namespace ArtaleAI
                 _pathPlanningManager.OnWaypointReached += OnWaypointReached;
                 liveViewManager = new LiveViewManager(config);
                 liveViewManager.OnFrameReady += OnFrameAvailable;
+                numericUpDownZoom.Value = Config.ZoomFactor;
 
-                MsgLog.ShowStatus(textBox1, "✅ 所有服務初始化完成");
+                MsgLog.ShowStatus(textBox1, " 所有服務初始化完成");
             }
             catch (Exception ex)
             {
@@ -154,7 +156,7 @@ namespace ArtaleAI
                 }
 
                 cbo_MonsterTemplates.SelectedIndexChanged += OnMonsterSelectionChanged;
-                MsgLog.ShowStatus(textBox1, $"✅ 載入 {monsterNames.Count} 個怪物模板");
+                MsgLog.ShowStatus(textBox1, $" 載入 {monsterNames.Count} 個怪物模板");
             }
             catch (Exception ex)
             {
@@ -334,7 +336,7 @@ namespace ArtaleAI
             AppConfig.Instance.DetectionMode = selectedMode;
             //GameConfig.Instance.MonsterDetection.OcclusionHandling = optimalOcclusion.ToString();
 
-            MsgLog.ShowStatus(textBox1, $"✅ 偵測模式: {selectedMode} | 遮擋: {optimalOcclusion}");
+            MsgLog.ShowStatus(textBox1, $" 偵測模式: {selectedMode} | 遮擋: {optimalOcclusion}");
         }
 
         #endregion
@@ -371,9 +373,10 @@ namespace ArtaleAI
         {
             Config.ZoomFactor = numericUpDownZoom.Value;
             Config.Save();
+
         }
 
-        private void TabControl1_SelectedIndexChanged(object? sender, EventArgs e)
+        private async void TabControl1_SelectedIndexChanged(object? sender, EventArgs e)
         {
             try
             {
@@ -401,14 +404,88 @@ namespace ArtaleAI
                     // 標題會在載入地圖檔案時更新
                     break;
                 case 2: // 即時顯示頁面
+
                     UpdateWindowTitle("ArtaleAI - 即時顯示");
-                    StartLiveViewModeAsync();
+                    await StartLiveViewModeAsync();
+
+                    if (loadedPathData != null && liveViewManager?.IsRunning == true && _currentMinimapBoxes.Any())
+                    {
+                        UpdateLiveViewPathDisplay();
+                    }
                     break;
                 default:
                     UpdateWindowTitle("ArtaleAI");
                     break;
             }
         }
+
+        private void UpdateLiveViewPathDisplay()
+        {
+            var bounds = _currentMinimapBoxes.First();
+            var allStaticPoints = new List<SdPoint>();
+
+            // Waypoints
+            if (loadedPathData.WaypointPaths?.Any() == true)
+            {
+                foreach (var coord in loadedPathData.WaypointPaths)
+                {
+                    if (coord.Length == 2)
+                    {
+                        allStaticPoints.Add(new SdPoint(coord[0], coord[1]));
+
+                    }
+                }
+            }
+
+            // SafeZones
+            if (loadedPathData.SafeZones?.Any() == true)
+            {
+                foreach (var coord in loadedPathData.SafeZones)
+                {
+                    if (coord.Length == 2)
+                    {
+                        allStaticPoints.Add(new SdPoint(coord[0], coord[1]));
+
+                    }
+                }
+            }
+
+            // Ropes
+            if (loadedPathData.Ropes?.Any() == true)
+            {
+                foreach (var coord in loadedPathData.Ropes)
+                {
+                    if (coord.Length == 2)
+                    {
+                        allStaticPoints.Add(new SdPoint(coord[0], coord[1]));
+
+                    }
+                }
+            }
+
+            // RestrictedZones
+            if (loadedPathData.RestrictedZones?.Any() == true)
+            {
+                foreach (var coord in loadedPathData.RestrictedZones)
+                {
+                    if (coord.Length == 2)
+                    {
+                        allStaticPoints.Add(new SdPoint(coord[0], coord[1]));
+
+                    }
+                }
+            }
+
+            lock (_currentPathPoints)
+            {
+                _currentPathPoints.Clear();
+                _currentPathPoints.AddRange(allStaticPoints);
+            }
+
+            Debug.WriteLine($" 路徑點已更新: {_currentPathPoints.Count} 點");
+        }
+
+
 
         /// <summary>
         /// 路徑編輯模式：只載入靜態小地圖
@@ -423,7 +500,7 @@ namespace ArtaleAI
                 var result = await LoadMinimapWithMat(MinimapUsage.PathEditing);
                 if (result?.MinimapImage != null)
                 {
-                    // ✅ 直接內嵌圖像設定邏輯
+                    //  直接內嵌圖像設定邏輯
                     Action setImage = () =>
                     {
                         var oldImage = pictureBoxMinimap.Image;
@@ -475,7 +552,7 @@ namespace ArtaleAI
                     return null;
                 }
 
-                // ✅ 使用 GetSnapshotAsync
+                //  使用 GetSnapshotAsync
                 var result = await gameVision.GetSnapshotAsync(
                     IntPtr.Zero,
                     config,
@@ -555,7 +632,7 @@ namespace ArtaleAI
                     }
                     MsgLog.ShowStatus(textBox1, "小地圖位置已定位");
 
-                    // ⭐ 使用LiveViewManager啟動Timer
+                    // 使用LiveViewManager啟動Timer
                     var captureItem = WindowFinder.TryCreateItemForWindow(Config.GameWindowTitle);
                     if (captureItem != null)
                     {
@@ -851,7 +928,7 @@ namespace ArtaleAI
             var mapData = _mapEditor?.GetCurrentMapData();
             if (mapData == null) return;
 
-            // ✅ 本地繪製函數
+            //  本地繪製函數
             void DrawPath(List<int[]>? coordinates, Color color, float width, DashStyle dashStyle)
             {
                 if (coordinates?.Any() != true || coordinates.Count < 2) return;
@@ -946,36 +1023,75 @@ namespace ArtaleAI
 
         private void pictureBoxMinimap_MouseMove(object sender, MouseEventArgs e)
         {
+            //  1. 更新放大鏡 (使用 PictureBox 座標,不會卡)
             _floatingMagnifier?.UpdateMagnifier(e.Location, pictureBoxMinimap);
 
-            if (_currentMinimapBoxes.Any() && !minimapBounds.IsEmpty)
-            {
-                var pictureBoxPoint = new PointF(e.X, e.Y);
-                var minimapPoint = GameVisionCore.ScreenToMinimapF(pictureBoxPoint, minimapBounds);
+            //  2. 只存儲滑鼠位置,不做計算
+            _lastMousePosition = new PointF(e.X, e.Y);
 
-                if (_mapEditor != null)
-                {
-                    _mapEditor?.UpdatePreview(minimapPoint);
-                    pictureBoxMinimap.Invalidate();
-                }
+            //  3. 只在編輯模式時才 Invalidate
+            if (_mapEditor != null && _currentMinimapBoxes.Any() && !minimapBounds.IsEmpty)
+            {
+                pictureBoxMinimap.Invalidate();
             }
         }
+
 
         private void pictureBoxMinimap_Paint(object sender, PaintEventArgs e)
         {
-            if (minimapBounds.IsEmpty) return;
+            if (_mapEditor == null || !_currentMinimapBoxes.Any() || pictureBoxMinimap.Image == null)
+                return;
 
-            if (tabControl1.SelectedIndex == 1)  // 路徑編輯分頁
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+
+            //  計算 PictureBox 在 Zoom 模式下的縮放參數
+            float pbWidth = pictureBoxMinimap.ClientSize.Width;
+            float pbHeight = pictureBoxMinimap.ClientSize.Height;
+            float imgWidth = pictureBoxMinimap.Image.Width;
+            float imgHeight = pictureBoxMinimap.Image.Height;
+
+            float imgAspect = imgWidth / imgHeight;
+            float pbAspect = pbWidth / pbHeight;
+
+            float scaleX, scaleY;
+            float offsetX = 0, offsetY = 0;
+
+            if (pbAspect > imgAspect)
             {
-
-                _mapEditor?.Render(e.Graphics, minimapPoint => GameVisionCore.MinimapToScreenF(minimapPoint, minimapBounds));
+                // PictureBox 比較寬,上下留黑邊
+                scaleY = pbHeight / imgHeight;
+                scaleX = scaleY;
+                offsetX = (pbWidth - imgWidth * scaleX) / 2;
             }
+            else
+            {
+                // PictureBox 比較高,左右留黑邊
+                scaleX = pbWidth / imgWidth;
+                scaleY = scaleX;
+                offsetY = (pbHeight - imgHeight * scaleY) / 2;
+            }
+
+            //  座標轉換函數: 螢幕絕對座標 → PictureBox 控制項座標
+            PointF ConvertScreenToDisplay(PointF screenPoint)
+            {
+                float relX = screenPoint.X - minimapBounds.X;
+                float relY = screenPoint.Y - minimapBounds.Y;
+                return new PointF(
+                    relX * scaleX + offsetX,
+                    relY * scaleY + offsetY
+                );
+            }
+
+            //  呼叫 MapEditor 的 Render (繪製所有路徑和預覽線)
+            _mapEditor.Render(e.Graphics, ConvertScreenToDisplay);
         }
+
 
         private void pictureBoxMinimap_MouseLeave(object sender, EventArgs e)
         {
-            _floatingMagnifier?.Hide();
-
+            _lastMousePosition = PointF.Empty;
+            pictureBoxMinimap.Invalidate();
         }
 
         #endregion
@@ -1070,7 +1186,7 @@ namespace ArtaleAI
                 }
                 currentMonsterMatTemplates.Clear();
 
-                // ✅ 使用靜態屬性載入模板
+                //  使用靜態屬性載入模板
                 currentMonsterMatTemplates = await gameVision?.LoadMonsterTemplatesAsync(
                     selectedMonster,
                     PathManager.MonstersDirectory
@@ -1123,7 +1239,7 @@ namespace ArtaleAI
                         cbo_MonsterTemplates.Items.Add(name);
                     }
 
-                    MsgLog.ShowStatus(textBox1, $"✅ 成功下載 {result.DownloadedCount} 個模板");
+                    MsgLog.ShowStatus(textBox1, $" 成功下載 {result.DownloadedCount} 個模板");
                 }
             }
             catch (Exception ex)
@@ -1136,7 +1252,6 @@ namespace ArtaleAI
                 btn_DownloadMonster.Text = "下載怪物";
             }
         }
-
 
         private async void rdo_Start_CheckedChanged(object sender, EventArgs e)
         {
@@ -1190,7 +1305,7 @@ namespace ArtaleAI
         #region 路徑規劃專用方法
 
         /// <summary>
-        /// 路徑追蹤更新事件處理（簡化版 - 只處理小地圖辨識）
+        /// 路徑追蹤更新事件處理
         /// </summary>
         private void OnPathTrackingUpdated(MinimapTrackingResult result)
         {
@@ -1212,7 +1327,7 @@ namespace ArtaleAI
             {
                 var playerPos = playerPosOpt.Value;
 
-                if (_pathPlanningManager?.CurrentState != null) // 改用 _pathPlanningManager.CurrentState
+                if (_pathPlanningManager?.CurrentState != null)
                 {
                     var pathState = _pathPlanningManager.CurrentState;
                     var progress = $"{pathState.CurrentWaypointIndex + 1}/{pathState.PlannedPath.Count}";
@@ -1258,7 +1373,7 @@ namespace ArtaleAI
                     MsgLog.ShowStatus(textBox1, $"其他玩家: {result.OtherPlayers.Count}");
                 }
 
-                if (_pathPlanningManager?.CurrentState != null && result.MinimapBounds.HasValue) // 改用 _pathPlanningManager.CurrentState
+                if (_pathPlanningManager?.CurrentState != null && result.MinimapBounds.HasValue)
                 {
                     var bounds = result.MinimapBounds.Value;
                     if (_pathPlanningManager.CurrentState.PlannedPath?.Any() == true)
@@ -1282,8 +1397,6 @@ namespace ArtaleAI
                 }
             }
         }
-
-
         #endregion
 
         private async void ckB_Start_CheckedChanged(object sender, EventArgs e)
@@ -1328,7 +1441,6 @@ namespace ArtaleAI
                 var loadedData = Config.LoadMapFromFile(fullPath);
                 if (loadedData != null)
                 {
-                    // ✅ 路徑編輯：載入到編輯器，不影響即時顯示
                     _mapEditor?.LoadMapData(loadedData);
 
                     UpdateWindowTitle($"地圖編輯器 - {selectedFileName}");
@@ -1359,64 +1471,15 @@ namespace ArtaleAI
                     return;
                 }
 
-                var loadedData = Config.LoadMapFromFile(fullPath);
-                if (loadedData != null)
-                {
-                    if (tabControl1.SelectedIndex == 2) // Live View 模式
-                    {
-                        loadedPathData = loadedData;
-
-                        if (_pathPlanningManager != null && loadedData.WaypointPaths?.Any() == true)
-                        {
-                            var waypoints = loadedData.WaypointPaths
-                                .Where(coord => coord.Length == 2)
-                                .Select(coord => new SdPoint(coord[0], coord[1]))
-                                .ToList();
-
-                            _pathPlanningManager.LoadPlannedPath(waypoints);
-                        }
-
-                        if (liveViewManager != null && liveViewManager.IsRunning && _currentMinimapBoxes.Any())
-                        {
-                            var bounds = _currentMinimapBoxes.First();
-                            var allStaticPoints = new List<SdPoint>();
-
-                            if (loadedData.WaypointPaths?.Any() == true)
-                            {
-                                foreach (var coord in loadedData.WaypointPaths)
-                                {
-                                    if (coord.Length == 2)
-                                    {
-                                        var screenPoint = new SdPoint(bounds.X + coord[0], bounds.Y + coord[1]);
-                                        allStaticPoints.Add(screenPoint);
-                                    }
-                                }
-                            }
-
-                            if (_pathPlanningManager != null && !_pathPlanningManager.IsRunning)
-                            {
-                                lock (_currentPathPoints)
-                                {
-                                    _currentPathPoints.Clear();
-                                    _currentPathPoints.AddRange(allStaticPoints);
-                                }
-                            }
-                        }
-
-                        MsgLog.ShowStatus(textBox1, $"已載入路徑檔案: {selectedFileName}");
-                    }
-                    else
-                    {
-                        MsgLog.ShowStatus(textBox1, $"已載入: {selectedFileName}");
-                    }
-                }
+                // 只載入資料，不處理渲染
+                loadedPathData = Config.LoadMapFromFile(fullPath);
+                MsgLog.ShowStatus(textBox1, $"已載入: {selectedFileName}");
             }
             catch (Exception ex)
             {
                 MsgLog.ShowError(textBox1, $"載入路徑檔案錯誤: {ex.Message}");
             }
         }
-
 
 
         private async void ProcessPathPlanning(Mat frameMat)
@@ -1478,12 +1541,50 @@ namespace ArtaleAI
 
         private void pictureBoxMinimap_Click(object sender, MouseEventArgs e)
         {
-            if (e.Button != MouseButtons.Left || !_currentMinimapBoxes.Any())
-                return;
+            if (e.Button != MouseButtons.Left || !_currentMinimapBoxes.Any()) return;
 
+            //  1. 先將 PictureBox 座標轉換為圖片座標
             var pictureBoxPoint = new PointF(e.X, e.Y);
-            _mapEditor?.HandleClick(pictureBoxPoint);
-            pictureBoxMinimap.Invalidate(); // 觸發重繪以顯示變更
+            var imagePoint = TranslatePictureBoxPointToImage(pictureBoxPoint, pictureBoxMinimap);
+
+            //  2. 圖片座標轉換為螢幕座標
+            var screenPoint = new PointF(
+                minimapBounds.X + imagePoint.X,
+                minimapBounds.Y + imagePoint.Y
+            );
+
+            //  3. 傳給 MapEditor 處理 (現在是螢幕座標)
+            _mapEditor?.HandleClick(screenPoint);
+            pictureBoxMinimap.Invalidate();
         }
+
+        /// <summary>
+        /// 將 PictureBox 的點擊座標轉換為圖片的實際座標 (處理 Zoom 模式)
+        /// </summary>
+        private PointF TranslatePictureBoxPointToImage(PointF pictureBoxPoint, PictureBox pb)
+        {
+            if (pb.Image == null) return PointF.Empty;
+
+            float pbWidth = pb.ClientSize.Width;
+            float pbHeight = pb.ClientSize.Height;
+            float imgWidth = pb.Image.Width;
+            float imgHeight = pb.Image.Height;
+
+            // 計算縮放比例 (保持長寬比)
+            float scale = Math.Min(pbWidth / imgWidth, pbHeight / imgHeight);
+
+            // 計算居中偏移
+            float scaledWidth = imgWidth * scale;
+            float scaledHeight = imgHeight * scale;
+            float offsetX = (pbWidth - scaledWidth) / 2;
+            float offsetY = (pbHeight - scaledHeight) / 2;
+
+            // 轉換座標
+            float imageX = (pictureBoxPoint.X - offsetX) / scale;
+            float imageY = (pictureBoxPoint.Y - offsetY) / scale;
+
+            return new PointF(imageX, imageY);
+        }
+
     }
 }

@@ -1,6 +1,7 @@
 ﻿using ArtaleAI.Config;
 using ArtaleAI.Engine;
 using ArtaleAI.Utils;
+using System.Diagnostics;
 using System.Drawing.Drawing2D;
 using YamlDotNet.Serialization;
 
@@ -57,19 +58,10 @@ namespace ArtaleAI.UI
             _currentEditMode = mode;
         }
 
-        /// <summary>
-        /// 更新預覽 (MouseMove)
-        /// </summary>
-        public void UpdatePreview(PointF point)
-        {
-            _previewPoint = point;
-        }
 
-        public void HandleClick(PointF pictureBoxPoint)
+        public void HandleClick(PointF screenPoint)
         {
             if (minimapBounds.IsEmpty) return;
-
-            var minimapPoint = GameVisionCore.ScreenToMinimapF(pictureBoxPoint, minimapBounds);
 
             if (_currentEditMode == EditMode.Waypoint ||
                 _currentEditMode == EditMode.SafeZone ||
@@ -77,21 +69,21 @@ namespace ArtaleAI.UI
             {
                 if (!_startPoint.HasValue)
                 {
-                    _startPoint = minimapPoint;
+                    _startPoint = screenPoint;
                 }
                 else
                 {
                     var points = new List<PointF>();
                     var distance = Math.Sqrt(
-                        Math.Pow(minimapPoint.X - _startPoint.Value.X, 2) +
-                        Math.Pow(minimapPoint.Y - _startPoint.Value.Y, 2));
+                        Math.Pow(screenPoint.X - _startPoint.Value.X, 2) +
+                        Math.Pow(screenPoint.Y - _startPoint.Value.Y, 2));
                     var steps = Math.Max(1, (int)(distance / 5));
 
                     for (int i = 0; i <= steps; i++)
                     {
                         var t = steps == 0 ? 0 : (double)i / steps;
-                        var x = _startPoint.Value.X + (minimapPoint.X - _startPoint.Value.X) * t;
-                        var y = _startPoint.Value.Y + (minimapPoint.Y - _startPoint.Value.Y) * t;
+                        var x = _startPoint.Value.X + (screenPoint.X - _startPoint.Value.X) * t;
+                        var y = _startPoint.Value.Y + (screenPoint.Y - _startPoint.Value.Y) * t;
                         points.Add(new PointF((float)x, (float)y));
                     }
 
@@ -122,13 +114,13 @@ namespace ArtaleAI.UI
             }
             else if (_currentEditMode == EditMode.RestrictedZone)
             {
-                var coord = new int[] { (int)Math.Round(minimapPoint.X), (int)Math.Round(minimapPoint.Y) };
+                var coord = new int[] { (int)Math.Round(screenPoint.X), (int)Math.Round(screenPoint.Y) };
                 _currentMapData.RestrictedZones ??= new List<int[]>();
                 _currentMapData.RestrictedZones.Add(coord);
             }
             else if (_currentEditMode == EditMode.Delete)
             {
-                HandleDeleteAction(minimapPoint);
+                HandleDeleteAction(screenPoint);
             }
         }
 
@@ -228,10 +220,10 @@ namespace ArtaleAI.UI
 
             var pathGroups = new[]
             {
-                ("路徑點", _currentMapData.WaypointPaths),
-                ("安全區", _currentMapData.SafeZones),
-                ("繩索", _currentMapData.Ropes),
-                ("禁區", _currentMapData.RestrictedZones)
+                ("Waypoint", _currentMapData.WaypointPaths),
+                ("SafeZone", _currentMapData.SafeZones),
+                ("Rope", _currentMapData.Ropes),
+                ("RestrictedZone", _currentMapData.RestrictedZones)
             };
 
             foreach (var (name, pathList) in pathGroups)
@@ -243,9 +235,7 @@ namespace ArtaleAI.UI
                     var coord = pathList[i];
                     if (coord.Length != 2) continue;
 
-                    var point = new PointF(coord[0], coord[1]);
-
-                    // ✅ 內嵌距離計算
+                    var point = new PointF(coord[0], coord[1]); 
                     var distance = (float)Math.Sqrt(
                         Math.Pow(point.X - clickPosition.X, 2) +
                         Math.Pow(point.Y - clickPosition.Y, 2));
@@ -259,5 +249,6 @@ namespace ArtaleAI.UI
                 }
             }
         }
+
     }
 }

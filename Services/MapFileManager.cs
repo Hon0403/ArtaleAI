@@ -106,7 +106,7 @@ namespace ArtaleAI.Services
 
                     _mainForm.UpdateWindowTitle($"地圖編輯器 - {fileName}");
                     _mainForm.RefreshMinimap();
-                    MsgLog.ShowStatus(_mainForm.textBox1,$"✅ 成功載入地圖: {fileName}");
+                    MsgLog.ShowStatus(_mainForm.textBox1,$" 成功載入地圖: {fileName}");
 
                     MapLoaded?.Invoke(fileName);
                 }
@@ -134,7 +134,7 @@ namespace ArtaleAI.Services
                     var currentMapData = _mapEditor.GetCurrentMapData();
                     AppConfig.Instance.SaveMapToFile(currentMapData, _currentMapFilePath!);
                     _mainForm.OnMapSaved(CurrentMapFileName!, false);
-                    MsgLog.ShowStatus(_mainForm.textBox1,$"✅ 地圖儲存成功: {CurrentMapFileName}");
+                    MsgLog.ShowStatus(_mainForm.textBox1,$" 地圖儲存成功: {CurrentMapFileName}");
                 }
                 else
                 {
@@ -174,7 +174,7 @@ namespace ArtaleAI.Services
                     _mapFilesComboBox.SelectedItem = fileName;
                     _mainForm.OnMapSaved(fileName, true);
                     _mainForm.UpdateWindowTitle($"地圖編輯器 - {fileName}");
-                    MsgLog.ShowStatus(_mainForm.textBox1,$"✅ 新地圖儲存成功: {fileName}");
+                    MsgLog.ShowStatus(_mainForm.textBox1,$" 新地圖儲存成功: {fileName}");
                 }
             }
             catch (Exception ex)
@@ -201,7 +201,7 @@ namespace ArtaleAI.Services
 
                 _mainForm.UpdateWindowTitle("地圖編輯器 - (新地圖)");
                 _mainForm.RefreshMinimap();
-                MsgLog.ShowStatus(_mainForm.textBox1,"✅ 已建立新地圖");
+                MsgLog.ShowStatus(_mainForm.textBox1," 已建立新地圖");
 
             }
             catch (Exception ex)
