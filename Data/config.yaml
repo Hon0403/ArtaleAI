@@ -166,9 +166,10 @@ continuousDetectionIntervalMs: 200  # 持續檢測間隔 (毫秒)
 playerPositionThreshold: 0.7        # 玩家位置檢測閾值
 otherPlayersThreshold: 0.7          # 其他玩家檢測閾值
 enableOtherPlayersDetection: true   # 是否檢測其他玩家
-waypointReachDistance: 15.0         # 到達路徑點的距離閾值
+waypointReachDistance: 1.0          # 到達路徑點的距離閾值（像素）
 maxTrackingHistory: 100             # 最大追蹤歷史記錄數
 enableAutoPathFinding: false        # 是否啟用自動尋路
+enableAutoMovement: true            # 是否啟用自動角色移動控制
 
 # 圖像處理設定
 imageProcessing:
@@ -189,11 +190,11 @@ modeMapping:
   
 # UI 顯示文字 (支援本地化)
 displayNames:
-  "Basic": "⚡ Basic - 基本匹配（最快）"
-  "ContourOnly": "🖼️ ContourOnly - 輪廓匹配（速度快）"
-  "Grayscale": "⚖️ Grayscale - 灰階匹配（平衡）"
-  "Color": "🎯 Color - 彩色匹配（推薦）"
-  "TemplateFree": "🔍 TemplateFree - 自由偵測（無需模板）"
+  "Basic": "Basic - 基本匹配（最快）"
+  "ContourOnly": "ContourOnly - 輪廓匹配（速度快）"
+  "Grayscale": "Grayscale - 灰階匹配（平衡）"
+  "Color": "Color - 彩色匹配（推薦）"
+  "TemplateFree": "TemplateFree - 自由偵測（無需模板）"
   
 #  遮擋處理映射
 occlusionMappings:

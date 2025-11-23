@@ -107,7 +107,7 @@ namespace ArtaleAI.Config
         Rope,
 
         /// <summary>
-        /// ❌ 刪除標記
+        /// 刪除標記
         /// </summary>
         Delete
     }

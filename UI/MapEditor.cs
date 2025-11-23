@@ -1,5 +1,5 @@
 ﻿using ArtaleAI.Config;
-using ArtaleAI.Engine;
+using ArtaleAI.Core;
 using ArtaleAI.Utils;
 using System.Diagnostics;
 using System.Drawing.Drawing2D;
@@ -22,26 +22,46 @@ namespace ArtaleAI.UI
         private PointF? _previewPoint = null;
         private Rectangle minimapBounds = Rectangle.Empty;
 
+        /// <summary>
+        /// 初始化地圖編輯器
+        /// </summary>
+        /// <param name="settings">應用程式設定</param>
         public MapEditor(AppConfig settings)
         {
             _settings = settings;
         }
 
+        /// <summary>
+        /// 設定小地圖的邊界範圍（螢幕座標）
+        /// </summary>
+        /// <param name="bounds">小地圖在螢幕上的矩形區域</param>
         public void SetMinimapBounds(Rectangle bounds)
         {
             minimapBounds = bounds;
         }
 
+        /// <summary>
+        /// 載入地圖資料到編輯器
+        /// </summary>
+        /// <param name="data">要載入的地圖資料（null 時會建立空地圖）</param>
         public void LoadMapData(MapData data)
         {
             _currentMapData = data ?? new MapData();
         }
 
+        /// <summary>
+        /// 取得當前正在編輯的地圖資料
+        /// </summary>
+        /// <returns>目前的地圖資料物件</returns>
         public MapData GetCurrentMapData()
         {
             return _currentMapData;
         }
 
+        /// <summary>
+        /// 設定當前的編輯模式（路徑點、安全區、限制區、繩索、刪除）
+        /// </summary>
+        /// <param name="mode">要切換的編輯模式</param>
         public void SetEditMode(EditMode mode)
         {
             if ((_currentEditMode == EditMode.Waypoint ||
@@ -58,7 +78,21 @@ namespace ArtaleAI.UI
             _currentEditMode = mode;
         }
 
+        /// <summary>
+        /// 更新滑鼠懸停位置（用於預覽線條）
+        /// </summary>
+        /// <param name="screenPoint">滑鼠位置的螢幕座標</param>
+        public void UpdateMousePosition(PointF screenPoint)
+        {
+            // 簡化：使用三元運算子
+            _previewPoint = _startPoint.HasValue ? screenPoint : null;
+        }
 
+        /// <summary>
+        /// 處理使用者在小地圖上的點擊事件
+        /// 根據當前編輯模式執行對應操作：設定路徑點、安全區、限制區、繩索或刪除標記
+        /// </summary>
+        /// <param name="screenPoint">點擊位置的螢幕座標</param>
         public void HandleClick(PointF screenPoint)
         {
             if (minimapBounds.IsEmpty) return;
@@ -74,9 +108,12 @@ namespace ArtaleAI.UI
                 else
                 {
                     var points = new List<PointF>();
-                    var distance = Math.Sqrt(
-                        Math.Pow(screenPoint.X - _startPoint.Value.X, 2) +
-                        Math.Pow(screenPoint.Y - _startPoint.Value.Y, 2));
+                    // 簡化：計算兩點間的距離（避免 Math.Pow）
+                    var dx = screenPoint.X - _startPoint.Value.X;
+                    var dy = screenPoint.Y - _startPoint.Value.Y;
+                    var distance = Math.Sqrt(dx * dx + dy * dy);
+
+                    // 根據距離決定插值點數量 (每5個像素一個點)
                     var steps = Math.Max(1, (int)(distance / 5));
 
                     for (int i = 0; i <= steps; i++)
@@ -87,22 +124,26 @@ namespace ArtaleAI.UI
                         points.Add(new PointF((float)x, (float)y));
                     }
 
+                    // 修改這裡：轉換為 float[] 並保留一位小數
                     var coordinates = points
-                        .Select(p => new int[] { (int)Math.Round(p.X), (int)Math.Round(p.Y) })
+                        .Select(p => new float[] {
+                    (float)Math.Round(p.X, 1),
+                    (float)Math.Round(p.Y, 1)
+                        })
                         .ToList();
 
                     switch (_currentEditMode)
                     {
                         case EditMode.Waypoint:
-                            _currentMapData.WaypointPaths ??= new List<int[]>();
+                            _currentMapData.WaypointPaths ??= new List<float[]>();
                             _currentMapData.WaypointPaths.AddRange(coordinates);
                             break;
                         case EditMode.SafeZone:
-                            _currentMapData.SafeZones ??= new List<int[]>();
+                            _currentMapData.SafeZones ??= new List<float[]>();
                             _currentMapData.SafeZones.AddRange(coordinates);
                             break;
                         case EditMode.Rope:
-                            _currentMapData.Ropes ??= new List<int[]>();
+                            _currentMapData.Ropes ??= new List<float[]>();
                             _currentMapData.Ropes.AddRange(coordinates);
                             break;
                     }
@@ -114,8 +155,12 @@ namespace ArtaleAI.UI
             }
             else if (_currentEditMode == EditMode.RestrictedZone)
             {
-                var coord = new int[] { (int)Math.Round(screenPoint.X), (int)Math.Round(screenPoint.Y) };
-                _currentMapData.RestrictedZones ??= new List<int[]>();
+                // 修改這裡：同樣保留一位小數
+                var coord = new float[] {
+            (float)Math.Round(screenPoint.X, 1),
+            (float)Math.Round(screenPoint.Y, 1)
+        };
+                _currentMapData.RestrictedZones ??= new List<float[]>();
                 _currentMapData.RestrictedZones.Add(coord);
             }
             else if (_currentEditMode == EditMode.Delete)
@@ -124,7 +169,12 @@ namespace ArtaleAI.UI
             }
         }
 
-
+        /// <summary>
+        /// 渲染地圖編輯器的所有視覺元素
+        /// 包括完成的路徑、預覽線條、起點標記等
+        /// </summary>
+        /// <param name="g">GDI+ 繪圖物件</param>
+        /// <param name="convertToDisplay">座標轉換函式（將螢幕座標轉換為顯示座標）</param>
         public void Render(Graphics g, Func<PointF, PointF> convertToDisplay)
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -134,8 +184,11 @@ namespace ArtaleAI.UI
         }
 
         /// <summary>
-        /// 繪製完成的路徑形狀 (路徑點/安全區/繩索/禁區)
+        /// 繪製完成的路徑形狀（路徑點、安全區、繩索、限制區）
+        /// 不同類型的路徑使用不同顏色繪製：藍色=路徑點、綠色=安全區、黃色=繩索、紅色=限制區
         /// </summary>
+        /// <param name="g">GDI+ 繪圖物件</param>
+        /// <param name="convert">座標轉換函式（將螢幕座標轉換為顯示座標）</param>
         private void DrawCompletedShapes(Graphics g, Func<PointF, PointF> convert)
         {
             // 繪製路點路徑 
@@ -188,6 +241,12 @@ namespace ArtaleAI.UI
             }
         }
 
+        /// <summary>
+        /// 繪製預覽形狀（編輯過程中的即時視覺回饋）
+        /// 包括預覽線條（虛線）和起點標記（紅色圓點）
+        /// </summary>
+        /// <param name="g">GDI+ 繪圖物件</param>
+        /// <param name="convert">座標轉換函式</param>
         private void DrawPreviewShapes(Graphics g, Func<PointF, PointF> convert)
         {
             bool isLineMode = _currentEditMode == EditMode.Waypoint ||
@@ -214,6 +273,11 @@ namespace ArtaleAI.UI
             }
         }
 
+        /// <summary>
+        /// 處理刪除操作
+        /// 在點擊位置的指定半徑範圍內搜尋並刪除最近的路徑點
+        /// </summary>
+        /// <param name="clickPosition">點擊位置的座標</param>
         private void HandleDeleteAction(PointF clickPosition)
         {
             float deletionRadius = (float)_settings.DeletionRadius;

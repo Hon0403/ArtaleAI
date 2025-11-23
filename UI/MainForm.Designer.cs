@@ -41,6 +41,12 @@
             tabPage1 = new TabPage();
             tabPage2 = new TabPage();
             panel4 = new Panel();
+            groupBox10 = new GroupBox();
+            lbl_RecordStatus = new Label();
+            btn_RecordClear = new Button();
+            btn_RecordSave = new Button();
+            btn_RecordStop = new Button();
+            btn_RecordStart = new Button();
             groupBox4 = new GroupBox();
             label1 = new Label();
             hScrollBar1 = new HScrollBar();
@@ -70,6 +76,7 @@
             tabPage1.SuspendLayout();
             tabPage2.SuspendLayout();
             panel4.SuspendLayout();
+            groupBox10.SuspendLayout();
             groupBox4.SuspendLayout();
             groupBox3.SuspendLayout();
             groupBox2.SuspendLayout();
@@ -343,6 +350,7 @@
             // 
             // panel4
             // 
+            panel4.Controls.Add(groupBox10);
             panel4.Controls.Add(groupBox4);
             panel4.Controls.Add(groupBox3);
             panel4.Controls.Add(groupBox2);
@@ -352,6 +360,70 @@
             panel4.Name = "panel4";
             panel4.Size = new Size(198, 554);
             panel4.TabIndex = 2;
+            // 
+            // groupBox10
+            // 
+            groupBox10.Controls.Add(lbl_RecordStatus);
+            groupBox10.Controls.Add(btn_RecordClear);
+            groupBox10.Controls.Add(btn_RecordSave);
+            groupBox10.Controls.Add(btn_RecordStop);
+            groupBox10.Controls.Add(btn_RecordStart);
+            groupBox10.Dock = DockStyle.Top;
+            groupBox10.Location = new Point(0, 345);
+            groupBox10.Name = "groupBox10";
+            groupBox10.Size = new Size(198, 114);
+            groupBox10.TabIndex = 5;
+            groupBox10.TabStop = false;
+            groupBox10.Text = "路徑錄製";
+            // 
+            // lbl_RecordStatus
+            // 
+            lbl_RecordStatus.AutoSize = true;
+            lbl_RecordStatus.Location = new Point(10, 85);
+            lbl_RecordStatus.Name = "lbl_RecordStatus";
+            lbl_RecordStatus.Size = new Size(43, 15);
+            lbl_RecordStatus.TabIndex = 4;
+            lbl_RecordStatus.Text = "未錄製";
+            // 
+            // btn_RecordClear
+            // 
+            btn_RecordClear.Location = new Point(110, 50);
+            btn_RecordClear.Name = "btn_RecordClear";
+            btn_RecordClear.Size = new Size(75, 23);
+            btn_RecordClear.TabIndex = 3;
+            btn_RecordClear.Text = "清除";
+            btn_RecordClear.UseVisualStyleBackColor = true;
+            btn_RecordClear.Click += btn_RecordClear_Click;
+            // 
+            // btn_RecordSave
+            // 
+            btn_RecordSave.Location = new Point(11, 50);
+            btn_RecordSave.Name = "btn_RecordSave";
+            btn_RecordSave.Size = new Size(75, 23);
+            btn_RecordSave.TabIndex = 2;
+            btn_RecordSave.Text = "儲存 (F3)";
+            btn_RecordSave.UseVisualStyleBackColor = true;
+            btn_RecordSave.Click += btn_RecordSave_Click;
+            // 
+            // btn_RecordStop
+            // 
+            btn_RecordStop.Location = new Point(110, 19);
+            btn_RecordStop.Name = "btn_RecordStop";
+            btn_RecordStop.Size = new Size(75, 23);
+            btn_RecordStop.TabIndex = 1;
+            btn_RecordStop.Text = "暫停 (F1)";
+            btn_RecordStop.UseVisualStyleBackColor = true;
+            btn_RecordStop.Click += btn_RecordStop_Click;
+            // 
+            // btn_RecordStart
+            // 
+            btn_RecordStart.Location = new Point(11, 19);
+            btn_RecordStart.Name = "btn_RecordStart";
+            btn_RecordStart.Size = new Size(75, 23);
+            btn_RecordStart.TabIndex = 0;
+            btn_RecordStart.Text = "開始 (F1)";
+            btn_RecordStart.UseVisualStyleBackColor = true;
+            btn_RecordStart.Click += btn_RecordStart_Click;
             // 
             // groupBox4
             // 
@@ -485,7 +557,7 @@
             numericUpDownZoom.Name = "numericUpDownZoom";
             numericUpDownZoom.Size = new Size(130, 23);
             numericUpDownZoom.TabIndex = 1;
-
+            numericUpDownZoom.Value = new decimal(new int[] { 2, 0, 0, 0 });
             // 
             // groupBox1
             // 
@@ -599,6 +671,8 @@
             tabPage2.ResumeLayout(false);
             panel4.ResumeLayout(false);
             panel4.PerformLayout();
+            groupBox10.ResumeLayout(false);
+            groupBox10.PerformLayout();
             groupBox4.ResumeLayout(false);
             groupBox4.PerformLayout();
             groupBox3.ResumeLayout(false);
@@ -663,5 +737,11 @@
         private PictureBox pictureBoxLiveView;
         private CheckBox ckB_Start;
         private ComboBox cbo_LoadPathFile;
+        private GroupBox groupBox10;
+        private Button btn_RecordClear;
+        private Button btn_RecordSave;
+        private Button btn_RecordStop;
+        private Button btn_RecordStart;
+        private Label lbl_RecordStatus;
     }
 }

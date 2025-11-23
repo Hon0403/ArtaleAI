@@ -4,10 +4,17 @@ using System.Runtime.InteropServices;
 using Windows.Graphics.Capture;
 using WinRT;
 
-namespace ArtaleAI.GameWindow
+namespace ArtaleAI.Services
 {
+    /// <summary>
+    /// 視窗搜尋工具 - 負責尋找遊戲視窗並建立 GraphicsCaptureItem
+    /// 使用 Windows.Graphics.Capture API 進行視窗擷取
+    /// </summary>
     public static class WindowFinder
     {
+        /// <summary>
+        /// GraphicsCaptureItem COM 介面（Windows Runtime）
+        /// </summary>
         [ComImport]
         [Guid("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356")]
         [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -29,6 +36,13 @@ namespace ArtaleAI.GameWindow
         [DllImport("combase.dll")]
         private static extern int WindowsDeleteString(IntPtr hstring);
 
+        /// <summary>
+        /// 嘗試為指定視窗標題建立 GraphicsCaptureItem
+        /// 使用 Windows Runtime API 建立畫面擷取物件
+        /// </summary>
+        /// <param name="windowTitle">視窗標題（完整名稱）</param>
+        /// <param name="progressReporter">進度回報回調函數（可選）</param>
+        /// <returns>成功時返回 GraphicsCaptureItem，失敗時返回 null</returns>
         public static GraphicsCaptureItem? TryCreateItemForWindow(string windowTitle, Action<string>? progressReporter = null)
         {
             var hwnd = FindWindow(null, windowTitle);
@@ -60,6 +74,13 @@ namespace ArtaleAI.GameWindow
             }
         }
 
+        /// <summary>
+        /// 使用多種方式嘗試建立 GraphicsCaptureItem（自動回退機制）
+        /// 依序嘗試：1.預設視窗標題 2.上次記錄的視窗名稱 3.透過程序名稱搜尋
+        /// </summary>
+        /// <param name="config">應用程式設定（包含視窗標題等資訊）</param>
+        /// <param name="progressReporter">進度回報回調函數（可選）</param>
+        /// <returns>成功時返回 GraphicsCaptureItem，所有方式都失敗時返回 null</returns>
         public static GraphicsCaptureItem? TryCreateItemWithFallback(AppConfig config, Action<string>? progressReporter = null)
         {
             progressReporter?.Invoke("=== 開始自動尋找視窗 ===");

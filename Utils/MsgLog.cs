@@ -21,7 +21,7 @@ namespace ArtaleAI.Utils
         /// </summary>
         public static void ShowError(TextBox textBox, string errorMessage)
         {
-            SafeUpdateTextBox(textBox, $"{DateTime.Now:HH:mm:ss} - ❌ {errorMessage}", true);
+            SafeUpdateTextBox(textBox, $"{DateTime.Now:HH:mm:ss} - {errorMessage}", true);
 
             // 在主執行緒中顯示 MessageBox
             try

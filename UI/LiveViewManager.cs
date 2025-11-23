@@ -1,5 +1,5 @@
 ﻿using ArtaleAI.Config;
-using ArtaleAI.GameWindow;
+using ArtaleAI.Services;
 using OpenCvSharp;
 using System;
 using System.Collections.Concurrent;
@@ -15,12 +15,17 @@ namespace ArtaleAI.UI
     public class LiveViewManager : IDisposable
     {
         #region Private Fields
-        private GraphicsCapturer? capturer;
-        private System.Threading.Timer? captureTimer;
-        private System.Threading.Timer? detectionTimer;
-        private readonly ConcurrentQueue<Mat> frameQueue = new();
-        private bool isLiveViewRunning = false;
         private readonly AppConfig config;
+        private readonly ConcurrentQueue<Mat> frameQueue = new();
+        private GraphicsCapturer? _capturer;
+        private System.Threading.Timer? _captureTimer;
+        private System.Threading.Timer? _detectionTimer;
+        private bool _isLiveViewRunning = false;
+        
+        // 常數定義
+        private const int DetectionIntervalMs = 150; // 偵測處理間隔（毫秒）
+        private const int MaxFrameQueueSize = 3; // 最大畫面隊列大小
+        private const int ShutdownDelayMs = 50; // 關閉時等待時間（毫秒）
         #endregion
 
         #region Events
@@ -43,7 +48,7 @@ namespace ArtaleAI.UI
         /// </summary>
         public void StartLiveView(GraphicsCaptureItem captureItem)
         {
-            if (isLiveViewRunning)
+            if (_isLiveViewRunning)
             {
                 Debug.WriteLine("LiveView已在執行中");
                 return;
@@ -51,19 +56,18 @@ namespace ArtaleAI.UI
 
             try
             {
-                capturer = new GraphicsCapturer(captureItem);
+                _capturer = new GraphicsCapturer(captureItem);
 
                 // 計算Timer間隔
                 int targetFPS = config.CaptureFrameRate;
                 int captureIntervalMs = 1000 / targetFPS;
-                int detectionIntervalMs = 150; // 150ms做一次偵測處理
 
                 // 啟動兩個Timer
-                captureTimer = new System.Threading.Timer(OnCaptureTimer, null, 0, captureIntervalMs);
-                detectionTimer = new System.Threading.Timer(OnDetectionTimer, null, 100, detectionIntervalMs);
+                _captureTimer = new System.Threading.Timer(OnCaptureTimer, null, 0, captureIntervalMs);
+                _detectionTimer = new System.Threading.Timer(OnDetectionTimer, null, 100, DetectionIntervalMs);
 
-                isLiveViewRunning = true;
-                Debug.WriteLine($"LiveView已啟動: {targetFPS}FPS, 偵測頻率:{1000.0 / detectionIntervalMs:F1}Hz");
+                _isLiveViewRunning = true;
+                Debug.WriteLine($"LiveView已啟動: {targetFPS}FPS, 偵測頻率:{1000.0 / DetectionIntervalMs:F1}Hz");
             }
             catch (Exception ex)
             {
@@ -77,32 +81,35 @@ namespace ArtaleAI.UI
         /// </summary>
         public void StopLiveView()
         {
-            if (!isLiveViewRunning)
+            if (!_isLiveViewRunning)
                 return;
 
             try
             {
-                isLiveViewRunning = false;
+                _isLiveViewRunning = false;
 
-                // 停止Timer
-                captureTimer?.Change(Timeout.Infinite, Timeout.Infinite);
-                detectionTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+                // 停止Timer（防止新的擷取和處理）
+                _captureTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+                _detectionTimer?.Change(Timeout.Infinite, Timeout.Infinite);
 
-                // 釋放Capturer
-                capturer?.Dispose();
-                capturer = null;
-
-                // 清空畫面隊列
+                // 清空畫面隊列（釋放待處理的畫面）
                 while (frameQueue.TryDequeue(out var frame))
                 {
                     frame?.Dispose();
                 }
 
+                // 等待一小段時間確保所有背景操作完成
+                System.Threading.Thread.Sleep(ShutdownDelayMs);
+
+                // 釋放Capturer（這會釋放 Direct3D 資源）
+                _capturer?.Dispose();
+                _capturer = null;
+
                 // 釋放Timer
-                captureTimer?.Dispose();
-                detectionTimer?.Dispose();
-                captureTimer = null;
-                detectionTimer = null;
+                _captureTimer?.Dispose();
+                _detectionTimer?.Dispose();
+                _captureTimer = null;
+                _detectionTimer = null;
 
                 Debug.WriteLine("LiveView已停止");
             }
@@ -115,7 +122,7 @@ namespace ArtaleAI.UI
         /// <summary>
         /// 檢查LiveView是否正在執行
         /// </summary>
-        public bool IsRunning => isLiveViewRunning;
+        public bool IsRunning => _isLiveViewRunning;
         #endregion
 
         #region Private Timer Callbacks
@@ -124,16 +131,16 @@ namespace ArtaleAI.UI
         /// </summary>
         private void OnCaptureTimer(object? state)
         {
-            if (!isLiveViewRunning || capturer == null)
+            if (!_isLiveViewRunning || _capturer == null)
                 return;
 
             try
             {
-                using var frameMat = capturer.TryGetNextMat();
+                using var frameMat = _capturer.TryGetNextMat();
                 if (frameMat != null && !frameMat.Empty())
                 {
                     // 如果隊列太多就不加了（避免記憶體爆炸）
-                    if (frameQueue.Count < 3)
+                    if (frameQueue.Count < MaxFrameQueueSize)
                     {
                         frameQueue.Enqueue(frameMat.Clone());
                     }
@@ -150,7 +157,7 @@ namespace ArtaleAI.UI
         /// </summary>
         private void OnDetectionTimer(object? state)
         {
-            if (!isLiveViewRunning)
+            if (!_isLiveViewRunning)
                 return;
 
             // 從隊列取出畫面
@@ -159,14 +166,12 @@ namespace ArtaleAI.UI
 
             try
             {
-                // 通知訂閱者有新畫面可以處理
                 OnFrameReady?.Invoke(frameMat);
-
-                // 注意：frameMat的Dispose由訂閱者負責
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"偵測處理錯誤: {ex.Message}");
+                // 確保異常時也釋放資源
                 frameMat?.Dispose();
             }
         }

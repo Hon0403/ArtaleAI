@@ -1,5 +1,5 @@
 ﻿using ArtaleAI.Config;
-using ArtaleAI.GameWindow;
+using ArtaleAI.Services;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
 using System;
@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 using Windows.Graphics.Capture;
 using WinRT.Interop;
 
-namespace ArtaleAI.Engine
+namespace ArtaleAI.Core
 {
     /// <summary>
     /// 整合的遊戲視覺核心 - 合併 GameDetectionEngine、MapDetector、VisionCore 的功能
@@ -26,6 +26,11 @@ namespace ArtaleAI.Engine
         #endregion
 
         #region 建構函式
+        
+        /// <summary>
+        /// 初始化遊戲視覺核心
+        /// 自動載入小地圖角點模板
+        /// </summary>
         public GameVisionCore()
         {
             LoadMapTemplates();
@@ -35,8 +40,14 @@ namespace ArtaleAI.Engine
         #region 血條檢測功能群組
 
         /// <summary>
-        /// 檢測血條位置 - 主要入口
+        /// 檢測隊友血條位置（主要入口方法）
+        /// 使用 HSV 色彩空間檢測紅色血條
         /// </summary>
+        /// <param name="frameMat">輸入畫面 Mat</param>
+        /// <param name="uiExcludeRect">UI 排除區域（可選）</param>
+        /// <param name="config">應用程式設定</param>
+        /// <param name="cameraOffsetY">相機垂直偏移量（輸出參數）</param>
+        /// <returns>血條矩形區域，未檢測到時返回 null</returns>
         public Rectangle? DetectBloodBar(Mat frameMat, Rectangle? uiExcludeRect, AppConfig config, out int cameraOffsetY)
         {
             // 1. 提取相機區域（內嵌邏輯）
@@ -79,8 +90,12 @@ namespace ArtaleAI.Engine
         }
 
         /// <summary>
-        /// 完整的血條檢測處理 - 包含相關計算
+        /// 完整的血條檢測處理（一次性計算所有相關資訊）
+        /// 檢測血條並同時計算檢測框和攻擊範圍框
         /// </summary>
+        /// <param name="frameMat">輸入畫面 Mat</param>
+        /// <param name="uiExcludeRect">UI 排除區域（可選）</param>
+        /// <returns>包含血條、檢測框列表和攻擊範圍框列表的元組</returns>
         public (Rectangle? BloodBar, List<Rectangle> DetectionBoxes, List<Rectangle> AttackRangeBoxes)
             ProcessBloodBarDetection(Mat frameMat, Rectangle? uiExcludeRect)
         {
@@ -101,8 +116,12 @@ namespace ArtaleAI.Engine
 
 
         /// <summary>
-        /// 計算血條相關的所有框架 (偵測框 + 攻擊範圍框)
+        /// 計算血條相關的所有框架（檢測框 + 攻擊範圍框）
+        /// 根據血條位置計算怪物檢測區域和角色攻擊範圍
         /// </summary>
+        /// <param name="bloodBarRect">血條矩形區域</param>
+        /// <param name="config">應用程式設定</param>
+        /// <returns>包含檢測框列表和攻擊範圍框列表的元組</returns>
         public (List<Rectangle> DetectionBoxes, List<Rectangle> AttackRangeBoxes)
             CalculateBloodBarRelatedBoxes(Rectangle bloodBarRect, AppConfig config)
         {
@@ -140,7 +159,10 @@ namespace ArtaleAI.Engine
 
         /// <summary>
         /// 在螢幕上尋找小地圖位置
+        /// 使用四個角點模板匹配確定小地圖邊界
         /// </summary>
+        /// <param name="fullFrameMat">完整畫面 Mat</param>
+        /// <returns>小地圖矩形區域，未找到時返回 null</returns>
         public Rectangle? FindMinimapOnScreen(Mat fullFrameMat)
         {
             if (fullFrameMat?.Empty() != false) return null;
@@ -183,8 +205,11 @@ namespace ArtaleAI.Engine
         }
 
         /// <summary>
-        /// 完整的小地圖追蹤處理 - 包含玩家位置檢測
+        /// 完整的小地圖追蹤處理
+        /// 檢測小地圖位置、玩家位置和其他玩家位置
         /// </summary>
+        /// <param name="fullFrameMat">完整畫面 Mat</param>
+        /// <returns>小地圖追蹤結果，失敗時返回 null</returns>
         public MinimapTrackingResult? GetMinimapTracking(Mat fullFrameMat)
         {
             if (fullFrameMat?.Empty() != false) return null;
@@ -251,7 +276,14 @@ namespace ArtaleAI.Engine
 
         /// <summary>
         /// 使用模板匹配尋找怪物
+        /// 支援多種檢測模式（彩色、灰階等）
         /// </summary>
+        /// <param name="sourceMat">來源影像 Mat</param>
+        /// <param name="templateMats">怪物模板列表</param>
+        /// <param name="mode">檢測模式</param>
+        /// <param name="threshold">檢測閾值（0.0-1.0）</param>
+        /// <param name="monsterName">怪物名稱（用於結果標記）</param>
+        /// <returns>檢測結果列表</returns>
         public List<DetectionResult> FindMonsters(
             Mat sourceMat,
             List<Mat> templateMats,
@@ -320,8 +352,12 @@ namespace ArtaleAI.Engine
         }
 
         /// <summary>
-        /// 載入怪物模板
+        /// 非同步載入怪物模板
+        /// 從指定資料夾載入所有模板圖像並轉換為 Mat 格式，支援快取機制
         /// </summary>
+        /// <param name="monsterName">怪物名稱（對應資料夾名稱）</param>
+        /// <param name="monstersDirectory">怪物模板根目錄</param>
+        /// <returns>Mat 格式的模板列表</returns>
         public async Task<List<Mat>> LoadMonsterTemplatesAsync(string monsterName, string monstersDirectory)
         {
             try
@@ -381,6 +417,14 @@ namespace ArtaleAI.Engine
         #endregion
 
         #region 私有輔助方法 - 血條相關
+        
+        /// <summary>
+        /// 從紅色遮罩中找出最佳的血條候選
+        /// 使用輪廓檢測和多重條件篩選找出最符合血條特徵的矩形
+        /// </summary>
+        /// <param name="redMask">紅色二值化遮罩</param>
+        /// <param name="config">應用程式設定（包含血條尺寸限制）</param>
+        /// <returns>最佳血條矩形，未找到時返回 null</returns>
         private Rectangle? FindBestRedBar(Mat redMask, AppConfig config)
         {
             Mat? hierarchy = null;
@@ -447,6 +491,15 @@ namespace ArtaleAI.Engine
 
         #region 私有輔助方法 - 小地圖相關
 
+        /// <summary>
+        /// 內部模板匹配方法
+        /// 從快取中取得模板並執行匹配
+        /// </summary>
+        /// <param name="inputMat">輸入影像</param>
+        /// <param name="templateName">模板名稱</param>
+        /// <param name="threshold">匹配閾值</param>
+        /// <param name="useGrayscale">是否使用灰階模式</param>
+        /// <returns>匹配位置和最大值，未找到時返回 null</returns>
         private (System.Drawing.Point Location, double MaxValue)? MatchTemplateInternal(Mat inputMat, string templateName, double threshold, bool useGrayscale = false)
         {
             if (inputMat?.Empty() != false)
@@ -458,6 +511,10 @@ namespace ArtaleAI.Engine
             return MatchTemplate(inputMat, template, threshold, useGrayscale);
         }
 
+        /// <summary>
+        /// 載入所有小地圖相關模板
+        /// 包括玩家標記、其他玩家標記和四個角點模板
+        /// </summary>
         private void LoadMapTemplates()
         {
             var config = AppConfig.Instance;
@@ -481,7 +538,7 @@ namespace ArtaleAI.Engine
 
                 if (!File.Exists(templatePath))
                 {
-                    Debug.WriteLine($"❌ 模板檔案不存在: {kvp.Key} -> {templatePath}");
+                    Debug.WriteLine($"模板檔案不存在: {kvp.Key} -> {templatePath}");
                     continue;
                 }
 
@@ -490,34 +547,28 @@ namespace ArtaleAI.Engine
                     using var originalTemplate = Cv2.ImRead(templatePath, ImreadModes.Color);
                     if (originalTemplate.Empty())
                     {
-                        Debug.WriteLine($"❌ 無法載入模板: {kvp.Key}");
+                        Debug.WriteLine($"無法載入模板: {kvp.Key}");
                         continue;
                     }
 
                     using var rgbTemplate = new Mat();
                     Cv2.CvtColor(originalTemplate, rgbTemplate, ColorConversionCodes.BGR2RGB);
 
-                    //  .NET 6 兼容的通道處理
-                    Mat finalTemplate;
-                    int channels = rgbTemplate.Channels();
+                    // 簡化：使用 switch expression 處理通道轉換
+                    Mat finalTemplate = rgbTemplate.Channels() switch
+                    {
+                        1 => ConvertToRGB(rgbTemplate, ColorConversionCodes.GRAY2RGB),
+                        3 => rgbTemplate.Clone(),
+                        4 => ConvertToRGB(rgbTemplate, ColorConversionCodes.RGBA2RGB),
+                        _ => rgbTemplate.Clone()
+                    };
 
-                    if (channels == 3)
+                    // 本地輔助函數
+                    static Mat ConvertToRGB(Mat source, ColorConversionCodes code)
                     {
-                        finalTemplate = rgbTemplate.Clone();
-                    }
-                    else if (channels == 1)
-                    {
-                        finalTemplate = new Mat();
-                        Cv2.CvtColor(rgbTemplate, finalTemplate, ColorConversionCodes.GRAY2RGB);
-                    }
-                    else if (channels == 4)
-                    {
-                        finalTemplate = new Mat();
-                        Cv2.CvtColor(rgbTemplate, finalTemplate, ColorConversionCodes.RGBA2RGB);
-                    }
-                    else
-                    {
-                        finalTemplate = rgbTemplate.Clone();
+                        var result = new Mat();
+                        Cv2.CvtColor(source, result, code);
+                        return result;
                     }
 
                     _mapTemplates[kvp.Key] = finalTemplate;
@@ -525,7 +576,7 @@ namespace ArtaleAI.Engine
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"❌ 載入模板失敗: {kvp.Key} - {ex.Message}");
+                    Debug.WriteLine($"載入模板失敗: {kvp.Key} - {ex.Message}");
                 }
             }
         }
@@ -534,8 +585,11 @@ namespace ArtaleAI.Engine
         #endregion
 
         /// <summary>
-        /// 將BGR圖像轉換為灰階
+        /// 將 RGB 圖像轉換為灰階
         /// </summary>
+        /// <param name="rgbMat">RGB 格式的 Mat</param>
+        /// <returns>灰階 Mat</returns>
+        /// <exception cref="ArgumentException">輸入 Mat 為 null 或空時拋出</exception>
         public static Mat ConvertToGrayscale(Mat rgbMat)
         {
             if (rgbMat == null || rgbMat.Empty())
@@ -547,13 +601,26 @@ namespace ArtaleAI.Engine
         }
 
         /// <summary>
-        /// 轉換HSV值為OpenCV Scalar格式
+        /// 將 HSV 值轉換為 OpenCV Scalar 格式
         /// </summary>
+        /// <param name="h">色相 (Hue) 0-179</param>
+        /// <param name="s">飽和度 (Saturation) 0-255</param>
+        /// <param name="v">明度 (Value) 0-255</param>
+        /// <returns>OpenCV Scalar 物件</returns>
         public static Scalar ToOpenCvHsv(int h, int s, int v)
         {
             return new Scalar(h, s, v);
         }
 
+        /// <summary>
+        /// 執行模板匹配
+        /// 支援彩色和灰階兩種模式
+        /// </summary>
+        /// <param name="inputMat">輸入影像</param>
+        /// <param name="templateMat">模板影像</param>
+        /// <param name="threshold">匹配閾值（0.0-1.0）</param>
+        /// <param name="useGrayscale">是否使用灰階模式</param>
+        /// <returns>匹配位置和最大值，未達閾值時返回 null</returns>
         public static (System.Drawing.Point Location, double MaxValue)? MatchTemplate(Mat inputMat, Mat templateMat, double threshold, bool useGrayscale = false)
         {
             if (inputMat?.Empty() != false || templateMat?.Empty() != false)
@@ -583,8 +650,11 @@ namespace ArtaleAI.Engine
         }
 
         /// <summary>
-        /// 解析顏色字串為Color物件
+        /// 解析顏色字串為 Color 物件
+        /// 支援 "R,G,B" 格式（例如："255,0,0"）
         /// </summary>
+        /// <param name="colorString">顏色字串</param>
+        /// <returns>Color 物件，解析失敗時返回白色</returns>
         public static Color ParseColor(string? colorString)
         {
             if (string.IsNullOrWhiteSpace(colorString))
@@ -612,8 +682,11 @@ namespace ArtaleAI.Engine
         }
 
         /// <summary>
-        /// 小地圖座標轉螢幕座標
+        /// 將小地圖相對座標轉換為螢幕絕對座標
         /// </summary>
+        /// <param name="minimapPoint">小地圖上的相對座標</param>
+        /// <param name="minimapBounds">小地圖在螢幕上的邊界區域</param>
+        /// <returns>螢幕絕對座標</returns>
         public static PointF MinimapToScreenF(PointF minimapPoint, Rectangle minimapBounds)
         {
             return new PointF(
@@ -623,8 +696,11 @@ namespace ArtaleAI.Engine
         }
 
         /// <summary>
-        /// 螢幕座標轉小地圖座標
+        /// 將螢幕絕對座標轉換為小地圖相對座標
         /// </summary>
+        /// <param name="screenPoint">螢幕絕對座標</param>
+        /// <param name="minimapBounds">小地圖在螢幕上的邊界區域</param>
+        /// <returns>小地圖相對座標</returns>
         public static PointF ScreenToMinimapF(PointF screenPoint, Rectangle minimapBounds)
         {
             return new PointF(
@@ -634,8 +710,13 @@ namespace ArtaleAI.Engine
         }
 
         /// <summary>
-        /// 應用非最大值抑制 (NMS)
+        /// 應用非最大值抑制（NMS）去除重疊的檢測結果
+        /// 使用 IoU（Intersection over Union）計算重疊度
         /// </summary>
+        /// <param name="results">檢測結果列表</param>
+        /// <param name="iouThreshold">IoU 閾值，超過此值的重疊框會被抑制</param>
+        /// <param name="higherIsBetter">信心度越高越好（true）或越低越好（false）</param>
+        /// <returns>經過 NMS 處理後的檢測結果列表</returns>
         public static List<DetectionResult> ApplyNMS(List<DetectionResult> results, double iouThreshold = 0.3, bool higherIsBetter = true)
         {
             if (results == null || results.Count <= 1)
@@ -672,8 +753,12 @@ namespace ArtaleAI.Engine
         }
 
         /// <summary>
-        /// 計算兩個矩形的IoU (Intersection over Union)
+        /// 計算兩個矩形的 IoU（Intersection over Union）
+        /// IoU = 交集面積 / 聯集面積，用於判斷兩個檢測框的重疊程度
         /// </summary>
+        /// <param name="rectA">矩形 A</param>
+        /// <param name="rectB">矩形 B</param>
+        /// <returns>IoU 值（0.0-1.0）</returns>
         private static double CalculateIoU(Rectangle rectA, Rectangle rectB)
         {
             var intersection = Rectangle.Intersect(rectA, rectB);
@@ -687,8 +772,14 @@ namespace ArtaleAI.Engine
         }
 
         /// <summary>
-        /// 執行一次性的螢幕捕捉 - 記憶體優化版本
+        /// 執行一次性的螢幕擷取（記憶體優化版本）
+        /// 擷取遊戲視窗畫面並檢測小地圖和玩家位置
         /// </summary>
+        /// <param name="windowHandle">視窗句柄（保留參數，未使用）</param>
+        /// <param name="config">應用程式設定</param>
+        /// <param name="selectedItem">已選擇的擷取項目（可選）</param>
+        /// <param name="progressReporter">進度回報回調函數</param>
+        /// <returns>包含小地圖圖像和玩家位置的結果</returns>
         public async Task<MinimapResult?> GetSnapshotAsync(nint windowHandle, AppConfig config, GraphicsCaptureItem? selectedItem, Action<string>? progressReporter)
         {
             GraphicsCapturer? capturer = null;
@@ -752,8 +843,14 @@ namespace ArtaleAI.Engine
         }
 
         /// <summary>
-        /// 獲取或選擇捕獲項目
+        /// 獲取或選擇擷取項目
+        /// 如果沒有提供擷取項目，會自動嘗試尋找遊戲視窗
         /// </summary>
+        /// <param name="windowHandle">視窗句柄（保留參數，未使用）</param>
+        /// <param name="config">應用程式設定</param>
+        /// <param name="selectedItem">已選擇的擷取項目（可選）</param>
+        /// <param name="progressReporter">進度回報回調函數</param>
+        /// <returns>擷取項目，失敗時返回 null</returns>
         private async Task<GraphicsCaptureItem?> GetOrSelectCaptureItem(nint windowHandle, AppConfig config, GraphicsCaptureItem? selectedItem, Action<string>? progressReporter)
         {
             if (selectedItem == null)
@@ -780,8 +877,12 @@ namespace ArtaleAI.Engine
         }
 
         /// <summary>
-        /// 保存用戶手動選擇的視窗資訊
+        /// 儲存使用者手動選擇的視窗資訊
+        /// 記錄視窗名稱和對應程序資訊，用於下次自動尋找
         /// </summary>
+        /// <param name="item">選擇的擷取項目</param>
+        /// <param name="config">應用程式設定（用於儲存記錄）</param>
+        /// <param name="progressReporter">進度回報回調函數</param>
         private static async Task SaveWindowSelection(GraphicsCaptureItem item, AppConfig config, Action<string>? progressReporter)
         {
             try
@@ -823,6 +924,11 @@ namespace ArtaleAI.Engine
         }
 
         #region IDisposable
+        
+        /// <summary>
+        /// 釋放遊戲視覺核心使用的所有資源
+        /// 包括所有模板 Mat 物件和快取
+        /// </summary>
         public void Dispose()
         {
             if (!_disposed)

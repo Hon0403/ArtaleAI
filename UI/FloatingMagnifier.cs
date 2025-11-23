@@ -82,21 +82,7 @@ namespace ArtaleAI.UI
 
             var sourceImage = _mainForm.pictureBoxMinimap.Image as Bitmap;
 
-            if (sourceImage == null)
-            {
-                // 偵錯訊息或Log提示圖片不存在
-                Debug.WriteLine("FloatingMagnifier: Source image is null");
-                return;
-            }
-
             var zoomedImage = CreateZoomImage(sourceImage, mouseLocation);
-
-            if (zoomedImage == null)
-            {
-                // 偵錯提示截圖區域無效
-                Debug.WriteLine("FloatingMagnifier: Zoomed image is null");
-                return;
-            }
                 
             UpdateMagnifierDisplay(zoomedImage, mouseLocation, sourceControl);
         }
@@ -154,11 +140,6 @@ namespace ArtaleAI.UI
             var pictureBox = _mainForm.pictureBoxMinimap;
             if (pictureBox?.Image == null) return null;
 
-            if (!CoordinateHelper.IsPointInDisplayArea(mouseLocation, pictureBox))
-            {
-                Debug.WriteLine("FloatingMagnifier: Point not in display area");
-                return null;
-            }
 
             var imagePoint = CoordinateHelper.ControlToImagePoint(mouseLocation, pictureBox);
 
@@ -176,22 +157,12 @@ namespace ArtaleAI.UI
 
             sourceRect = Rectangle.Intersect(sourceRect, new Rectangle(0, 0, pictureBox.Image.Width, pictureBox.Image.Height));
 
-            if (sourceRect.Width == 0 || sourceRect.Height == 0)
-            {
-                Debug.WriteLine("FloatingMagnifier: Source rectangle out of range");
-                return null;
-            }
 
             var zoomedBitmap = DrawingHelper.CreateZoomedImage(
                 sourceImage as Bitmap,
                 sourceRect,
                 new Size(_magnifierSize, _magnifierSize)
             );
-
-            if (zoomedBitmap == null)
-            {
-                Debug.WriteLine("FloatingMagnifier: DrawingHelper.CreateZoomedImage returned null");
-            }
 
             return zoomedBitmap;
         }
