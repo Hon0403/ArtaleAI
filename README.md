@@ -169,56 +169,78 @@ monster_detect:
 
 ```
 ArtaleAI/
-├── API/                    # 外部 API 與資料模型
+├── API/                    # 外部 API 整合
 │   ├── MonsterImageFetcher.cs
 │   └── Models/
 │       └── ArtaleMonster.cs
-├── Config/                 # 組態管理系統
-│   ├── ConfigManager.cs
-│   ├── AppConfig.cs
-│   └── config.yaml
-├── Detection/              # 核心檢測演算法
-│   ├── TemplateMatcher.cs      # 模板匹配引擎
-│   ├── MonsterTemplateStore.cs # 模板管理器
-│   ├── MapDetector.cs          # 地圖檢測器
-│   └── BloodBarDetector.cs     # 血條檢測器
-├── Display/                # 視覺化與覆蓋層
-│   ├── SimpleRenderer.cs       # 簡易渲染器
-│   └── FloatingMagnifier.cs    # 浮動放大鏡
-├── GameCapture/            # 遊戲擷取系統 (不是 GameWindow/)
-│   ├── WindowFinder.cs         # 視窗搜尋器
-│   └── ScreenCapture.cs        # 螢幕截圖模組
-├── Services/              # 服務層模組
-│   ├── MapFileManager.cs       # 地圖檔案管理
-│   └── PathPlanningManager.cs  # 路徑規劃管理器
-├── Core/                  # 核心業務邏輯
-│   └── PathPlanningTracker.cs  # 路徑追蹤器
-├── Models/                 # 內部資料結構 (已分離多個檔案)
-│   ├── DataModels.cs           # 資料模型
-│   ├── Enums.cs               # 列舉定義
-│   ├── Interfaces.cs          # 介面定義
-│   └── RenderModels.cs        # 渲染模型
+├── Config/                 # 組態管理
+│   └── AppConfig.cs        # 應用程式設定（Singleton）
+├── Core/                   # 核心業務邏輯
+│   ├── GameVisionCore.cs   # 視覺處理核心
+│   ├── PathPlanningTracker.cs  # 路徑追蹤器（含邊界防護）
+│   └── SharedGameState.cs      # 執行緒安全狀態共享
+├── Data/                   # 資料檔案
+│   └── config.yaml             # YAML 組態檔
+├── Models/                 # 資料模型（重構後分類）
+│   ├── Detection/              # 檢測相關模型
+│   │   ├── DetectionResult.cs
+│   │   ├── DetectionBox.cs
+│   │   ├── MonsterStyle.cs
+│   │   └── DetectionStyles.cs
+│   ├── PathPlanning/           # 路徑規劃模型
+│   │   ├── PathPlanningState.cs
+│   │   └── PlatformBounds.cs
+│   ├── Minimap/                # 小地圖模型
+│   │   ├── MinimapResult.cs
+│   │   ├── MinimapTrackingResult.cs
+│   │   └── MinimapStyles.cs
+│   ├── Map/                    # 地圖資料模型
+│   │   └── MapData.cs
+│   └── JsonHelpers.cs          # JSON 序列化輔助
+├── Services/               # 服務層模組
+│   ├── CharacterMovementController.cs  # 角色移動控制（含三重邊界防護）
+│   ├── FlexiblePathPlanner.cs          # 靈活路徑規劃
+│   ├── MapFileManager.cs               # 地圖檔案管理
+│   ├── PathPlanningManager.cs          # 路徑規劃管理器
+│   ├── RouteRecorderService.cs         # 路徑錄製服務
+│   ├── ScreenCapture.cs                # 螢幕擷取（GPU 加速）
+│   └── WindowFinder.cs                 # 視窗搜尋器
 ├── UI/                     # 使用者介面
 │   ├── MainForm.cs             # 主視窗
 │   ├── MainForm.Designer.cs    # UI 設計器
-│   ├── MainForm.resx           # 資源檔
 │   ├── MapEditor.cs            # 地圖編輯器
-│   ├── LiveViewManager.cs      # 即時顯示管理器
-│   └── FloatingMagnifier.cs    # 浮動放大鏡
-├── Utils/                  # 工具函式庫 (大幅擴展)
-│   ├── CacheManager.cs         # 快取管理器
-│   ├── GeometryCalculator.cs   # 幾何計算器
-│   ├── VisionCore.cs      # OpenCV 處理器
-│   ├── PathManager.cs          # 路徑管理器
-│   └── ResourceManager.cs      # 資源管理器
-├── templates/              # 模板資源庫 (小寫)
-│   ├── MainScreen/             # 主畫面模板
-│   ├── minimap/               # 小地圖模板
-│   └── monsters/octopus/      # 怪物模板
+│   └── LiveViewManager.cs      # 即時顯示管理器
+├── Utils/                  # 工具函式庫
+│   ├── Logger.cs               # Serilog 日誌整合
+│   ├── MsgLog.cs               # UI 日誌輔助
+│   ├── DrawingHelper.cs        # GDI+ 繪圖輔助
+│   └── PathManager.cs          # 路徑管理器
+├── templates/              # 模板資源庫
+│   ├── minimap/                # 小地圖模板
+│   └── monsters/               # 怪物模板
 ├── Program.cs              # 程式進入點
 ├── ArtaleAI.csproj         # 專案檔案
 └── ArtaleAI.sln            # 解決方案檔案
 ```
+
+#### 🛡️ 三重邊界防護系統
+- **緊急停止**：角色超出邊界時立即停止
+- **緩衝區預警**：接近邊界時觸發減速
+- **目標驗證**：目標點超出邊界時自動選擇安全點
+
+#### 🧵 執行緒安全優化
+- `PathPlanningTracker` 使用 `volatile` 和 snapshot 模式
+- `SharedGameState` 公告板模式，避免競爭條件
+
+#### 📁 架構重構
+- Models 按功能分類到子資料夾
+- AppConfig 移至 Config 資料夾
+- 刪除舊的 DataModels.cs（已拆分）
+
+#### 📝 Serilog 日誌系統
+- 替換 Debug.WriteLine 為結構化日誌
+- 檔案日誌 + 主控台輸出
+- Debug/Info/Warning/Error 分級
 
 ## 功能詳細說明
 

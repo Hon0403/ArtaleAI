@@ -1,5 +1,6 @@
 ﻿using ArtaleAI.Config;
 using ArtaleAI.Services;
+using ArtaleAI.Utils;
 using OpenCvSharp;
 using System;
 using System.Collections.Concurrent;
@@ -23,7 +24,9 @@ namespace ArtaleAI.UI
         private bool _isLiveViewRunning = false;
         
         // 常數定義
-        private const int DetectionIntervalMs = 150; // 偵測處理間隔（毫秒）
+        // ✅ 性能優化：降低檢測頻率（從 50ms 改為 100ms，從 20Hz 降到 10Hz）
+        // 仍然足夠快速反應，但大幅降低CPU使用率
+        private const int DetectionIntervalMs = 100; // 偵測處理間隔（毫秒）
         private const int MaxFrameQueueSize = 3; // 最大畫面隊列大小
         private const int ShutdownDelayMs = 50; // 關閉時等待時間（毫秒）
         #endregion
@@ -50,7 +53,7 @@ namespace ArtaleAI.UI
         {
             if (_isLiveViewRunning)
             {
-                Debug.WriteLine("LiveView已在執行中");
+                Logger.Debug("[LiveView] LiveView已在執行中");
                 return;
             }
 
@@ -67,11 +70,11 @@ namespace ArtaleAI.UI
                 _detectionTimer = new System.Threading.Timer(OnDetectionTimer, null, 100, DetectionIntervalMs);
 
                 _isLiveViewRunning = true;
-                Debug.WriteLine($"LiveView已啟動: {targetFPS}FPS, 偵測頻率:{1000.0 / DetectionIntervalMs:F1}Hz");
+                Logger.Info($"[LiveView] LiveView已啟動: {targetFPS}FPS, 偵測頻率:{1000.0 / DetectionIntervalMs:F1}Hz");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"啟動LiveView失敗: {ex.Message}");
+                Logger.Error($"[LiveView] 啟動LiveView失敗: {ex.Message}");
                 StopLiveView();
             }
         }
@@ -111,11 +114,11 @@ namespace ArtaleAI.UI
                 _captureTimer = null;
                 _detectionTimer = null;
 
-                Debug.WriteLine("LiveView已停止");
+                Logger.Info("[LiveView] LiveView已停止");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"停止LiveView失敗: {ex.Message}");
+                Logger.Error($"[LiveView] 停止LiveView失敗: {ex.Message}");
             }
         }
 
@@ -148,7 +151,7 @@ namespace ArtaleAI.UI
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"畫面抓取錯誤: {ex.Message}");
+                Logger.Error($"[LiveView] 畫面抓取錯誤: {ex.Message}");
             }
         }
 
@@ -170,7 +173,7 @@ namespace ArtaleAI.UI
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"偵測處理錯誤: {ex.Message}");
+                Logger.Error($"[LiveView] 偵測處理錯誤: {ex.Message}");
                 // 確保異常時也釋放資源
                 frameMat?.Dispose();
             }

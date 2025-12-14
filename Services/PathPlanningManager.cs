@@ -1,9 +1,13 @@
 ﻿using ArtaleAI.Config;
 using ArtaleAI.Core;
+using ArtaleAI.Models.Minimap;
+using ArtaleAI.Models.PathPlanning;
+using ArtaleAI.Utils;
 using System.Diagnostics;
 using System.Drawing;
 using Windows.Graphics.Capture;
 using SdPoint = System.Drawing.Point;
+using SdPointF = System.Drawing.PointF;
 
 namespace ArtaleAI.Services
 {
@@ -20,6 +24,7 @@ namespace ArtaleAI.Services
         private Action<MinimapTrackingResult>? _trackingUpdatedHandler;
         private Action<PathPlanningState>? _pathStateChangedHandler;
         private Action<SdPoint>? _waypointReachedHandler;
+        private Action<SdPointF, string>? _boundaryHitHandler;
 
         /// <summary>
         /// 追蹤更新事件 - 當小地圖追蹤有新資料時觸發
@@ -35,6 +40,17 @@ namespace ArtaleAI.Services
         /// 路徑點到達事件 - 當角色到達指定路徑點時觸發
         /// </summary>
         public event Action<SdPoint>? OnWaypointReached;
+        
+        /// <summary>
+        /// 邊界觸發事件 - 當角色接近或超出邊界時觸發
+        /// 參數：(玩家位置, 邊界方向 "left"/"right")
+        /// </summary>
+        public event Action<SdPointF, string>? OnBoundaryHit;
+
+        /// <summary>
+        /// 取得路徑追蹤器實例
+        /// </summary>
+        public PathPlanningTracker Tracker => _tracker;
 
         /// <summary>
         /// 取得當前路徑規劃狀態快照
@@ -67,8 +83,8 @@ namespace ArtaleAI.Services
         {
             if (_isRunning)
             {
-                Debug.WriteLine("[PathPlanningManager] 已在運行中");
-                return;
+                Logger.Debug("[路徑規劃管理] 已在運行中");
+                return Task.CompletedTask;
             }
 
             var captureItem = WindowFinder.TryCreateItemForWindow(gameWindowTitle);
@@ -82,19 +98,28 @@ namespace ArtaleAI.Services
             _pathStateChangedHandler = state => OnPathStateChanged?.Invoke(state);
             _waypointReachedHandler = waypoint =>
             {
-                Debug.WriteLine($"[PathPlanningManager] 已到達路徑點: ({waypoint.X}, {waypoint.Y})");
+                Logger.Info($"[路徑規劃管理] 已到達路徑點: ({waypoint.X}, {waypoint.Y})");
                 OnWaypointReached?.Invoke(waypoint);
             };
 
             _tracker.OnTrackingUpdated += _trackingUpdatedHandler;
             _tracker.OnPathStateChanged += _pathStateChangedHandler;
             _tracker.OnWaypointReached += _waypointReachedHandler;
+            
+            // 訂閱邊界事件
+            _boundaryHitHandler = (pos, boundary) =>
+            {
+                Logger.Debug($"[邊界事件] 觸發邊界：{boundary}");
+                OnBoundaryHit?.Invoke(pos, boundary);
+            };
+            _tracker.OnBoundaryHit += _boundaryHitHandler;
 
             // 啟動追蹤
             _tracker.StartTracking(captureItem, _config.ContinuousDetectionIntervalMs);
             _isRunning = true;
 
-            Debug.WriteLine("[PathPlanningManager] 路徑規劃已啟動");
+            Logger.Info("[路徑規劃管理] 路徑規劃已啟動");
+            return Task.CompletedTask;
         }
 
         /// <summary>
@@ -105,8 +130,8 @@ namespace ArtaleAI.Services
         {
             if (!_isRunning)
             {
-                Debug.WriteLine("[PathPlanningManager] 尚未啟動");
-                return;
+                Logger.Debug("[路徑規劃管理] 尚未啟動");
+                return Task.CompletedTask;
             }
 
             // 取消訂閱（使用儲存的 lambda 引用）
@@ -116,11 +141,13 @@ namespace ArtaleAI.Services
                 _tracker.OnPathStateChanged -= _pathStateChangedHandler;
             if (_waypointReachedHandler != null)
                 _tracker.OnWaypointReached -= _waypointReachedHandler;
+            if (_boundaryHitHandler != null)
+                _tracker.OnBoundaryHit -= _boundaryHitHandler;
 
             _tracker.StopTracking();
             _isRunning = false;
 
-            Debug.WriteLine("[PathPlanningManager] 路徑規劃已停止");
+            Logger.Info("[路徑規劃管理] 路徑規劃已停止");
             return Task.CompletedTask;
         }
 
@@ -138,7 +165,31 @@ namespace ArtaleAI.Services
             }
 
             _tracker.SetPlannedPath(waypoints);
-            Debug.WriteLine($"[PathPlanningManager] 已載入 {waypoints.Count} 個路徑點（隨機模式）");
+            Logger.Info($"[路徑規劃管理] 已載入 {waypoints.Count} 個路徑點（隨機模式）");
+        }
+
+        /// <summary>
+        /// 設定平台邊界
+        /// 用於隨機選點時過濾接近邊界的候選點
+        /// </summary>
+        /// <param name="minX">X 軸最小值（左邊界）</param>
+        /// <param name="maxX">X 軸最大值（右邊界）</param>
+        /// <param name="minY">Y 軸最小值（上邊界）</param>
+        /// <param name="maxY">Y 軸最大值（下邊界）</param>
+        public void SetBoundaries(float minX, float maxX, float minY, float maxY)
+        {
+            _tracker.SetBoundaries(minX, maxX, minY, maxY);
+            Logger.Info($"[路徑規劃管理] 已設定平台邊界：X=[{minX:F1}, {maxX:F1}], Y=[{minY:F1}, {maxY:F1}]");
+        }
+        
+        /// <summary>
+        /// 設定平台邊界（從 PlatformBounds 物件）
+        /// </summary>
+        /// <param name="bounds">平台邊界資料</param>
+        public void SetPlatformBounds(PlatformBounds bounds)
+        {
+            _tracker.SetBoundaries(bounds.MinX, bounds.MaxX, bounds.MinY, bounds.MaxY);
+            Logger.Info($"[路徑規劃管理] 已設定平台邊界：{bounds}");
         }
 
         /// <summary>
@@ -166,7 +217,7 @@ namespace ArtaleAI.Services
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[PathPlanningManager] Dispose 時停止追蹤失敗: {ex.Message}");
+                    Logger.Error($"[路徑規劃管理] Dispose 時停止追蹤失敗: {ex.Message}");
                 }
             }
             _tracker?.Dispose();

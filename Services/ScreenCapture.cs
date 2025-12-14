@@ -36,6 +36,11 @@ namespace ArtaleAI.Services
         private SizeInt32 _lastSize;
         private SharpDX.Direct3D11.Device _device;
         private volatile bool _isDisposed = false; // 添加線程安全標誌
+        
+        // 🚀 效能優化：快取 Staging Texture，避免每幀重新創建
+        private Texture2D? _cachedStagingTexture;
+        private int _cachedWidth = 0;
+        private int _cachedHeight = 0;
 
         /// <summary>
         /// 初始化圖形擷取器
@@ -110,10 +115,10 @@ namespace ArtaleAI.Services
 
         /// <summary>
         /// 將 Direct3D11CaptureFrame 直接轉換為 OpenCV Mat
-        /// 使用記憶體拷貝方式提高效能，避免中間格式轉換
+        /// 🚀 效能優化：使用快取的 Staging Texture，避免每幀重新創建 GPU 資源
         /// </summary>
         /// <param name="frame">擷取的畫面幀</param>
-        /// <returns>BGR 格式的 Mat 物件</returns>
+        /// <returns>RGB 格式的 Mat 物件</returns>
         private Mat ConvertToMat(Direct3D11CaptureFrame frame)
         {
             // 修復：檢查是否已釋放
@@ -123,38 +128,51 @@ namespace ArtaleAI.Services
             }
 
             Texture2D? sourceTexture = null;
-            Texture2D? stagingTexture = null;
 
             try
             {
                 sourceTexture = GetSharpDXTexture2D(frame.Surface);
                 var desc = sourceTexture.Description;
+                int width = desc.Width;
+                int height = desc.Height;
 
-                // 建立 staging texture 供 CPU 讀取
-                var stagingDesc = new Texture2DDescription
+                // 🚀 效能優化：只在尺寸變化時重新創建 Staging Texture
+                if (_cachedStagingTexture == null || 
+                    _cachedWidth != width || 
+                    _cachedHeight != height)
                 {
-                    ArraySize = 1,
-                    BindFlags = BindFlags.None,
-                    CpuAccessFlags = CpuAccessFlags.Read,
-                    Format = desc.Format,
-                    Height = desc.Height,
-                    Width = desc.Width,
-                    MipLevels = 1,
-                    OptionFlags = ResourceOptionFlags.None,
-                    SampleDescription = new SharpDX.DXGI.SampleDescription(1, 0),
-                    Usage = ResourceUsage.Staging
-                };
+                    // 釋放舊的快取
+                    _cachedStagingTexture?.Dispose();
+                    
+                    // 建立新的 staging texture 供 CPU 讀取
+                    var stagingDesc = new Texture2DDescription
+                    {
+                        ArraySize = 1,
+                        BindFlags = BindFlags.None,
+                        CpuAccessFlags = CpuAccessFlags.Read,
+                        Format = desc.Format,
+                        Height = height,
+                        Width = width,
+                        MipLevels = 1,
+                        OptionFlags = ResourceOptionFlags.None,
+                        SampleDescription = new SharpDX.DXGI.SampleDescription(1, 0),
+                        Usage = ResourceUsage.Staging
+                    };
 
-                stagingTexture = new Texture2D(_device, stagingDesc);
-                _device.ImmediateContext.CopyResource(sourceTexture, stagingTexture);
+                    _cachedStagingTexture = new Texture2D(_device, stagingDesc);
+                    _cachedWidth = width;
+                    _cachedHeight = height;
+                    
+                    Debug.WriteLine($"🚀 創建新的 Staging Texture: {width}x{height}");
+                }
 
-                var dataBox = _device.ImmediateContext.MapSubresource(stagingTexture, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
+                // 複製資源到快取的 staging texture
+                _device.ImmediateContext.CopyResource(sourceTexture, _cachedStagingTexture);
+
+                var dataBox = _device.ImmediateContext.MapSubresource(_cachedStagingTexture, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
 
                 try
                 {
-                    int width = desc.Width;
-                    int height = desc.Height;
-
                     // BGRA -> Mat (Direct3D 使用 BGRA 格式)
                     var matBGRA = new Mat(height, width, MatType.CV_8UC4);
 
@@ -186,7 +204,7 @@ namespace ArtaleAI.Services
                         }
                     }
 
-                    // 🔥 關鍵修改：轉換 BGRA -> RGB (而不是 BGR)
+                    // 轉換 BGRA -> RGB
                     var matRGB = new Mat();
                     Cv2.CvtColor(matBGRA, matRGB, ColorConversionCodes.BGRA2RGB);
 
@@ -197,11 +215,11 @@ namespace ArtaleAI.Services
                 finally
                 {
                     // 修復：檢查 _device 是否仍然有效
-                    if (!_isDisposed && _device != null && stagingTexture != null)
+                    if (!_isDisposed && _device != null && _cachedStagingTexture != null)
                     {
                         try
                         {
-                            _device.ImmediateContext.UnmapSubresource(stagingTexture, 0);
+                            _device.ImmediateContext.UnmapSubresource(_cachedStagingTexture, 0);
                         }
                         catch (Exception ex)
                         {
@@ -214,7 +232,7 @@ namespace ArtaleAI.Services
             finally
             {
                 sourceTexture?.Dispose();
-                stagingTexture?.Dispose();
+                // 🚀 注意：不再釋放 stagingTexture，因為它現在是快取的
             }
         }
 
@@ -255,7 +273,7 @@ namespace ArtaleAI.Services
 
         /// <summary>
         /// 釋放圖形擷取器使用的所有資源
-        /// 包括 Direct3D 裝置、擷取工作階段和幀池
+        /// 包括 Direct3D 裝置、擷取工作階段、幀池和快取的 Staging Texture
         /// </summary>
         public void Dispose()
         {
@@ -270,6 +288,12 @@ namespace ArtaleAI.Services
                 // 先停止擷取，再釋放資源
                 _session?.Dispose();
                 _framePool?.Dispose();
+                
+                // 🚀 效能優化：釋放快取的 Staging Texture
+                _cachedStagingTexture?.Dispose();
+                _cachedStagingTexture = null;
+                _cachedWidth = 0;
+                _cachedHeight = 0;
                 
                 // 最後釋放設備（確保所有操作完成）
                 _device?.Dispose();

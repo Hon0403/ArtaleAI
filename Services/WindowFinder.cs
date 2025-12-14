@@ -1,4 +1,5 @@
 ﻿using ArtaleAI.Config;
+using ArtaleAI.Utils;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Windows.Graphics.Capture;
@@ -26,6 +27,32 @@ namespace ArtaleAI.Services
 
         [DllImport("user32.dll")]
         private static extern IntPtr FindWindow(string? lpClassName, string lpWindowName);
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        // SetWindowPos 標誌常數
+        private const uint SWP_NOMOVE = 0x0002;      // 不改變位置
+        private const uint SWP_NOZORDER = 0x0004;   // 不改變層級
+        private const uint SWP_SHOWWINDOW = 0x0040;  // 顯示視窗
 
         [DllImport("combase.dll")]
         private static extern int RoGetActivationFactory(IntPtr activatableClassId, ref Guid iid, out IGraphicsCaptureItemInterop factory);
@@ -141,5 +168,110 @@ namespace ArtaleAI.Services
             progressReporter?.Invoke("所有自動方式都失敗，需要手動選擇");
             return null;
         }
+
+        /// <summary>
+        /// 強制重置遊戲視窗大小到標準尺寸
+        /// 解決視窗大小變化導致的座標偏移和圖像辨識失敗問題
+        /// </summary>
+        /// <param name="windowTitle">視窗標題</param>
+        /// <param name="targetClientWidth">目標內容區域寬度（預設 1600）</param>
+        /// <param name="targetClientHeight">目標內容區域高度（預設 900）</param>
+        /// <param name="progressReporter">進度回報回調函數（可選）</param>
+        /// <returns>成功時返回 true，失敗時返回 false</returns>
+        public static bool ForceGameWindowSize(string windowTitle, int targetClientWidth = 1600, int targetClientHeight = 900, Action<string>? progressReporter = null)
+        {
+            var hwnd = FindWindow(null, windowTitle);
+            if (hwnd == IntPtr.Zero)
+            {
+                progressReporter?.Invoke($"找不到視窗: {windowTitle}");
+                return false;
+            }
+
+            return ForceGameWindowSize(hwnd, targetClientWidth, targetClientHeight, progressReporter);
+        }
+
+        /// <summary>
+        /// 強制重置遊戲視窗大小到標準尺寸（使用視窗句柄）
+        /// </summary>
+        /// <param name="gameWindowHandle">遊戲視窗句柄</param>
+        /// <param name="targetClientWidth">目標內容區域寬度（預設 1600）</param>
+        /// <param name="targetClientHeight">目標內容區域高度（預設 900）</param>
+        /// <param name="progressReporter">進度回報回調函數（可選）</param>
+        /// <returns>成功時返回 true，失敗時返回 false</returns>
+        public static bool ForceGameWindowSize(IntPtr gameWindowHandle, int targetClientWidth = 1600, int targetClientHeight = 900, Action<string>? progressReporter = null)
+        {
+            if (gameWindowHandle == IntPtr.Zero)
+            {
+                progressReporter?.Invoke("視窗句柄無效");
+                return false;
+            }
+
+            try
+            {
+                // 1. 取得目前的視窗大小（含邊框）和內容區域大小（不含邊框）
+                RECT windowRect, clientRect;
+                if (!GetWindowRect(gameWindowHandle, out windowRect))
+                {
+                    progressReporter?.Invoke("無法取得視窗大小");
+                    return false;
+                }
+
+                if (!GetClientRect(gameWindowHandle, out clientRect))
+                {
+                    progressReporter?.Invoke("無法取得視窗內容區域大小");
+                    return false;
+                }
+
+                // 2. 計算邊框的厚度
+                int currentClientWidth = clientRect.Right - clientRect.Left;
+                int currentClientHeight = clientRect.Bottom - clientRect.Top;
+                int currentWindowWidth = windowRect.Right - windowRect.Left;
+                int currentWindowHeight = windowRect.Bottom - windowRect.Top;
+                int borderThicknessX = currentWindowWidth - currentClientWidth;
+                int borderThicknessY = currentWindowHeight - currentClientHeight;
+
+                // 3. 檢查是否需要調整（如果已經是目標大小，跳過）
+                if (currentClientWidth == targetClientWidth && currentClientHeight == targetClientHeight)
+                {
+                    progressReporter?.Invoke($"視窗大小已是標準尺寸: {targetClientWidth}x{targetClientHeight}");
+                    return true;
+                }
+
+                // 4. 計算「目標視窗總大小」= 目標內容大小 + 邊框厚度
+                int finalWidth = targetClientWidth + borderThicknessX;
+                int finalHeight = targetClientHeight + borderThicknessY;
+
+                // 5. 強制設定視窗大小（不改變位置和層級）
+                bool success = SetWindowPos(
+                    gameWindowHandle,
+                    IntPtr.Zero,
+                    0, 0,  // X, Y（使用 SWP_NOMOVE 時會被忽略）
+                    finalWidth,
+                    finalHeight,
+                    SWP_NOMOVE | SWP_NOZORDER | SWP_SHOWWINDOW
+                );
+
+                if (success)
+                {
+                    progressReporter?.Invoke($"✅ 視窗大小已重置: {finalWidth}x{finalHeight} (內容區域: {targetClientWidth}x{targetClientHeight})");
+                    Logger.Info($"[視窗管理] 強制重置視窗大小為: {finalWidth}x{finalHeight} (內容區域: {targetClientWidth}x{targetClientHeight})");
+                    return true;
+                }
+                else
+                {
+                    int errorCode = Marshal.GetLastWin32Error();
+                    progressReporter?.Invoke($"❌ 設定視窗大小失敗，錯誤碼: {errorCode}");
+                    Logger.Error($"[視窗管理] SetWindowPos 失敗，錯誤碼: {errorCode}");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                progressReporter?.Invoke($"重置視窗大小時發生錯誤: {ex.Message}");
+                Logger.Error($"[視窗管理] 重置視窗大小錯誤: {ex.Message}");
+                return false;
+            }
+        }
+
     }
 }

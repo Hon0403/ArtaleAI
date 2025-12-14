@@ -2,6 +2,10 @@
 using System.ComponentModel;
 using System.IO;
 using System.Text.Json;
+using ArtaleAI.Models;
+using ArtaleAI.Models.Detection;
+using ArtaleAI.Models.Map;
+using ArtaleAI.Models.Minimap;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -162,26 +166,58 @@ namespace ArtaleAI.Config
 
         #region 檢測模式映射設定
         
-        /// <summary>模式名稱映射表</summary>
-        public Dictionary<string, string> ModeMapping { get; set; }
-        
-        /// <summary>顯示名稱映射表</summary>
-        public Dictionary<string, string> DisplayNames { get; set; }
-        
-        /// <summary>遮擋處理映射表</summary>
-        public Dictionary<string, string> OcclusionMappings { get; set; }
-        
-        /// <summary>模式描述映射表</summary>
-        public Dictionary<string, string> ModeDescriptions { get; set; } = new();
-        
-        /// <summary>效能等級映射表</summary>
-        public Dictionary<string, int> PerformanceLevels { get; set; }
+        /// <summary>檢測模式配置字典（結構化配置）</summary>
+        public Dictionary<string, DetectionModeConfig> DetectionModes { get; set; } = new();
         
         /// <summary>預設檢測模式</summary>
         public string DefaultMode { get; set; }
         
         /// <summary>顯示順序列表</summary>
-        public List<string> DisplayOrder { get; set; }
+        public List<string> DisplayOrder { get; set; } = new();
+        
+        /// <summary>
+        /// 取得模式的顯示名稱（向後相容）
+        /// </summary>
+        public Dictionary<string, string> DisplayNames
+        {
+            get
+            {
+                var result = new Dictionary<string, string>();
+                if (DetectionModes != null)
+                {
+                    foreach (var kvp in DetectionModes)
+                    {
+                        if (kvp.Value != null && !string.IsNullOrEmpty(kvp.Value.DisplayName))
+                        {
+                            result[kvp.Key] = kvp.Value.DisplayName;
+                        }
+                    }
+                }
+                return result;
+            }
+        }
+        
+        /// <summary>
+        /// 取得遮擋處理映射表（向後相容）
+        /// </summary>
+        public Dictionary<string, string> OcclusionMappings
+        {
+            get
+            {
+                var result = new Dictionary<string, string>();
+                if (DetectionModes != null)
+                {
+                    foreach (var kvp in DetectionModes)
+                    {
+                        if (kvp.Value != null && !string.IsNullOrEmpty(kvp.Value.Occlusion))
+                        {
+                            result[kvp.Key] = kvp.Value.Occlusion;
+                        }
+                    }
+                }
+                return result;
+            }
+        }
         
         #endregion
 
@@ -239,6 +275,9 @@ namespace ArtaleAI.Config
         
         /// <summary>是否啟用自動角色移動控制</summary>
         public bool EnableAutoMovement { get; set; }
+        
+        /// <summary>平台邊界處理設定</summary>
+        public PlatformBoundsConfig PlatformBounds { get; set; } = new();
         
         #endregion
 
@@ -393,7 +432,13 @@ namespace ArtaleAI.Config
         {
             try
             {
-                var json = JsonSerializer.Serialize(mapData, new JsonSerializerOptions { WriteIndented = true });
+                // 使用自訂轉換器強制顯示小數點，確保精度可見
+                var options = new JsonSerializerOptions 
+                { 
+                    WriteIndented = true,
+                    Converters = { new FloatArrayConverter() }
+                };
+                var json = JsonSerializer.Serialize(mapData, options);
                 File.WriteAllText(filePath, json);
             }
             catch (Exception ex)
@@ -421,5 +466,21 @@ namespace ArtaleAI.Config
         }
 
         #endregion
+    }
+
+    /// <summary>
+    /// 平台邊界處理設定
+    /// 控制邊界檢測的緩衝區大小和冷卻時間
+    /// </summary>
+    public class PlatformBoundsConfig
+    {
+        /// <summary>緩衝區大小（像素，接近邊界時提前觸發減速）</summary>
+        public double BufferZone { get; set; } = 5.0;
+        
+        /// <summary>緊急區域（像素，超出此範圍強制停止）</summary>
+        public double EmergencyZone { get; set; } = 2.0;
+        
+        /// <summary>邊界事件冷卻時間（毫秒，防止反覆觸發）</summary>
+        public int CooldownMs { get; set; } = 500;
     }
 }

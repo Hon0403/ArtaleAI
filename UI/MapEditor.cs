@@ -1,5 +1,6 @@
 ﻿using ArtaleAI.Config;
 using ArtaleAI.Core;
+using ArtaleAI.Models.Map;
 using ArtaleAI.Utils;
 using System.Diagnostics;
 using System.Drawing.Drawing2D;
@@ -84,8 +85,16 @@ namespace ArtaleAI.UI
         /// <param name="screenPoint">滑鼠位置的螢幕座標</param>
         public void UpdateMousePosition(PointF screenPoint)
         {
-            // 簡化：使用三元運算子
-            _previewPoint = _startPoint.HasValue ? screenPoint : null;
+            if (!_startPoint.HasValue || minimapBounds.IsEmpty)
+            {
+                _previewPoint = null;
+                return;
+            }
+            
+            // ✅ 修正：轉換為相對座標（與 _startPoint 一致）
+            _previewPoint = new PointF(
+                screenPoint.X - minimapBounds.X,
+                screenPoint.Y - minimapBounds.Y);
         }
 
         /// <summary>
@@ -97,20 +106,25 @@ namespace ArtaleAI.UI
         {
             if (minimapBounds.IsEmpty) return;
 
+            // ✅ 修正：將螢幕座標轉換為小地圖相對座標（與錄製路徑格式統一）
+            var relativePoint = new PointF(
+                screenPoint.X - minimapBounds.X,
+                screenPoint.Y - minimapBounds.Y);
+
             if (_currentEditMode == EditMode.Waypoint ||
                 _currentEditMode == EditMode.SafeZone ||
                 _currentEditMode == EditMode.Rope)
             {
                 if (!_startPoint.HasValue)
                 {
-                    _startPoint = screenPoint;
+                    _startPoint = relativePoint;  // 存儲相對座標
                 }
                 else
                 {
                     var points = new List<PointF>();
                     // 簡化：計算兩點間的距離（避免 Math.Pow）
-                    var dx = screenPoint.X - _startPoint.Value.X;
-                    var dy = screenPoint.Y - _startPoint.Value.Y;
+                    var dx = relativePoint.X - _startPoint.Value.X;
+                    var dy = relativePoint.Y - _startPoint.Value.Y;
                     var distance = Math.Sqrt(dx * dx + dy * dy);
 
                     // 根據距離決定插值點數量 (每5個像素一個點)
@@ -119,16 +133,16 @@ namespace ArtaleAI.UI
                     for (int i = 0; i <= steps; i++)
                     {
                         var t = steps == 0 ? 0 : (double)i / steps;
-                        var x = _startPoint.Value.X + (screenPoint.X - _startPoint.Value.X) * t;
-                        var y = _startPoint.Value.Y + (screenPoint.Y - _startPoint.Value.Y) * t;
+                        var x = _startPoint.Value.X + (relativePoint.X - _startPoint.Value.X) * t;
+                        var y = _startPoint.Value.Y + (relativePoint.Y - _startPoint.Value.Y) * t;
                         points.Add(new PointF((float)x, (float)y));
                     }
 
-                    // 修改這裡：轉換為 float[] 並保留一位小數
+                    // 座標已經是相對座標，直接保留一位小數
                     var coordinates = points
                         .Select(p => new float[] {
-                    (float)Math.Round(p.X, 1),
-                    (float)Math.Round(p.Y, 1)
+                            (float)Math.Round(p.X, 1),
+                            (float)Math.Round(p.Y, 1)
                         })
                         .ToList();
 
@@ -155,17 +169,18 @@ namespace ArtaleAI.UI
             }
             else if (_currentEditMode == EditMode.RestrictedZone)
             {
-                // 修改這裡：同樣保留一位小數
+                // ✅ 修正：使用相對座標
                 var coord = new float[] {
-            (float)Math.Round(screenPoint.X, 1),
-            (float)Math.Round(screenPoint.Y, 1)
-        };
+                    (float)Math.Round(relativePoint.X, 1),
+                    (float)Math.Round(relativePoint.Y, 1)
+                };
                 _currentMapData.RestrictedZones ??= new List<float[]>();
                 _currentMapData.RestrictedZones.Add(coord);
             }
             else if (_currentEditMode == EditMode.Delete)
             {
-                HandleDeleteAction(screenPoint);
+                // ✅ 修正：刪除時也使用相對座標
+                HandleDeleteAction(relativePoint);
             }
         }
 
@@ -191,12 +206,30 @@ namespace ArtaleAI.UI
         /// <param name="convert">座標轉換函式（將螢幕座標轉換為顯示座標）</param>
         private void DrawCompletedShapes(Graphics g, Func<PointF, PointF> convert)
         {
+            // 檢查是否有有效的小地圖邊界
+            if (minimapBounds.IsEmpty)
+            {
+                Logger.Warning("[MapEditor] minimapBounds \u70ba\u7a7a\uff0c\u7121\u6cd5\u7e6a\u88fd\u8def\u5f91");
+                return;
+            }
+
             // 繪製路點路徑 
             if (_currentMapData.WaypointPaths?.Any() == true)
             {
+                // 支援新舊格式：[x, y] 或 [x, y, actionCode]
+                // 重要：路徑檔案中的座標是小地圖相對座標，需要轉換為螢幕絕對座標
                 var points = _currentMapData.WaypointPaths
-                    .Where(coord => coord.Length == 2)
-                    .Select(coord => convert(new PointF(coord[0], coord[1])));
+                    .Where(coord => coord.Length >= 2) // 至少要有 x, y
+                    .Select(coord => 
+                    {
+                        // 將小地圖相對座標轉換為螢幕絕對座標
+                        var screenPoint = new PointF(
+                            minimapBounds.X + coord[0],
+                            minimapBounds.Y + coord[1]
+                        );
+                        // 再轉換為 PictureBox 顯示座標
+                        return convert(screenPoint);
+                    });
 
                 DrawingHelper.DrawPath(g, points, Color.Blue, 2f, 3f);
             }
@@ -205,8 +238,15 @@ namespace ArtaleAI.UI
             if (_currentMapData.SafeZones?.Any() == true)
             {
                 var points = _currentMapData.SafeZones
-                    .Where(coord => coord.Length == 2)
-                    .Select(coord => convert(new PointF(coord[0], coord[1])));
+                    .Where(coord => coord.Length >= 2)
+                    .Select(coord => 
+                    {
+                        var screenPoint = new PointF(
+                            minimapBounds.X + coord[0],
+                            minimapBounds.Y + coord[1]
+                        );
+                        return convert(screenPoint);
+                    });
 
                 DrawingHelper.DrawPath(g, points, Color.Green, 2f, 3f);
             }
@@ -215,8 +255,15 @@ namespace ArtaleAI.UI
             if (_currentMapData.Ropes?.Any() == true)
             {
                 var points = _currentMapData.Ropes
-                    .Where(coord => coord.Length == 2)
-                    .Select(coord => convert(new PointF(coord[0], coord[1])));
+                    .Where(coord => coord.Length >= 2)
+                    .Select(coord => 
+                    {
+                        var screenPoint = new PointF(
+                            minimapBounds.X + coord[0],
+                            minimapBounds.Y + coord[1]
+                        );
+                        return convert(screenPoint);
+                    });
 
                 DrawingHelper.DrawPath(g, points, Color.Yellow, 3f, 3f);
             }
@@ -224,8 +271,15 @@ namespace ArtaleAI.UI
             if (_currentMapData.RestrictedZones?.Any() == true)
             {
                 var points = _currentMapData.RestrictedZones
-                    .Where(coord => coord.Length == 2)
-                    .Select(coord => convert(new PointF(coord[0], coord[1])))
+                    .Where(coord => coord.Length >= 2)
+                    .Select(coord => 
+                    {
+                        var screenPoint = new PointF(
+                            minimapBounds.X + coord[0],
+                            minimapBounds.Y + coord[1]
+                        );
+                        return convert(screenPoint);
+                    })
                     .ToList();
 
                 using var fillBrush = new SolidBrush(Color.Red);
@@ -256,16 +310,27 @@ namespace ArtaleAI.UI
             // 顯示預覽線
             if (_startPoint.HasValue && _previewPoint.HasValue && isLineMode)
             {
+                // ✅ 修正：_startPoint 和 _previewPoint 現在都是相對座標，需要加回小地圖偏移
+                var startScreen = new PointF(
+                    minimapBounds.X + _startPoint.Value.X,
+                    minimapBounds.Y + _startPoint.Value.Y);
+                var previewScreen = new PointF(
+                    minimapBounds.X + _previewPoint.Value.X,
+                    minimapBounds.Y + _previewPoint.Value.Y);
+                    
                 using (var pen = new Pen(Color.Cyan, 2) { DashStyle = DashStyle.Dash })
                 {
-                    g.DrawLine(pen, convert(_startPoint.Value), convert(_previewPoint.Value));
+                    g.DrawLine(pen, convert(startScreen), convert(previewScreen));
                 }
             }
 
             // 顯示起點
             if (_startPoint.HasValue && isLineMode)
             {
-                var converted = convert(_startPoint.Value);
+                var startScreen = new PointF(
+                    minimapBounds.X + _startPoint.Value.X,
+                    minimapBounds.Y + _startPoint.Value.Y);
+                var converted = convert(startScreen);
                 using (var brush = new SolidBrush(Color.Red))
                 {
                     g.FillEllipse(brush, converted.X - 4, converted.Y - 4, 8, 8);

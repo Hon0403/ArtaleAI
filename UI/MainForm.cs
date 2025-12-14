@@ -2,7 +2,10 @@
 using ArtaleAI.API.Config;
 using ArtaleAI.Config;
 using ArtaleAI.Core;
-using ArtaleAI.Core;
+using ArtaleAI.Models.Detection;
+using ArtaleAI.Models.Map;
+using ArtaleAI.Models.Minimap;
+using ArtaleAI.Models.PathPlanning;
 using ArtaleAI.Services;
 using ArtaleAI.UI;
 using ArtaleAI.Utils;
@@ -15,6 +18,7 @@ using System.Drawing.Imaging;
 using System.Text.RegularExpressions;
 using Windows.Graphics.Capture;
 using SdPoint = System.Drawing.Point;
+using SdPointF = System.Drawing.PointF;
 using SdRect = System.Drawing.Rectangle;
 using SdSize = System.Drawing.Size;
 using Timer = System.Threading.Timer;
@@ -70,6 +74,13 @@ namespace ArtaleAI
         // 狀態訊息輸出控制
         private DateTime _lastStatusUpdate = DateTime.MinValue;
         private const int StatusUpdateIntervalMs = 500; // 狀態訊息更新間隔（500ms）
+        
+        // 移動控制（冷卻時間和方向偵測）
+        private DateTime _lastMovementTime = DateTime.MinValue;
+        private const int MovementCooldownMs = 350; // 移動冷卻時間（350ms）
+        private SdPoint? _lastMovementTarget = null;
+        private int _lastMovementDirection = 0; // -1=左, 0=停止, 1=右
+        private bool _isMovementInProgress = false;
 
         #endregion
 
@@ -77,6 +88,10 @@ namespace ArtaleAI
 
         public MainForm()
         {
+            // 🔧 初始化日誌系統（在所有初始化之前）
+            Logger.Initialize("Logs", enableConsole: true);
+            Logger.Info("[系統] ArtaleAI 正在啟動...");
+            
             InitializeComponent();
             InitializeServices();
             BindEvents();
@@ -143,7 +158,7 @@ namespace ArtaleAI
             catch (Exception ex)
             {
                 MsgLog.ShowError(textBox1, $"初始化失敗: {ex.Message}");
-                Debug.WriteLine($"InitializeServices error: {ex}");
+                Logger.Error($"[系統] InitializeServices 失敗: {ex.Message}", ex);
             }
         }
 
@@ -389,21 +404,20 @@ namespace ArtaleAI
 
         private async void TabControl1_SelectedIndexChanged(object? sender, EventArgs e)
         {
-            try
+            // 🔧 修復：當切換到即時顯示分頁且 LiveView 已在運行時，不要中斷它
+            // 這可以避免路徑追蹤期間因為 LiveView 重啟導致的位置資料遺失
+            bool isLiveViewRunning = liveViewManager?.IsRunning == true;
+            bool isSwitchingToLiveView = tabControl1.SelectedIndex == 2;
+            
+            // 只有在非切換到即時顯示分頁，或 LiveView 未運行時才停止資源
+            if (!isSwitchingToLiveView || !isLiveViewRunning)
             {
-                // 立即清空所有PictureBox.Image，防止OnVisibleChanged觸發錯誤
-                //pictureBoxLiveView.Image = null;
-                //pictureBoxMinimap.Image = null;
-
-                // 短暫延遲確保清空生效
-                //Application.DoEvents();
+                StopAndReleaseAllResources();
             }
-            catch (Exception ex)
+            else
             {
-                System.Diagnostics.Debug.WriteLine($"Clear PictureBox Images error: {ex.Message}");
+                Logger.Debug("[系統] 切換到即時顯示分頁，保持 LiveView 運行以避免路徑追蹤中斷");
             }
-
-            StopAndReleaseAllResources();
 
             switch (tabControl1.SelectedIndex)
             {
@@ -415,9 +429,13 @@ namespace ArtaleAI
                     // 標題會在載入地圖檔案時更新
                     break;
                 case 2: // 即時顯示頁面
-
                     UpdateWindowTitle("ArtaleAI - 即時顯示");
-                    await StartLiveViewModeAsync();
+                    
+                    // 🔧 只有當 LiveView 未運行時才啟動它
+                    if (!isLiveViewRunning)
+                    {
+                        await StartLiveViewModeAsync();
+                    }
 
                     if (loadedPathData != null && liveViewManager?.IsRunning == true && _currentMinimapBoxes.Any())
                     {
@@ -457,7 +475,7 @@ namespace ArtaleAI
                 _currentPathPoints.AddRange(allStaticPoints);
             }
 
-            Debug.WriteLine($" 路徑點已更新: {_currentPathPoints.Count} 點");
+            Logger.Debug($"[路徑] 路徑點已更新: {_currentPathPoints.Count} 點");
         }
 
 
@@ -517,7 +535,7 @@ namespace ArtaleAI
             var config = Config;
             try
             {
-                Debug.WriteLine("開始 LoadMinimapWithMat");
+                Logger.Debug("[小地圖] 開始 LoadMinimapWithMat");
                 MsgLog.ShowStatus(textBox1, "正在載入小地圖...");
 
                 var captureItem = WindowFinder.TryCreateItemForWindow(Config.GameWindowTitle);
@@ -539,7 +557,7 @@ namespace ArtaleAI
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"LoadMinimapWithMat 錯誤: {ex.Message}");
+                Logger.Error($"[小地圖] LoadMinimapWithMat 錯誤: {ex.Message}");
                 MsgLog.ShowError(textBox1, $"載入小地圖失敗: {ex.Message}");
                 return null;
             }
@@ -572,8 +590,8 @@ namespace ArtaleAI
 
                         // 轉換為螢幕座標
                         var screenPlayerPos = new SdPoint(
-                            minimapRect.Value.X + playerPos.X,
-                            minimapRect.Value.Y + playerPos.Y);
+                            minimapRect.Value.X + (int)playerPos.X,
+                            minimapRect.Value.Y + (int)playerPos.Y);
 
                         _currentMinimapMarkers.Add(new SdRect(
                             screenPlayerPos.X - 5, screenPlayerPos.Y - 5, 10, 10));
@@ -583,12 +601,12 @@ namespace ArtaleAI
                 }
                 else
                 {
-                    Debug.WriteLine("未檢測到玩家位置或小地圖邊界");
+                    Logger.Debug("[小地圖] 未檢測到玩家位置或小地圖邊界");
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"ProcessMinimapPlayer錯誤: {ex.Message}");
+                Logger.Error($"[小地圖] ProcessMinimapPlayer 錯誤: {ex.Message}");
             }
         }
 
@@ -639,6 +657,13 @@ namespace ArtaleAI
         /// </summary>
         private void OnFrameAvailable(Mat frameMat)
         {
+            // 🔧 修復：檢查 MainForm 是否已被 Dispose（防止關閉時的競爭條件）
+            if (IsDisposed || Disposing)
+            {
+                frameMat?.Dispose();
+                return;
+            }
+            
             if (frameMat == null || frameMat.Empty())
                 return;
 
@@ -677,8 +702,8 @@ namespace ArtaleAI
                                     {
                                         var playerPos = trackingResult.PlayerPosition.Value;
                                         var screenPlayerPos = new SdPoint(
-                                            minimapRect.Value.X + playerPos.X,
-                                            minimapRect.Value.Y + playerPos.Y
+                                            minimapRect.Value.X + (int)playerPos.X,
+                                            minimapRect.Value.Y + (int)playerPos.Y
                                         );
                                         _currentMinimapMarkers.Add(new SdRect(
                                             screenPlayerPos.X - 5,
@@ -692,7 +717,7 @@ namespace ArtaleAI
                         catch (Exception ex)
                         {
                             // 修復：記錄錯誤訊息
-                            Debug.WriteLine($"小地圖玩家位置追蹤錯誤: {ex.Message}");
+                            Logger.Error($"[小地圖] 玩家位置追蹤錯誤: {ex.Message}");
                         }
                     }
 
@@ -756,7 +781,7 @@ namespace ArtaleAI
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"處理畫面錯誤: {ex.Message}");
+                Logger.Error($"[系統] 處理畫面錯誤: {ex.Message}");
             }
 
             // 修復：移除重複的 ProcessPathPlanning 呼叫（已在上面第 706-709 行處理）
@@ -785,7 +810,7 @@ namespace ArtaleAI
 
             if (string.IsNullOrEmpty(_selectedMonsterName) || !currentMonsterMatTemplates.Any())
             {
-                MsgLog.ShowStatus(textBox1, $"未選擇怪物模板 (Templates={currentMonsterMatTemplates.Count})");
+                //MsgLog.ShowStatus(textBox1, $"未選擇怪物模板 (Templates={currentMonsterMatTemplates.Count})");
                 return;
             }
 
@@ -958,7 +983,7 @@ namespace ArtaleAI
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"RENDER ERROR: {ex.Message}");
+                Logger.Error($"[系統] RENDER ERROR: {ex.Message}");
             }
         }
 
@@ -1146,7 +1171,7 @@ namespace ArtaleAI
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"MouseLeave 錯誤: {ex.Message}");
+                Logger.Debug($"[UI] MouseLeave 錯誤: {ex.Message}");
             }
         }
 
@@ -1165,6 +1190,8 @@ namespace ArtaleAI
                 MsgLog.ShowError(textBox1, $"儲存地圖時發生錯誤: {ex.Message}");
             }
         }
+
+
 
         private void btn_New_Click(object sender, EventArgs e)
         {
@@ -1246,7 +1273,12 @@ namespace ArtaleAI
             catch (Exception ex)
             {
                 Debug.WriteLine($"Form關閉錯誤: {ex.Message}");
+                Logger.Error("[系統] Form關閉錯誤", ex);
             }
+            
+            // 🔧 關閉日誌系統（確保所有日誌寫入檔案）
+            Logger.Shutdown();
+            
             base.OnFormClosed(e);
         }
 
@@ -1408,14 +1440,15 @@ namespace ArtaleAI
             }
 
             var playerPosOpt = result.PlayerPosition;
-            if (playerPosOpt.HasValue && playerPosOpt.Value != SdPoint.Empty)
+            if (playerPosOpt.HasValue && playerPosOpt.Value != SdPointF.Empty)
             {
                 var playerPos = playerPosOpt.Value;
 
                 // 獨立的錄製邏輯 - 只要按 F1 就能錄製
                 if (_isRecordingRoute)
                 {
-                    HandleRouteRecording(playerPos);
+                    // 轉換為整數座標
+                    HandleRouteRecording(new SdPoint((int)playerPos.X, (int)playerPos.Y));
                 }
 
                 // 路徑規劃狀態顯示和自動移動控制（僅在有規劃路徑時）
@@ -1439,26 +1472,89 @@ namespace ArtaleAI
                             _lastStatusUpdate = now;
                         }
                         
-                        // 自動移動控制（長按模式）
+                        // 自動移動控制（長按模式）- 加入冷卻時間和方向偵測
                         if (Config.EnableAutoMovement && _movementController != null && _pathPlanningManager.IsRunning)
                         {
                             // 只在距離大於到達距離時才移動
                             if (distance > Config.WaypointReachDistance)
                             {
+                                // ✅ 互斥鎖：防止並行移動任務
+                                if (_isMovementInProgress)
+                                {
+                                    return; // 已有移動任務在執行
+                                }
+                                
+                                // ✅ 冷卻時間檢查（350ms）
+                                var movementNow = DateTime.UtcNow;
+                                var movementElapsed = (movementNow - _lastMovementTime).TotalMilliseconds;
+                                if (movementElapsed < MovementCooldownMs)
+                                {
+                                    return; // 冷卻中
+                                }
+                                
+                                // ✅ 計算方向
+                                var currentPlayerPos = new SdPoint((int)playerPos.X, (int)playerPos.Y);
+                                int dx = nextWaypoint.X - currentPlayerPos.X;
+                                int newDirection = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+                                
+                                // ✅ 目標變化偵測：先停止再移動
+                                if (_lastMovementTarget.HasValue && _lastMovementTarget.Value != nextWaypoint)
+                                {
+                                    // 計算目標變化距離
+                                    double targetChangeDist = Math.Sqrt(Math.Pow(nextWaypoint.X - _lastMovementTarget.Value.X, 2) + Math.Pow(nextWaypoint.Y - _lastMovementTarget.Value.Y, 2));
+                                    
+                                    // 只有當目標變化超過閾值（20px）時才停止，避免微小抖動導致頻繁急停
+                                    if (targetChangeDist > 20.0)
+                                    {
+                                        Logger.Debug($"[移動控制] 目標變化偵測: 從 ({_lastMovementTarget.Value.X},{_lastMovementTarget.Value.Y}) 到 ({nextWaypoint.X},{nextWaypoint.Y}) (距離 {targetChangeDist:F1}px)，先停止再移動");
+                                        _movementController.StopMovement();
+                                        Thread.Sleep(50); // 短暫延遲確保停止
+                                    }
+                                    else
+                                    {
+                                        Logger.Debug($"[移動控制] 目標微調: ({_lastMovementTarget.Value.X},{_lastMovementTarget.Value.Y}) -> ({nextWaypoint.X},{nextWaypoint.Y}) (距離 {targetChangeDist:F1}px)，平滑過渡");
+                                    }
+                                }
+                                
+                                // ✅ 方向變化偵測：先停止再移動
+                                if (_lastMovementDirection != 0 && _lastMovementDirection != newDirection && newDirection != 0)
+                                {
+                                    Debug.WriteLine($"[移動控制] ⚠️ 方向變化偵測: {(_lastMovementDirection > 0 ? "右" : "左")}→{(newDirection > 0 ? "右" : "左")}，先停止再移動");
+                                    _movementController.StopMovement();
+                                    Thread.Sleep(50); // 短暫延遲確保停止
+                                }
+                                
+                                // 更新追蹤狀態
+                                _lastMovementTarget = nextWaypoint;
+                                _lastMovementDirection = newDirection;
+                                _lastMovementTime = movementNow;
+                                _isMovementInProgress = true;
+                                
                                 // 使用 Fire-and-Forget，不等待完成（長按模式）
                                 _ = Task.Run(async () =>
                                 {
                                     try
                                     {
+                                        // 🔧 使用 Tracker 計算的動態距離 (Unification)
+                                        float dynamicReach = (float)Config.WaypointReachDistance;
+                                        if (_pathPlanningManager?.Tracker != null)
+                                        {
+                                            dynamicReach = _pathPlanningManager.Tracker.GetDynamicReachDistance();
+                                        }
+
                                         await _movementController.MoveToTargetAsync(
-                                            playerPos,
+                                            currentPlayerPos,
                                             nextWaypoint,
-                                            Config.WaypointReachDistance
+                                            dynamicReach
                                         );
                                     }
                                     catch (Exception ex)
                                     {
-                                        Debug.WriteLine($"自動移動錯誤: {ex.Message}");
+                                        Logger.Error($"[移動] 自動移動錯誤: {ex.Message}");
+                                    }
+                                    finally
+                                    {
+                                        _isMovementInProgress = false;
                                     }
                                 });
                             }
@@ -1466,12 +1562,13 @@ namespace ArtaleAI
                             {
                                 // 已接近目標，停止移動
                                 _movementController.StopMovement();
+                                _lastMovementDirection = 0;
                             }
                         }
                         else if (!Config.EnableAutoMovement)
                         {
                             // 調試訊息：確認自動移動是否啟用
-                            Debug.WriteLine($"[調試] 自動移動未啟用: EnableAutoMovement={Config.EnableAutoMovement}");
+                            Logger.Debug($"[調試] 自動移動未啟用: EnableAutoMovement={Config.EnableAutoMovement}");
                         }
                     }
                     else
@@ -1514,7 +1611,7 @@ namespace ArtaleAI
                             _currentMinimapBoxes.Add(bounds);
                         }
 
-                        var screenPlayerPos = new SdPoint(bounds.X + playerPos.X, bounds.Y + playerPos.Y);
+                        var screenPlayerPos = new SdPoint(bounds.X + (int)playerPos.X, bounds.Y + (int)playerPos.Y);
 
                         lock (_currentMinimapMarkers)
                         {
@@ -1543,7 +1640,7 @@ namespace ArtaleAI
                                 _currentPathPoints.AddRange(pathScreenPoints);
                             }
 
-                            System.Diagnostics.Debug.WriteLine(pathScreenPoints.Count);
+                            Logger.Debug($"[路徑] pathScreenPoints.Count = {pathScreenPoints.Count}");
                         }
                         else
                         {
@@ -1603,7 +1700,7 @@ namespace ArtaleAI
                         }
                         catch (Exception ex)
                         {
-                            Debug.WriteLine($"載入小地圖錯誤: {ex.Message}");
+                            Logger.Error($"[小地圖] 載入小地圖錯誤: {ex.Message}");
                         }
                         
                         // 啟動 LiveView（背景運行，不需要切換分頁）
@@ -1731,7 +1828,7 @@ namespace ArtaleAI
                 if (loadedPathData?.WaypointPaths != null && loadedPathData.WaypointPaths.Any())
                 {
                     var waypoints = loadedPathData.WaypointPaths
-                        .Where(coord => coord.Length == 2)
+                        .Where(coord => coord.Length >= 2)
                         .Select(coord => new SdPoint((int)Math.Round(coord[0]), (int)Math.Round(coord[1])))
                         .ToList();
 
@@ -1739,6 +1836,35 @@ namespace ArtaleAI
                     {
                         _pathPlanningManager?.LoadPlannedPath(waypoints);
                         MsgLog.ShowStatus(textBox1, $"已載入 {waypoints.Count} 個路徑點到路徑規劃系統（隨機模式）");
+                        
+                        // 解析 RestrictedZones 為邊界
+                        if (loadedPathData.RestrictedZones != null && loadedPathData.RestrictedZones.Count >= 2)
+                        {
+                            var zones = loadedPathData.RestrictedZones;
+                            float minX = zones.Min(z => z.Length > 0 ? z[0] : float.MaxValue);
+                            float maxX = zones.Max(z => z.Length > 0 ? z[0] : float.MinValue);
+                            float minY = zones.Min(z => z.Length > 1 ? z[1] : float.MaxValue);
+                            float maxY = zones.Max(z => z.Length > 1 ? z[1] : float.MinValue);
+                            
+                            // 設定給 PathPlanningManager（會自動傳遞到 Tracker）
+                            _pathPlanningManager?.SetBoundaries(minX, maxX, minY, maxY);
+                            
+                            // 🔧 新增：設定給 MovementController（三重邊界防護）
+                            if (_movementController != null)
+                            {
+                                var bounds = new PlatformBounds
+                                {
+                                    MinX = minX,
+                                    MaxX = maxX,
+                                    MinY = minY,
+                                    MaxY = maxY
+                                };
+                                _movementController.SetPlatformBounds(bounds, Config.PlatformBounds);
+                                Logger.Info($"[路徑載入] 已設定 MovementController 邊界：{bounds}");
+                            }
+                            
+                            Logger.Info($"[路徑載入] 已設定邊界: X=[{minX:F1}, {maxX:F1}], Y=[{minY:F1}, {maxY:F1}]");
+                        }
                     }
                     else
                     {
@@ -1761,7 +1887,7 @@ namespace ArtaleAI
         {
             if (frameMat == null || frameMat.IsDisposed)
             {
-                Debug.WriteLine("ProcessPathPlanning: Mat 已被釋放");
+                Logger.Warning("[路徑規劃] ProcessPathPlanning: Mat 已被釋放");
                 return;
             }
 
@@ -1770,7 +1896,7 @@ namespace ArtaleAI
                 // 加入 Null Check
                 if (gameVision == null)
                 {
-                    Debug.WriteLine("ProcessPathPlanning: gameVision 為 null");
+                    Logger.Warning("[路徑規劃] ProcessPathPlanning: gameVision 為 null");
                     return;
                 }
 
@@ -1784,11 +1910,11 @@ namespace ArtaleAI
             }
             catch (ObjectDisposedException ex)
             {
-                Debug.WriteLine($"ProcessPathPlanning Mat已釋放: {ex.Message}");
+                Logger.Warning($"[路徑規劃] ProcessPathPlanning Mat已釋放: {ex.Message}");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"ProcessPathPlanning 錯誤: {ex.Message}");
+                Logger.Error($"[路徑規劃] ProcessPathPlanning 錯誤: {ex.Message}");
             }
         }
 

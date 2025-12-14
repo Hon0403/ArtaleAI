@@ -1,5 +1,8 @@
 ﻿using ArtaleAI.Config;
+using ArtaleAI.Models.Detection;
+using ArtaleAI.Models.Minimap;
 using ArtaleAI.Services;
+using ArtaleAI.Utils;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
 using System;
@@ -23,6 +26,7 @@ namespace ArtaleAI.Core
         private readonly Dictionary<string, Mat> _mapTemplates = new();
         private readonly Dictionary<string, List<Mat>> _monsterTemplateCache = new();
         private bool _disposed = false;
+        private int _lastPixelCount = 0; // 用於避免 Debug 輸出洗版
         #endregion
 
         #region 建構函式
@@ -158,8 +162,8 @@ namespace ArtaleAI.Core
         #region 小地圖檢測功能群組
 
         /// <summary>
-        /// 在螢幕上尋找小地圖位置
-        /// 使用四個角點模板匹配確定小地圖邊界
+        /// 在螢幕上尋找小地圖位置（絕對像素系統）
+        /// 只認左上角作為錨點，放棄寬高計算，確保座標系統的絕對穩定性
         /// </summary>
         /// <param name="fullFrameMat">完整畫面 Mat</param>
         /// <returns>小地圖矩形區域，未找到時返回 null</returns>
@@ -170,36 +174,49 @@ namespace ArtaleAI.Core
             try
             {
                 var cornerThreshold = AppConfig.Instance.CornerThreshold;
+                
+                // 🔧 錨點鎖定：只找左上角（這是唯一的真理）
                 var topLeft = MatchTemplateInternal(fullFrameMat, "TopLeft", cornerThreshold);
+
+                // 如果找不到左上角，就沒戲唱了
+                if (!topLeft.HasValue) return null;
+
+                var tl = topLeft.Value.Location;
+
+                // 右下角偵測（可選，僅用於防呆或確認遮擋）
+                // 就算右下角找不到，我們也可以假定一個「安全範圍」讓程式繼續跑
+                // 但為了相容現有架構，我們保留右下角偵測，但 *不要* 用它來決定座標比例
                 var bottomRight = MatchTemplateInternal(fullFrameMat, "BottomRight", cornerThreshold);
+                
+                // 預設安全寬高（用於視覺化，不參與導航計算）
+                int width = 230;  // 預設安全寬度
+                int height = 150; // 預設安全高度
 
-                if (topLeft.HasValue && bottomRight.HasValue)
+                if (bottomRight.HasValue && _mapTemplates.TryGetValue("BottomRight", out var brTemplate))
                 {
-                    //  內嵌計算邏輯
-                    var tl = topLeft.Value.Location;
+                    // 如果找得到右下角，就用來畫框框（視覺用）
+                    // 但請記住：這個 width/height 未來將 *不參與* 導航計算
                     var br = bottomRight.Value.Location;
-
-                    if (_mapTemplates.TryGetValue("BottomRight", out var brTemplate))
+                    int right = br.X + brTemplate.Width;
+                    int bottom = br.Y + brTemplate.Height;
+                    width = right - tl.X;
+                    height = bottom - tl.Y;
+                    
+                    // 驗證尺寸合理性（防呆）
+                    if (width < 50 || width > 400 || height < 50 || height > 400)
                     {
-                        int left = tl.X;
-                        int top = tl.Y;
-                        int right = br.X + brTemplate.Width;
-                        int bottom = br.Y + brTemplate.Height;
-                        int width = right - left;
-                        int height = bottom - top;
-
-                        if (width >= 50 && width <= 400 && height >= 50 && height <= 400)
-                        {
-                            return new Rectangle(left, top, width, height);
-                        }
+                        // 如果尺寸不合理，使用預設值
+                        width = 230;
+                        height = 150;
                     }
                 }
 
-                return null;
+                // 回傳矩形（X, Y 是絕對準確的；W, H 只是參考用）
+                return new Rectangle(tl.X, tl.Y, width, height);
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"FindMinimapOnScreen: {ex.Message}");
+                Logger.Error($"[小地圖] FindMinimapOnScreen 錯誤: {ex.Message}");
                 return null;
             }
         }
@@ -217,27 +234,86 @@ namespace ArtaleAI.Core
             try
             {
                 var minimapRect = FindMinimapOnScreen(fullFrameMat);
-                if (!minimapRect.HasValue) return null;
+                if (!minimapRect.HasValue)
+                {
+                    Logger.Warning("[小地圖偵測] 找不到小地圖");
+                    return null;
+                }
 
                 using var minimapMat = new Mat(fullFrameMat, new OpenCvSharp.Rect(
                     minimapRect.Value.X, minimapRect.Value.Y,
                     minimapRect.Value.Width, minimapRect.Value.Height));
 
-                //  直接內嵌玩家位置檢測
-                System.Drawing.Point? playerPos = null;
+                // ✅ 方案1：使用顏色匹配偵測玩家位置（比模板匹配更穩定，不會誤判其他玩家）
+                System.Drawing.PointF? playerPos = null;
                 try
                 {
-                    var threshold = AppConfig.Instance.PlayerPositionThreshold;
-                    var result = MatchTemplateInternal(minimapMat, "PlayerMarker", threshold);
-                    playerPos = result?.Location;
+                    var playerStyle = AppConfig.Instance.MinimapPlayer;
+                    
+                    // 解析玩家顏色 RGB（圖片是 RGB 格式）
+                    var colorParts = playerStyle.PlayerColorBgr.Split(',');
+                    int r = int.Parse(colorParts[0].Trim());  // 第一個是 R
+                    int g = int.Parse(colorParts[1].Trim());  // 第二個是 G  
+                    int b = int.Parse(colorParts[2].Trim());  // 第三個是 B
+                    int tolerance = playerStyle.ColorTolerance;
+                    int minPixels = playerStyle.MinPixelCount;
+                    
+                    // ✅ 圖片是 RGB 格式，Scalar 順序是 (R, G, B)
+                    var lowerBound = new Scalar(
+                        Math.Max(0, r - tolerance),
+                        Math.Max(0, g - tolerance),
+                        Math.Max(0, b - tolerance)
+                    );
+                    var upperBound = new Scalar(
+                        Math.Min(255, r + tolerance),
+                        Math.Min(255, g + tolerance),
+                        Math.Min(255, b + tolerance)
+                    );
+                    
+                    // 執行顏色匹配
+                    using var mask = new Mat();
+                    Cv2.InRange(minimapMat, lowerBound, upperBound, mask);
+                    
+                    // 找到所有匹配的像素座標
+                    var points = new List<OpenCvSharp.Point>();
+                    for (int y = 0; y < mask.Rows; y++)
+                    {
+                        for (int x = 0; x < mask.Cols; x++)
+                        {
+                            if (mask.At<byte>(y, x) > 0)
+                            {
+                                points.Add(new OpenCvSharp.Point(x, y));
+                            }
+                        }
+                    }
+                    
+                    // 至少要有 minPixels 個像素才算有效偵測
+                    if (points.Count >= minPixels)
+                    {
+                        // 計算所有匹配像素的平均位置（中心點）
+                        float avgX = (float)points.Average(p => p.X);
+                        float avgY = (float)points.Average(p => p.Y);
+                        
+                        playerPos = new System.Drawing.PointF(avgX, avgY);
+                        
+                        // 只在像素數變化較大時輸出 Debug（避免洗版）
+                        if (points.Count != _lastPixelCount)
+                        {
+                            _lastPixelCount = points.Count;
+                        }
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"[顏色匹配] ⚠️ 像素數不足: {points.Count} < {minPixels}");
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"玩家位置檢測錯誤: {ex.Message}");
+                    Logger.Error($"[小地圖] 顏色匹配偵測錯誤: {ex.Message}");
                 }
 
-                //  直接內嵌其他玩家檢測
-                var otherPlayers = new List<System.Drawing.Point>();
+                //  直接內嵌其他玩家檢測（使用浮點數座標）
+                var otherPlayers = new List<System.Drawing.PointF>();
                 if (AppConfig.Instance.EnableOtherPlayersDetection == true)
                 {
                     try
@@ -245,11 +321,17 @@ namespace ArtaleAI.Core
                         var threshold = AppConfig.Instance.PlayerPositionThreshold;
                         var result = MatchTemplateInternal(minimapMat, "OtherPlayers", threshold);
                         if (result.HasValue)
-                            otherPlayers.Add(result.Value.Location);
+                        {
+                            // 轉換為浮點數座標
+                            otherPlayers.Add(new System.Drawing.PointF(
+                                result.Value.Location.X,
+                                result.Value.Location.Y
+                            ));
+                        }
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"其他玩家檢測錯誤: {ex.Message}");
+                        Logger.Error($"[小地圖] 其他玩家檢測錯誤: {ex.Message}");
                     }
                 }
 
@@ -265,7 +347,7 @@ namespace ArtaleAI.Core
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"小地圖追蹤錯誤: {ex.Message}");
+                Logger.Error($"[小地圖] 小地圖追蹤錯誤: {ex.Message}");
                 return null;
             }
         }
@@ -344,7 +426,7 @@ namespace ArtaleAI.Core
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"模板匹配錯誤: {ex.Message}");
+                    Logger.Error($"[怪物偵測] 模板匹配錯誤: {ex.Message}");
                 }
             }
 
@@ -400,7 +482,7 @@ namespace ArtaleAI.Core
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"載入失敗 {Path.GetFileName(file)}: {ex.Message}");
+                        Logger.Error($"[模板] 載入失敗 {Path.GetFileName(file)}: {ex.Message}");
                     }
                 }
 
@@ -409,7 +491,7 @@ namespace ArtaleAI.Core
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"LoadMonsterTemplatesAsync 錯誤: {ex.Message}");
+                Logger.Error($"[模板] LoadMonsterTemplatesAsync 錯誤: {ex.Message}");
                 return new List<Mat>();
             }
         }
@@ -547,7 +629,7 @@ namespace ArtaleAI.Core
                     using var originalTemplate = Cv2.ImRead(templatePath, ImreadModes.Color);
                     if (originalTemplate.Empty())
                     {
-                        Debug.WriteLine($"無法載入模板: {kvp.Key}");
+                        Logger.Warning($"[模板] 無法載入模板: {kvp.Key}");
                         continue;
                     }
 
@@ -572,11 +654,11 @@ namespace ArtaleAI.Core
                     }
 
                     _mapTemplates[kvp.Key] = finalTemplate;
-                    Debug.WriteLine($" 成功載入模板: {kvp.Key}");
+                    Logger.Debug($"[模板] 成功載入模板: {kvp.Key}");
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"載入模板失敗: {kvp.Key} - {ex.Message}");
+                    Logger.Error($"[模板] 載入模板失敗: {kvp.Key} - {ex.Message}");
                 }
             }
         }
@@ -833,7 +915,7 @@ namespace ArtaleAI.Core
             catch (Exception ex)
             {
                 progressReporter?.Invoke($"小地圖檢測失敗: {ex.Message}");
-                Debug.WriteLine($"💥 GetSnapshotAsync 異常: {ex}");
+                Logger.Error($"[系統] GetSnapshotAsync 異常: {ex.Message}");
                 return null;
             }
             finally

@@ -1,4 +1,5 @@
 ﻿using ArtaleAI.Config;
+using ArtaleAI.Models.Map;
 using ArtaleAI.UI;
 using ArtaleAI.Utils;
 
