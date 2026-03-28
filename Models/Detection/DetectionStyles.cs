@@ -7,10 +7,10 @@ namespace ArtaleAI.Models.Detection
     public class PartyRedBarStyle
     {
         /// <summary>邊框顏色（格式：R,G,B）</summary>
-        public string FrameColor { get; set; }
+        public string FrameColor { get; set; } = "0,255,0";
 
         /// <summary>文字顏色（格式：R,G,B）</summary>
-        public string TextColor { get; set; }
+        public string TextColor { get; set; } = "255,255,255";
 
         /// <summary>邊框粗細（像素）</summary>
         public int FrameThickness { get; set; }
@@ -22,7 +22,7 @@ namespace ArtaleAI.Models.Detection
         public int TextThickness { get; set; }
 
         /// <summary>血條顯示名稱</summary>
-        public string RedBarDisplayName { get; set; }
+        public string RedBarDisplayName { get; set; } = "HP";
     }
 
     /// <summary>
@@ -32,10 +32,10 @@ namespace ArtaleAI.Models.Detection
     public class DetectionBoxStyle
     {
         /// <summary>邊框顏色（格式：R,G,B）</summary>
-        public string FrameColor { get; set; }
+        public string FrameColor { get; set; } = "255,255,0";
 
         /// <summary>文字顏色（格式：R,G,B）</summary>
-        public string TextColor { get; set; }
+        public string TextColor { get; set; } = "255,255,255";
 
         /// <summary>邊框粗細（像素）</summary>
         public int FrameThickness { get; set; }
@@ -47,7 +47,7 @@ namespace ArtaleAI.Models.Detection
         public int TextThickness { get; set; }
 
         /// <summary>檢測框顯示名稱</summary>
-        public string BoxDisplayName { get; set; }
+        public string BoxDisplayName { get; set; } = "Box";
     }
 
     /// <summary>
@@ -69,10 +69,10 @@ namespace ArtaleAI.Models.Detection
         public int OffsetY { get; set; }
 
         /// <summary>邊框顏色（格式：R,G,B）</summary>
-        public string FrameColor { get; set; }
+        public string FrameColor { get; set; } = "255,0,0";
 
         /// <summary>文字顏色（格式：R,G,B）</summary>
-        public string TextColor { get; set; }
+        public string TextColor { get; set; } = "255,255,255";
 
         /// <summary>邊框粗細（像素）</summary>
         public int FrameThickness { get; set; }
@@ -84,7 +84,7 @@ namespace ArtaleAI.Models.Detection
         public int TextThickness { get; set; }
 
         /// <summary>攻擊範圍顯示名稱</summary>
-        public string RangeDisplayName { get; set; }
+        public string RangeDisplayName { get; set; } = "ATK";
     }
 
 }

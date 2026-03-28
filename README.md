@@ -223,21 +223,21 @@ ArtaleAI/
 └── ArtaleAI.sln            # 解決方案檔案
 ```
 
-#### 🛡️ 三重邊界防護系統
+#### 三重邊界防護系統
 - **緊急停止**：角色超出邊界時立即停止
 - **緩衝區預警**：接近邊界時觸發減速
 - **目標驗證**：目標點超出邊界時自動選擇安全點
 
-#### 🧵 執行緒安全優化
+#### 執行緒安全優化
 - `PathPlanningTracker` 使用 `volatile` 和 snapshot 模式
 - `SharedGameState` 公告板模式，避免競爭條件
 
-#### 📁 架構重構
+#### 架構重構
 - Models 按功能分類到子資料夾
 - AppConfig 移至 Config 資料夾
 - 刪除舊的 DataModels.cs（已拆分）
 
-#### 📝 Serilog 日誌系統
+#### Serilog 日誌系統
 - 替換 Debug.WriteLine 為結構化日誌
 - 檔案日誌 + 主控台輸出
 - Debug/Info/Warning/Error 分級

@@ -1,5 +1,0 @@
-# Jump Action Fix Task
-
-- [ ] Implement jump action preservation in `PathPlanningTracker.SelectNextTarget` [/]
-- [ ] Verify fix with `dotnet build` [ ]
-- [ ] Create walkthrough documenting the fix [ ]

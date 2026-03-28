@@ -1,20 +1,14 @@
-﻿using System.Drawing;
+using System.Linq;
+using System.Drawing;
 using System.Drawing.Drawing2D;
 using SdPoint = System.Drawing.Point;
 using SdRect = System.Drawing.Rectangle;
 
 namespace ArtaleAI.Utils
 {
-    /// <summary>
-    /// 繪圖工具類別 - 統一管理 GDI+ 資源和繪圖邏輯
-    /// </summary>
+    /// <summary>GDI+ 輔助：偵測框、路徑、縮放與顏色字串解析。</summary>
     public static class DrawingHelper
     {
-        #region 基礎繪製形狀
-
-        /// <summary>
-        /// 繪製矩形列表
-        /// </summary>
         public static void DrawRectangles(
         Graphics g,
         IEnumerable<Rectangle> rects,
@@ -50,9 +44,6 @@ namespace ArtaleAI.Utils
             }
         }
 
-        /// <summary>
-        /// 繪製實心矩形列表
-        /// </summary>
         public static void FillRectangles(
             Graphics g,
             IEnumerable<Rectangle> rects,
@@ -69,9 +60,6 @@ namespace ArtaleAI.Utils
             }
         }
 
-        /// <summary>
-        /// 繪製圓形標記列表
-        /// </summary>
         public static void DrawCircles(
             Graphics g,
             IEnumerable<PointF> points,
@@ -104,14 +92,7 @@ namespace ArtaleAI.Utils
             }
         }
 
-        #endregion
-
-        #region 路徑繪製
-
-        /// <summary>
-        /// 繪製路徑 (線條 + 端點)
-        /// 支援分段標記：座標為負數的點會被視為分段點，不繪製該點也不連線
-        /// </summary>
+        /// <summary>折線與端點；負座標點為分段標記（不連線、不畫點）。</summary>
         public static void DrawPath(
             Graphics g,
             IEnumerable<PointF> points,
@@ -123,15 +104,13 @@ namespace ArtaleAI.Utils
             var pointArray = points.ToArray();
             if (pointArray.Length < 2) return;
 
-            // 繪製連接線（跳過分段標記點）
             using (var pen = new Pen(pathColor, lineWidth))
             {
                 for (int i = 0; i < pointArray.Length - 1; i++)
                 {
                     var p1 = pointArray[i];
                     var p2 = pointArray[i + 1];
-                    
-                    // 如果任一點座標為負數，視為分段標記，不連線
+
                     if (p1.X < 0 || p1.Y < 0 || p2.X < 0 || p2.Y < 0)
                         continue;
                     
@@ -139,14 +118,12 @@ namespace ArtaleAI.Utils
                 }
             }
 
-            // 繪製端點（跳過分段標記點）
             if (showPoints)
             {
                 using (var brush = new SolidBrush(Color.FromArgb(150, pathColor)))
                 {
                     foreach (var point in pointArray)
                     {
-                        // 跳過負座標的分段標記點
                         if (point.X < 0 || point.Y < 0)
                             continue;
                             
@@ -157,9 +134,6 @@ namespace ArtaleAI.Utils
             }
         }
 
-        /// <summary>
-        /// 繪製多條路徑 (不同顏色)
-        /// </summary>
         public static void DrawMultiplePaths(
             Graphics g,
             Dictionary<string, (IEnumerable<PointF> Points, Color Color, float Width)> paths)
@@ -170,13 +144,6 @@ namespace ArtaleAI.Utils
             }
         }
 
-        #endregion
-
-        #region 文字繪製
-
-        /// <summary>
-        /// 繪製文字 (帶背景)
-        /// </summary>
         public static void DrawTextWithBackground(
             Graphics g,
             string text,
@@ -202,13 +169,6 @@ namespace ArtaleAI.Utils
             }
         }
 
-        #endregion
-
-        #region 圖像處理
-
-        /// <summary>
-        /// 建立高品質的放大圖像
-        /// </summary>
         public static Bitmap? CreateZoomedImage(
             Bitmap sourceImage,
             Rectangle sourceRect,
@@ -244,9 +204,6 @@ namespace ArtaleAI.Utils
             }
         }
 
-        /// <summary>
-        /// 繪製十字準心
-        /// </summary>
         public static void DrawCrosshair(
             Graphics g,
             PointF center,
@@ -256,25 +213,16 @@ namespace ArtaleAI.Utils
         {
             using (var pen = new Pen(color, thickness))
             {
-                // 水平線
                 g.DrawLine(pen, center.X - size, center.Y, center.X + size, center.Y);
-                // 垂直線
                 g.DrawLine(pen, center.X, center.Y - size, center.X, center.Y + size);
             }
         }
 
-        #endregion
-
-        #region 顏色工具
-
-        /// <summary>
-        /// 解析設定檔中的顏色字串
-        /// </summary>
+        /// <summary>解析 <c>#RRGGBB</c>、<c>#AARRGGBB</c> 或 <see cref="Color.FromName"/>。</summary>
         public static Color ParseColor(string colorString, Color defaultColor = default)
         {
             try
             {
-                // 支援 #RRGGBB 格式
                 if (colorString.StartsWith("#") && colorString.Length == 7)
                 {
                     int r = Convert.ToInt32(colorString.Substring(1, 2), 16);
@@ -283,7 +231,6 @@ namespace ArtaleAI.Utils
                     return Color.FromArgb(r, g, b);
                 }
 
-                // 支援 ARGB 格式
                 if (colorString.StartsWith("#") && colorString.Length == 9)
                 {
                     int a = Convert.ToInt32(colorString.Substring(1, 2), 16);
@@ -293,7 +240,6 @@ namespace ArtaleAI.Utils
                     return Color.FromArgb(a, r, g, b);
                 }
 
-                // 支援命名顏色
                 return Color.FromName(colorString);
             }
             catch
@@ -301,7 +247,5 @@ namespace ArtaleAI.Utils
                 return defaultColor;
             }
         }
-
-        #endregion
     }
 }

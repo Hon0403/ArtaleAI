@@ -9,21 +9,13 @@ namespace ArtaleAI.Models.Map
     /// </summary>
     public class MapData
     {
-        /// <summary>路徑點列表（用於向下相容舊版格式）</summary>
-        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-        public List<float[]>? WaypointPaths { get; set; } = null;
-
         /// <summary>繩索位置列表</summary>
         public List<float[]> Ropes { get; set; } = new();
 
-        /// <summary>自定義連接關係 (向後相容舊版格式)</summary>
-        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-        public List<int[]>? Connections { get; set; } = null;
-
-        /// <summary>新版導航圖節點</summary>
+        /// <summary>導航圖節點（座標與類型；導航與編輯器 SSOT）。</summary>
         public List<NavNodeData> Nodes { get; set; } = new();
 
-        /// <summary>新版導航圖邊</summary>
+        /// <summary>導航圖邊（有向）。</summary>
         public List<NavEdgeData> Edges { get; set; } = new();
 
         /// <summary>安全區列表</summary>
@@ -39,6 +31,9 @@ namespace ArtaleAI.Models.Map
         public float X { get; set; }
         public float Y { get; set; }
         public string Type { get; set; } = "Platform";
+
+        /// <summary>編輯器 UI 動作碼（與下拉選單一致）；導航仍以 <see cref="NavEdgeData"/> 為準。</summary>
+        public int EditorActionCode { get; set; }
     }
 
     public class NavEdgeData

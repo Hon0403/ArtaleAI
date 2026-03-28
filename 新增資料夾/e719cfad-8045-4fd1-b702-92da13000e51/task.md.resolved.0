@@ -1,9 +1,0 @@
-# Task: Execute Phase 1 of Navigation Refactoring
-
-## Phase 1: 更新 MapData DTO (新 JSON 格式)
-- [ ] 修改 [Models/Map/MapData.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Map/MapData.cs) [/]
-    - [ ] 新增 `NavNodeData` 類別 [ ]
-    - [ ] 新增 `NavEdgeData` 類別 [ ]
-    - [ ] 在 `MapData` 中新增 `Nodes` 與 `Edges` 屬性 [ ]
-    - [ ] 為 `WaypointPaths` 與 `Connections` 加上 `JsonIgnore` [ ]
-- [ ] 驗證編譯結果 [ ]

@@ -8,21 +8,11 @@ using System.Text;
 
 namespace ArtaleAI.Services
 {
-    /// <summary>
-    /// 地圖檔案管理器 - 負責地圖資料的檔案讀寫與持久化
-    /// </summary>
-
-    /// <summary>
-    /// 地圖檔案管理器 — 純粹負責地圖檔案的載入、儲存
-    /// </summary>
+    /// <summary>地圖 JSON 載入／儲存、存檔前完整性驗證與事件通知。</summary>
     public class MapFileManager
     {
         private readonly MapEditor _mapEditor;
         private string? _currentMapFilePath;
-
-        // ============================================================
-        // 事件 — UI 層訂閱來更新畫面
-        // ============================================================
 
         /// <summary>地圖儲存完成事件（檔案名稱, 是否為新檔案）</summary>
         public event Action<string, bool>? MapSaved;
@@ -48,18 +38,12 @@ namespace ArtaleAI.Services
         /// <summary>取得當前地圖檔案名稱（不含路徑）</summary>
         public string? CurrentMapFileName => HasCurrentMap ? Path.GetFileName(_currentMapFilePath) : null;
 
-        /// <summary>
-        /// 初始化地圖檔案管理器（不需要任何 UI 引用）
-        /// </summary>
         public MapFileManager(MapEditor mapEditor)
         {
             _mapEditor = mapEditor ?? throw new ArgumentNullException(nameof(mapEditor));
         }
 
-        /// <summary>
-        /// 取得所有可用的地圖檔案名稱（不含副檔名）
-        /// MainForm 用這個方法填充 ComboBox
-        /// </summary>
+        /// <summary>回傳 <c>MapData</c> 目錄下所有 <c>.json</c> 檔名（無副檔名）。</summary>
         public string[] GetAvailableMapFiles()
         {
             try
@@ -82,9 +66,7 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>
-        /// 載入指定的地圖檔案到編輯器
-        /// </summary>
+        /// <summary>自 MapData 目錄載入 JSON 並餵入編輯器。</summary>
         public void LoadMapFile(string fileName)
         {
             try
@@ -121,9 +103,7 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>
-        /// 儲存當前正在編輯的地圖
-        /// </summary>
+        /// <summary>若有目前檔案路徑則驗證後覆寫存檔。</summary>
         public void SaveCurrentMap()
         {
             try
@@ -153,9 +133,7 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>
-        /// 將地圖儲存到指定路徑
-        /// </summary>
+        /// <summary>驗證後寫入指定路徑並更新目前檔案與事件。</summary>
         public void SaveMapToPath(string filePath)
         {
             try
@@ -182,9 +160,7 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>
-        /// 建立空白新地圖
-        /// </summary>
+        /// <summary>清空目前路徑並在編輯器載入空白 <see cref="MapData"/>。</summary>
         public void CreateNewMap()
         {
             try
@@ -201,9 +177,6 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>
-        /// 合併自動偵測的繩索資料到地圖資料中
-        /// </summary>
         private void MergeDetectedRopes(ArtaleAI.Models.Map.MapData mapData)
         {
             if (RopeDataProvider == null) return;
@@ -222,11 +195,6 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>
-        /// 存檔前完整性檢查（第一版）：
-        /// 1) Jump 方向語意是否與幾何方向一致
-        /// 2) Jump 邊是否缺少反向邊
-        /// </summary>
         private static bool TryValidateMapIntegrity(MapData mapData, out List<string> errors)
         {
             errors = new List<string>();
@@ -239,7 +207,6 @@ namespace ArtaleAI.Services
 
             if (nodeById.Count == 0 || mapData.Edges.Count == 0) return true;
 
-            // 規則 1：Jump 幾何方向一致性
             foreach (var edge in mapData.Edges)
             {
                 if (!IsDirectionalJump(edge.ActionType)) continue;
@@ -263,7 +230,6 @@ namespace ArtaleAI.Services
                 }
             }
 
-            // 規則 2：Jump 邊雙向缺失檢查（方案 B 需顯式雙向）
             foreach (var edge in mapData.Edges)
             {
                 if (!IsDirectionalJump(edge.ActionType)) continue;
@@ -332,9 +298,7 @@ namespace ArtaleAI.Services
             return sb.ToString();
         }
 
-        /// <summary>
-        /// 從檔案載入地圖資料
-        /// </summary>
+        /// <summary>反序列化 JSON；失敗或不存在時回傳 null。</summary>
         public static ArtaleAI.Models.Map.MapData? LoadMapFromFile(string filePath)
         {
             if (!File.Exists(filePath)) return null;
@@ -350,9 +314,7 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>
-        /// 將地圖資料儲存到檔案
-        /// </summary>
+        /// <summary>縮排 JSON 寫入檔案。</summary>
         public static void SaveMapToFile(ArtaleAI.Models.Map.MapData mapData, string filePath)
         {
             try

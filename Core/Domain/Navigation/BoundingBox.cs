@@ -2,9 +2,7 @@ using System;
 
 namespace ArtaleAI.Core.Domain.Navigation
 {
-    /// <summary>
-    /// 軸對應邊界框 (AABB)
-    /// </summary>
+    /// <summary>軸對齊包圍盒（AABB）。</summary>
     public struct BoundingBox
     {
         public float MinX { get; }
@@ -23,9 +21,7 @@ namespace ArtaleAI.Core.Domain.Navigation
             MaxY = centerY + halfHeight;
         }
 
-        /// <summary>
-        /// 檢查指定座標是否位於此邊界框內
-        /// </summary>
+        /// <summary>判斷 (x,y) 是否落於 AABB 內（含邊界）。</summary>
         public bool Contains(float x, float y)
         {
             return x >= MinX && x <= MaxX &&

@@ -1,5 +1,0 @@
-{
-  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
-  "summary": "Implementation plan to fix the missing display in the independent MinimapViewer window. Diagnosis revealed a missing assignment in GameVisionCore and overly strict rendering conditions in MainForm.",
-  "updatedAt": "2026-03-20T16:05:51.736590Z"
-}

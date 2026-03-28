@@ -1,6 +1,0 @@
-{
-  "artifactType": "ARTIFACT_TYPE_WALKTHROUGH",
-  "summary": "完成了「配置模組遷移至 Models\\Config」的重大架構優化。將所有設定類別與枚舉統一收錄至 Models，達成 Clean Architecture 命名空間對齊，並通過 dotnet build 驗證。",
-  "updatedAt": "2026-03-27T12:30:48.578136Z",
-  "version": "7"
-}

@@ -1,8 +1,0 @@
-# Navigation Stability Verification
-
-- [x] Verify Navigation Stability History (Completed)
-- [/] Architectural Cleanup & Refactoring
-    - [ ] [NEW] Extract H-Topology logic from [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs) to `Core` layer
-    - [ ] [MODIFY] Refactor [CharacterMovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#19-533) arrival logic
-    - [ ] [CLEANUP] Unify `RopeData` naming and namespaces
-- [ ] Verification and Final Audit

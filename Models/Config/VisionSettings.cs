@@ -55,7 +55,6 @@ namespace ArtaleAI.Models.Config
         public string BottomLeft { get; set; } = "bl.png";
         public string BottomRight { get; set; } = "br.png";
 
-        // ✅ 小地圖偵測相關設定 (從 EditorSettings 遷移)
         public bool UseFixedMinimapPosition { get; set; } = false;
         public int FixedMinimapWidth { get; set; } = 250;
         public int FixedMinimapHeight { get; set; } = 150;

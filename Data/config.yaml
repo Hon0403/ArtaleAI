@@ -1,3 +1,4 @@
+# 單一來源：請只編輯本檔；建置後會複製到 bin\...\Data\config.yaml（與 exe 同目錄為執行時載入路徑）。
 # ============================================
 # 一般設定
 # ============================================
@@ -6,6 +7,7 @@ general:
   lastSelectedWindowName: "MapleStory Worlds-Artale (繁體中文版)"
   lastSelectedProcessName: "msw"
   lastSelectedProcessId: 25336
+  minimapUpscaleFactor: 1
   zoomFactor: 15
   magnifierSize: 150
   magnifierOffset: 20
@@ -60,27 +62,30 @@ vision:
 navigation:
   continuousDetectionIntervalMs: 200
   playerPositionThreshold: 0.7
+  otherPlayersThreshold: 0.5
   enableOtherPlayersDetection: true
   waypointReachDistance: 2
-  # 側跳著陸 X 容許下限（px）；實測曾 landDx≈6.2 且 Y 正確
-  jumpLandingTolerancePx: 7
-  # 起跳前方向鍵按住毫秒（再起跳）；落底層時可試 120～150
-  directionalJumpDirectionHoldBeforeAltMs: 110
-  # 跳躍鍵按住毫秒（側跳）；過短易小跳落層
-  directionalJumpAltHoldMs: 85
-  # WaitForLanding：|Y−targetY| 視為「接近目標層」的上限（px）；曾用 2.5 導致 153 vs 150.4 無法觸發
-  directionalJumpLandingYProximityPx: 3.2
-  directionalJumpLandingWaitTimeoutMs: 2500
-  # WaitForLanding：連續幀 Y 抖動上限；過小會 150.4↔151.1 永遠無法累積穩定幀
-  directionalJumpLandingStableYDeltaPx: 0.85
-  # 執行層白名單：著陸穩定、滯空最短時間、過衝反向微調（不需恢復舊版 Proximity 大腦）
-  postLandingSettleMs: 100
-  minAirborneMsBeforeLanding: 450
-  overshootCorrectionMaxTaps: 6
-  # 已進 Hitbox 仍朝 waypoint X 短按對齊（≤0 關閉）；解決「判到達但起跳點偏」
-  walkGeometricAlignTolerancePx: 1.2
-  walkGeometricTrimMaxTaps: 10
+  # 側跳著陸 X 容許（px）；與 waypointReachDistance 取較大者驗收（略大可吸收落地後小滑動）
+  jumpLandingTolerancePx: 10
+  # Alt 放開後多久放開方向鍵（ms）；0＝等著陸偵測結束才放（易在平台上多滑）。約 80～120 可減少 landDx 壓線失敗
+  sideJumpReleaseDirectionMsAfterAlt: 95
+  # 側跳著陸 Y 容許（px）；0＝使用程式內建 15。整層掉落仍會失敗，僅略放寬測量誤差
+  sideJumpLandingMaxFallYPx: 0
+  # sideJumpWindupMs：按方向鍵「之前」原地等（不揹方向），防薄邊先走出去
+  # sideJumpDirectionLeadMsBeforeAlt：按方向後到按 Alt 的極短間隔；跳不過去可略增 15～22
+  sideJumpWindupMs: 22
+  sideJumpDirectionLeadMsBeforeAlt: 14
+  sideJumpAltHoldMs: 105
+  # 邊緣側跳前停穩；略增可減少「還沒跳先滑落」
+  sideJumpPreJumpSettleMs: 60
+  sideJumpLandingTimeoutMs: 2500
+  # 0＝關閉越界反向短按；若常 NeedsCorrection 可改 3～6
+  overshootCorrectionMaxTaps: 3
+  # 穩定版預設關閉：到達以 Hitbox 為準，不在執行層磨 X。起跳偏時改 1.2～2 並搭配 trim 3～10
+  walkGeometricAlignTolerancePx: 1
+  walkGeometricTrimMaxTaps: 5
   maxTrackingHistory: 100
+  enableAutoPathFinding: true
   enableAutoMovement: true
   platformBounds:
     bufferZone: 5.0
@@ -92,6 +97,8 @@ navigation:
 # ============================================
 editor:
   deletionRadius: 10.0
+  waypointCircleRadius: 4
+  waypointColor: "Cyan"
 
 # ============================================
 # 視覺化樣式設定
@@ -162,3 +169,5 @@ appearance:
     width: 600
     height: 400
     baseSize: 20
+    showRuler: true
+    opacity: 100

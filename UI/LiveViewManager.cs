@@ -4,62 +4,45 @@ using ArtaleAI.Utils;
 using OpenCvSharp;
 using System;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks;
 using Windows.Graphics.Capture;
 
 namespace ArtaleAI.UI
 {
-    /// <summary>
-    /// 負責管理即時畫面更新：控制Timer、抓取畫面、分發給處理模組
-    /// </summary>
+    /// <summary>定時擷取畫面、佇列限長、以最新幀觸發 <see cref="OnFrameReady"/>。</summary>
     public class LiveViewManager : IDisposable
     {
-        #region Timestamped Frame
-        /// <summary>
-        /// 包含擷取時間戳的畫面資料
-        /// </summary>
+        /// <summary>畫面與該幀擷取時間（UTC）。</summary>
         public record TimestampedFrame(Mat Frame, DateTime CaptureTime);
-        #endregion
 
-        #region Private Fields
         private readonly AppConfig config;
         private readonly ConcurrentQueue<TimestampedFrame> frameQueue = new();
-        
+
         private int _isProcessingFrame = 0;
 
         private GraphicsCapturer? _capturer;
         private System.Threading.Timer? _captureTimer;
         private System.Threading.Timer? _detectionTimer;
         private int _isRunningState = 0;
-        
+
         private const int DetectionIntervalMs = 20;
         private const int MaxFrameQueueSize = 3;
         private const int ShutdownDelayMs = 50;
-        #endregion
+        private static int _skippedDetectionTicksWhileBusy;
 
-        #region Events
-        /// <summary>
-        /// 當有新畫面可供處理時觸發（傳給MainForm做偵測和繪圖）
-        /// 包含擷取時間戳，確保時間同步
-        /// </summary>
+        /// <summary>新幀就緒（含擷取時間）；訂閱者負責處理／釋放 <see cref="Mat"/>。</summary>
         public event Action<Mat, DateTime>? OnFrameReady;
-        #endregion
 
-        #region Constructor
         public LiveViewManager(AppConfig appConfig)
         {
             config = appConfig ?? throw new ArgumentNullException(nameof(appConfig));
         }
-        #endregion
 
-        #region Public Methods
-        /// <summary>
-        /// 啟動即時畫面更新
-        /// </summary>
+        /// <summary>建立擷取器與擷取／分發計時器。</summary>
         public void StartLiveView(GraphicsCaptureItem captureItem)
         {
-            if (System.Threading.Interlocked.CompareExchange(ref _isRunningState, 1, 0) == 1)
+            if (Interlocked.CompareExchange(ref _isRunningState, 1, 0) == 1)
             {
                 Logger.Debug("[LiveView] LiveView已在執行中");
                 return;
@@ -84,17 +67,14 @@ namespace ArtaleAI.UI
             }
         }
 
-        /// <summary>
-        /// 停止即時畫面更新
-        /// </summary>
+        /// <summary>停止計時器、清空佇列並釋放擷取器。</summary>
         public void StopLiveView()
         {
-            if (System.Threading.Interlocked.CompareExchange(ref _isRunningState, 0, 1) == 0)
+            if (Interlocked.CompareExchange(ref _isRunningState, 0, 1) == 0)
                 return;
 
             try
             {
-
                 _captureTimer?.Change(Timeout.Infinite, Timeout.Infinite);
                 _detectionTimer?.Change(Timeout.Infinite, Timeout.Infinite);
 
@@ -103,7 +83,7 @@ namespace ArtaleAI.UI
                     frame?.Frame?.Dispose();
                 }
 
-                System.Threading.Thread.Sleep(ShutdownDelayMs);
+                Thread.Sleep(ShutdownDelayMs);
 
                 _capturer?.Dispose();
                 _capturer = null;
@@ -121,16 +101,38 @@ namespace ArtaleAI.UI
             }
         }
 
-        /// <summary>
-        /// 檢查LiveView是否正在執行
-        /// </summary>
         public bool IsRunning => _isRunningState == 1;
-        #endregion
 
-        #region Private Timer Callbacks
-        /// <summary>
-        /// 畫面抓取Timer回調 - 負責定時抓取遊戲畫面
-        /// </summary>
+        /// <summary>等待 <see cref="OnFrameReady"/> 首次分發有效幀，或逾時。取代固定 <c>Task.Delay</c> 猜測擷取管線已就緒。</summary>
+        public async Task<bool> WaitForFirstFrameAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+        {
+            if (!IsRunning)
+                return false;
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnFirst(Mat _, DateTime __) => tcs.TrySetResult(true);
+
+            OnFrameReady += OnFirst;
+            try
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(timeout);
+                try
+                {
+                    await tcs.Task.WaitAsync(cts.Token).ConfigureAwait(false);
+                    return true;
+                }
+                catch (OperationCanceledException)
+                {
+                    return false;
+                }
+            }
+            finally
+            {
+                OnFrameReady -= OnFirst;
+            }
+        }
+
         private void OnCaptureTimer(object? state)
         {
             if (_isRunningState == 0 || _capturer == null)
@@ -142,7 +144,7 @@ namespace ArtaleAI.UI
                 if (frameMat != null && !frameMat.Empty())
                 {
                     var captureTime = DateTime.UtcNow;
-                    
+
                     if (frameQueue.Count < MaxFrameQueueSize)
                     {
                         frameQueue.Enqueue(new TimestampedFrame(frameMat.Clone(), captureTime));
@@ -155,37 +157,34 @@ namespace ArtaleAI.UI
             }
         }
 
-        /// <summary>
-        /// 偵測處理Timer回調 - 從隊列取出畫面並分發給訂閱者處理
-        /// 性能優化：只處理最新幀，丟棄堆積的舊幀以保持同步
-        /// </summary>
         private void OnDetectionTimer(object? state)
         {
             if (_isRunningState == 0)
                 return;
 
-            if (System.Threading.Interlocked.CompareExchange(ref _isProcessingFrame, 1, 0) == 1)
+            if (Interlocked.CompareExchange(ref _isProcessingFrame, 1, 0) == 1)
+            {
+                var n = Interlocked.Increment(ref _skippedDetectionTicksWhileBusy);
+                if (n == 1 || n % 200 == 0)
+                    Logger.Debug($"[LiveView] 偵測 tick 略過（上一幀 ProcessFrame 尚未結束），累計≈{n}");
                 return;
+            }
 
             try
             {
                 TimestampedFrame? latestFrame = null;
-                int skippedFrames = 0;
 
                 while (frameQueue.TryDequeue(out var frame))
                 {
                     latestFrame?.Frame?.Dispose();
                     latestFrame = frame;
-                    
+
                     if (frameQueue.Count == 0)
                         break;
-                    
-                    skippedFrames++;
                 }
-                
+
                 if (latestFrame == null)
                     return;
-                
 
                 try
                 {
@@ -199,16 +198,13 @@ namespace ArtaleAI.UI
             }
             finally
             {
-                System.Threading.Interlocked.Exchange(ref _isProcessingFrame, 0);
+                Interlocked.Exchange(ref _isProcessingFrame, 0);
             }
         }
-        #endregion
 
-        #region IDisposable
         public void Dispose()
         {
             StopLiveView();
         }
-        #endregion
     }
 }

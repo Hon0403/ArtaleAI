@@ -9,15 +9,13 @@ using SdPointF = System.Drawing.PointF;
 
 namespace ArtaleAI.Services
 {
-    /// <summary>
-    /// 導航動作執行器 — Application 層的核心協調器。
-    /// </summary>
+    /// <summary>將 <see cref="NavigationEdge"/> 轉為實際按鍵與移動，並與視覺幀同步。</summary>
     public class NavigationExecutor
     {
         private readonly IKeyboardService _keyboard;
         private readonly IPlayerPositionProvider _positionProvider;
         private readonly CharacterMovementController _movementController;
-        private GamePipeline? _syncProvider; // 視覺同步提供者
+        private GamePipeline? _syncProvider;
 
         private const ushort VK_LEFT = 0x25;
         private const ushort VK_UP = 0x26;
@@ -27,13 +25,18 @@ namespace ArtaleAI.Services
 
         private const float FALL_Y_TOLERANCE = 15.0f;
 
+        private const int SideJumpPostLandingSettleMs = 200;
+        private const int SideJumpMinAirborneMsBeforeLanding = 450;
+        private const float SideJumpLandingYProximityPx = 3.2f;
+        private const float SideJumpLandingStableYDeltaPx = 0.85f;
+
         public enum ExecutionResult
         {
-            Completed,      
-            MovedToward,    
-            Skipped,        
-            Failed,         
-            Error           
+            Completed,
+            MovedToward,
+            Skipped,
+            Failed,
+            Error
         }
 
         public NavigationExecutor(
@@ -54,7 +57,7 @@ namespace ArtaleAI.Services
         private async Task WaitForNextFrameAsync(CancellationToken ct)
         {
             if (_syncProvider != null) await _syncProvider.WaitForNextFrameAsync(ct);
-            else await Task.Delay(20, ct); 
+            else await Task.Delay(20, ct);
         }
 
         public async Task<ExecutionResult> ExecuteActionAsync(
@@ -101,10 +104,7 @@ namespace ArtaleAI.Services
             return success ? ExecutionResult.Completed : ExecutionResult.Failed;
         }
 
-        /// <summary>
-        /// 配合預測性煞車架構進行重構：移除固定延遲。
-        /// SSOT：結合大腦實時感知 (isReached) 進行物理熔斷。
-        /// </summary>
+        /// <summary>走路至目標；移動層非 <see cref="MovementResult.Success"/> 時直接失敗，不以 isReached 覆寫。</summary>
         private async Task<bool> MoveToTargetWithCorrectionAsync(
             SdPointF targetPos, float fallToleranceY, Func<bool> isReached, CancellationToken ct)
         {
@@ -115,7 +115,6 @@ namespace ArtaleAI.Services
                 isReached,
                 ct);
 
-            // 移動層若已回報 Failed / NeedsCorrection，不可僅以 isReached() 覆寫（避免假陰性/假陽性與執行結果不一致）。
             if (moveResult != MovementResult.Success)
                 return false;
 
@@ -126,7 +125,6 @@ namespace ArtaleAI.Services
             NavigationEdge edge, SdPointF currentPos, SdPointF targetPos,
             bool isUp, Func<bool> isReached, CancellationToken ct)
         {
-            // 繩索無路徑節點 Hitbox；此段 SSOT 僅能由呼叫端委派表達。X 對齊容許量與設定的走路放鍵距離取較小者，避免預設 10px 過寬導致無法貼繩。
             float ropeAlignTol = Math.Min((float)AppConfig.Instance.Navigation.WaypointReachDistance, 2.0f);
             float ropeX = ExtractRopeX(edge, targetPos.X);
             float ropeTargetY = targetPos.Y;
@@ -149,7 +147,6 @@ namespace ArtaleAI.Services
                     ct);
 
                 if (!moveSuccess) return ExecutionResult.Failed;
-                // 🚀 移除 100ms 冗餘延後，MoveToTargetWithCorrectionAsync 已保證穩定
             }
 
             var playerPosF = _positionProvider.GetCurrentPosition() ?? currentPos;
@@ -182,8 +179,6 @@ namespace ArtaleAI.Services
         private async Task<ExecutionResult> ExecuteDirectionalJumpAsync(
             int direction, SdPointF currentPos, SdPointF targetPos, CancellationToken ct)
         {
-            // 方案 B + 執行層防呆：
-            // 若邊的 Jump 方向與幾何目標方向衝突，優先採用幾何方向，避免資料誤標導致反向跳躍。
             int effectiveDirection = direction;
             float dxToTarget = targetPos.X - currentPos.X;
             if (Math.Abs(dxToTarget) > 1.0f)
@@ -196,37 +191,66 @@ namespace ArtaleAI.Services
                 effectiveDirection = geometricDirection;
             }
 
+            _movementController.StopMovement();
+            float layerDy = Math.Abs(currentPos.Y - targetPos.Y);
+            int preJumpMs = AppConfig.Instance.Navigation.SideJumpPreJumpSettleMs;
+            if (layerDy < 4.0f && preJumpMs > 0)
+                await Task.Delay(preJumpMs, ct);
+
+            // 先原地 plant（不揹方向），避免邊緣側跳時 windup 期間長按方向走出平台（見 n11->n13 落層）。
+            int plantMs = Math.Max(0, AppConfig.Instance.Navigation.SideJumpWindupMs);
+            if (plantMs > 0)
+                await Task.Delay(plantMs, ct);
+            await WaitForNextFrameAsync(ct);
+
             ushort directionKey = effectiveDirection < 0 ? VK_LEFT : (effectiveDirection > 0 ? VK_RIGHT : (ushort)0);
-            if (directionKey != 0) _keyboard.SendKey(directionKey, false);
-            int windupMs = Math.Max(0, AppConfig.Instance.Navigation.DirectionalJumpDirectionHoldBeforeAltMs);
-            await Task.Delay(windupMs, ct);
-            // 先按下跳鍵，再放開，避免出現「只有方向鍵、沒有真正起跳」的假跳躍。
+            int leadMs = Math.Max(0, AppConfig.Instance.Navigation.SideJumpDirectionLeadMsBeforeAlt);
+            if (directionKey != 0)
+            {
+                _keyboard.SendKey(directionKey, false);
+                if (leadMs > 0)
+                    await Task.Delay(leadMs, ct);
+                else
+                    await WaitForNextFrameAsync(ct);
+            }
+
             _keyboard.SendKey(VK_LMENU, false);
-            int altHold = Math.Max(15, AppConfig.Instance.Navigation.DirectionalJumpAltHoldMs);
+            int altHold = Math.Max(15, AppConfig.Instance.Navigation.SideJumpAltHoldMs);
             await Task.Delay(altHold, ct);
             _keyboard.SendKey(VK_LMENU, true);
-            int landingWaitMs = Math.Max(500, AppConfig.Instance.Navigation.DirectionalJumpLandingWaitTimeoutMs);
+
+            var releasedDirEarly = false;
+            int releaseDirMs = Math.Max(0, AppConfig.Instance.Navigation.SideJumpReleaseDirectionMsAfterAlt);
+            if (directionKey != 0 && releaseDirMs > 0)
+            {
+                await Task.Delay(releaseDirMs, ct);
+                _keyboard.SendKey(directionKey, true);
+                releasedDirEarly = true;
+            }
+
+            int landingWaitMs = Math.Max(500, AppConfig.Instance.Navigation.SideJumpLandingTimeoutMs);
             bool landedByProximity = await WaitForLandingAsync(targetPos.Y, landingWaitMs, ct);
             if (!landedByProximity)
                 Logger.Warning($"[跳躍] WaitForLanding 逾時（{landingWaitMs}ms），將放開方向鍵並進行著陸驗收。targetY={targetPos.Y:F1}");
-            if (directionKey != 0) _keyboard.SendKey(directionKey, true); // 在空中位移結束後放鍵
+            if (directionKey != 0 && !releasedDirEarly)
+                _keyboard.SendKey(directionKey, true);
 
-            // 著陸後短暫穩定：再讀座標驗收，避免慣性／平台邊緣滑動導致誤判 Completed
-            int settleMs = AppConfig.Instance.Navigation.PostLandingSettleMs;
-            if (settleMs > 0)
-                await Task.Delay(settleMs, ct);
+            if (SideJumpPostLandingSettleMs > 0)
+                await Task.Delay(SideJumpPostLandingSettleMs, ct);
 
             var landPos = _positionProvider.GetCurrentPosition();
             if (landPos.HasValue)
             {
+                double configuredFallY = AppConfig.Instance.Navigation.SideJumpLandingMaxFallYPx;
+                float fallYTol = configuredFallY > 0 ? (float)configuredFallY : FALL_Y_TOLERANCE;
+
                 float landDy = Math.Abs(landPos.Value.Y - targetPos.Y);
-                if (landDy > FALL_Y_TOLERANCE)
+                if (landDy > fallYTol)
                 {
-                    Logger.Warning($"[跳躍] 著地 Y 偏差過大，判定失敗。landDy={landDy:F1}, tol={FALL_Y_TOLERANCE:F1}, landY={landPos.Value.Y:F1}, targetY={targetPos.Y:F1}");
+                    Logger.Warning($"[跳躍] 著地 Y 偏差過大，判定失敗。landDy={landDy:F1}, tol={fallYTol:F1}, landY={landPos.Value.Y:F1}, targetY={targetPos.Y:F1}");
                     return ExecutionResult.Failed;
                 }
 
-                // 跳躍必須同時滿足 X 向落點；閾值取 WaypointReachDistance 與設定之下限的較大者（取代硬編碼 4px）。
                 float xTolerance = (float)Math.Max(
                     AppConfig.Instance.Navigation.WaypointReachDistance,
                     AppConfig.Instance.Navigation.JumpLandingTolerancePx);
@@ -260,7 +284,7 @@ namespace ArtaleAI.Services
             return fallbackX;
         }
 
-        /// <returns>true 表示在逾時前已偵測到穩定著陸帶；false 表示逾時（仍須做後續座標驗收）。</returns>
+        /// <summary>側跳後等待 Y 進入目標帶並穩定；逾時回傳 false，仍由呼叫端做座標驗收。</summary>
         private async Task<bool> WaitForLandingAsync(float targetY, int timeoutMs, CancellationToken ct)
         {
             var startTime = DateTime.UtcNow;
@@ -270,9 +294,9 @@ namespace ArtaleAI.Services
             float initialY = _positionProvider.GetCurrentPosition()?.Y ?? -9999f;
             bool hasTakenOff = false;
             DateTime? takeoffUtc = null;
-            int minAirborneMs = Math.Max(0, AppConfig.Instance.Navigation.MinAirborneMsBeforeLanding);
-            float yBand = (float)Math.Max(1.0, AppConfig.Instance.Navigation.DirectionalJumpLandingYProximityPx);
-            float stableYDelta = (float)Math.Max(0.05, AppConfig.Instance.Navigation.DirectionalJumpLandingStableYDeltaPx);
+            int minAirborneMs = SideJumpMinAirborneMsBeforeLanding;
+            float yBand = SideJumpLandingYProximityPx;
+            float stableYDelta = SideJumpLandingStableYDeltaPx;
 
             while ((DateTime.UtcNow - startTime).TotalMilliseconds < timeoutMs && !ct.IsCancellationRequested)
             {
@@ -291,7 +315,6 @@ namespace ArtaleAI.Services
 
                     if (hasTakenOff && airborneLongEnough && Math.Abs(currentY - targetY) <= yBand)
                     {
-                        // 首幀 lastY 為 MinValue，差值極大，自然不會誤累積；之後以較寬鬆 delta 容忍板緣微滑（見設定說明）。
                         if (Math.Abs(currentY - lastY) < stableYDelta)
                         {
                             stableCounter++;
@@ -301,7 +324,7 @@ namespace ArtaleAI.Services
                     }
                     lastY = currentY;
                 }
-                await WaitForNextFrameAsync(ct); // 配合視覺同步偵測著地
+                await WaitForNextFrameAsync(ct);
             }
 
             return false;

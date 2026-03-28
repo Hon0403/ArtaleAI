@@ -1,6 +1,0 @@
-{
-  "artifactType":  "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
-  "summary":  "中文版實施計劃：按鍵錄製路徑系統。將 RouteRecorderService 改為記錄實際按鍵，創建 PathExecutor 精準回放。",
-  "updatedAt":  "2025-12-22T13:08:35.081649200Z",
-  "version":  "11"
-}

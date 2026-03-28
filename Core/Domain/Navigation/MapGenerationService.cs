@@ -62,7 +62,6 @@ namespace ArtaleAI.Core.Domain.Navigation
 
                     var vNode = new NavNodeData
                     {
-                        // 決定論 ID：避免重啟/重建圖後虛擬節點 ID 漂移。
                         Id = BuildDeterministicVirtualNodeId(subId, x, y),
                         X = x,
                         Y = y,
@@ -140,7 +139,6 @@ namespace ArtaleAI.Core.Domain.Navigation
 
         private static int Quantize(float value)
         {
-            // 與編輯器輸入精度（0.1）對齊，確保跨次重建 ID 穩定。
             return (int)Math.Round(value * 10f, MidpointRounding.AwayFromZero);
         }
     }

@@ -8,15 +8,15 @@ namespace ArtaleAI.Core.Domain.Navigation
     /// </summary>
     public enum NavigationActionType
     {
-        None = 0,       // 無動作
-        Walk,           // 普通行走（水平移動）
-        Jump,           // 原地跳躍
-        JumpLeft,       // 向左跳
-        JumpRight,      // 向右跳
-        JumpDown,       // 下跳平台
-        ClimbUp,        // 爬繩上行
-        ClimbDown,      // 爬繩下行
-        Teleport        // 傳送門
+        None = 0,
+        Walk,
+        Jump,
+        JumpLeft,
+        JumpRight,
+        JumpDown,
+        ClimbUp,
+        ClimbDown,
+        Teleport
     }
 
     /// <summary>

@@ -1,7 +1,0 @@
-{
-  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
-  "summary": "執行「配置模組遷移計畫」：將 Config 目錄下的 6 個設定 DTO 檔案遷移至 Models\\Config，並聯連動更新全專案約 16 個相關檔案的命名空間。這能讓專案架構更精簡、語義更對齊。",
-  "updatedAt": "2026-03-27T12:26:32.380652500Z",
-  "version": "9",
-  "requestFeedback": true
-}

@@ -1,5 +1,0 @@
-{
-  "artifactType":  "ARTIFACT_TYPE_WALKTHROUGH",
-  "summary":  "ArtaleAI 專案的 Clean Architecture 深度分析報告，涵蓋三大面向：職責混淆點分析、死碼與向下相容清單、Clean Architecture 重構藍圖。基於對整個專案約 8000+ 行原始碼的完整閱讀。",
-  "updatedAt":  "2026-03-02T13:13:47.100938500Z"
-}

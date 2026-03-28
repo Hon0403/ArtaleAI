@@ -1,5 +1,0 @@
-{
-  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
-  "summary": "此計畫旨在解決 AppConfig 模組化重構後遗漏的全域引用問題。我將遍歷所有報錯的檔案，並將舊的打平屬性存取更新為新的模組化路徑（如 config.Vision.CaptureFrameRate）。 (This plan aims to resolve the remaining global reference issues after the AppConfig modular refactoring. I will traverse all files with errors and update the old flat property accesses to the new modular paths.)",
-  "updatedAt": "2026-03-21T14:07:49.401200700Z"
-}

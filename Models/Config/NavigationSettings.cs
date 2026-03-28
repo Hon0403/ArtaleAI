@@ -2,9 +2,7 @@ using System;
 
 namespace ArtaleAI.Models.Config
 {
-    /// <summary>
-    /// 導航與路徑規劃設定
-    /// </summary>
+    /// <summary>導航、走路與側跳相關參數。</summary>
     public class NavigationSettings
     {
         /// <summary>連續檢測間隔（毫秒）</summary>
@@ -22,47 +20,38 @@ namespace ArtaleAI.Models.Config
         /// <summary>路徑點到達判定距離（像素）- 預設對齊 3x3 Hitbox 心臟地帶</summary>
         public double WaypointReachDistance { get; set; } = 1.5;
 
-        /// <summary>
-        /// 方向跳／側跳著陸後與目標節點 X 的容許偏差下限（像素）。
-        /// 實際閾值為與 <see cref="WaypointReachDistance"/> 的較大者；實測曾出現 landDx≈6.2 且 Y 正確。
-        /// </summary>
-        public double JumpLandingTolerancePx { get; set; } = 7.0;
+        /// <summary>側跳著陸 X 容差下限（px）；與 <see cref="WaypointReachDistance"/> 取較大者驗收。</summary>
+        public double JumpLandingTolerancePx { get; set; } = 9.0;
 
-        /// <summary>
-        /// 側跳前按住方向鍵的毫秒數（再起跳鍵）；略增可強化水平初速，緩解「起跳點略偏左時直接落底層」。
-        /// </summary>
-        public int DirectionalJumpDirectionHoldBeforeAltMs { get; set; } = 110;
+        /// <summary>Alt 放開後經此毫秒即放開方向鍵；0＝舊行為（等 WaitForLanding 結束才放）。可避免落地後仍長按滑出 X 容差。</summary>
+        public int SideJumpReleaseDirectionMsAfterAlt { get; set; } = 0;
 
-        /// <summary>側跳時跳躍鍵（Alt）按住毫秒數；過短易造成小跳落層，過長依遊戲可能變攀爬。</summary>
-        public int DirectionalJumpAltHoldMs { get; set; } = 85;
+        /// <summary>側跳著陸 Y 驗收容許（px）；0 則使用執行器內建 15。僅影響方向跳著陸檢查。</summary>
+        public double SideJumpLandingMaxFallYPx { get; set; } = 0;
 
-        /// <summary>
-        /// WaitForLanding 判定「接近目標層」的 |Y−targetY| 上限（像素）。舊版硬編碼 2.5 曾使 153 vs target 150.4（差 2.6）永遠無法觸發穩定著陸。
-        /// </summary>
-        public double DirectionalJumpLandingYProximityPx { get; set; } = 3.2;
+        /// <summary>側跳：按下方向鍵**之前**原地等待（ms），不揹方向避免薄邊緣先走出去。</summary>
+        public int SideJumpWindupMs { get; set; } = 22;
 
-        /// <summary>側跳著陸等候逾時（毫秒），逾時仍會進入驗收；過短易在滯空中提早放方向鍵。</summary>
-        public int DirectionalJumpLandingWaitTimeoutMs { get; set; } = 2500;
+        /// <summary>按下方向後、按下 Alt 前的極短等待（ms）；略增可拉遠跳距，過大易在邊緣滑步。</summary>
+        public int SideJumpDirectionLeadMsBeforeAlt { get; set; } = 12;
 
-        /// <summary>
-        /// WaitForLanding：連續幀 Y 視為「穩定」的最大變化（像素）。過嚴（如 0.2）時著陸後 150.4↔151.1 滑動會永遠無法累積 stableCounter。
-        /// </summary>
-        public double DirectionalJumpLandingStableYDeltaPx { get; set; } = 0.85;
+        /// <summary>跳躍鍵（Alt）按住（ms）。</summary>
+        public int SideJumpAltHoldMs { get; set; } = 105;
 
-        /// <summary>跳躍著地後延遲（毫秒），讓物理與視覺座標穩定再驗收／交給下一動作；對齊舊版「著陸後短暫等待」契約。</summary>
-        public int PostLandingSettleMs { get; set; } = 100;
+        /// <summary>同層側跳：StopMovement 後再等（ms）再接方向；0 關閉。</summary>
+        public int SideJumpPreJumpSettleMs { get; set; } = 45;
 
-        /// <summary>起跳後至少經過此毫秒數，才接受「已著地」判定，避免滯空初期誤判導致提早放鍵／切狀態。</summary>
-        public int MinAirborneMsBeforeLanding { get; set; } = 450;
+        /// <summary>WaitForLanding 逾時（ms），逾時仍做座標驗收。</summary>
+        public int SideJumpLandingTimeoutMs { get; set; } = 2500;
 
-        /// <summary>水平移動過衝後，反向碎步最多嘗試次數（Bang-Bang 對準 Hitbox）。</summary>
-        public int OvershootCorrectionMaxTaps { get; set; } = 6;
+        /// <summary>水平移動過衝後反向碎步次數；0＝關閉。預設 0 對齊 Hitbox 優先；易過衝時改 3～6。</summary>
+        public int OvershootCorrectionMaxTaps { get; set; } = 0;
 
-        /// <summary>Walk 已進 Hitbox 後，與目標點 X 的額外對齊容許（像素）。≤0 表示關閉幾何微調。</summary>
-        public double WalkGeometricAlignTolerancePx { get; set; } = 1.2;
+        /// <summary>進入 Hitbox 後朝 waypoint X 短按收斂的殘差門檻（px）；≤0 關閉。</summary>
+        public double WalkGeometricAlignTolerancePx { get; set; } = 0;
 
-        /// <summary>幾何微調最多短按次數（避免與過寬 Hitbox 早驗收疊加後仍偏離節點中心）。</summary>
-        public int WalkGeometricTrimMaxTaps { get; set; } = 10;
+        /// <summary>幾何微調最多短按次數；預設 0 與上項關閉搭配。</summary>
+        public int WalkGeometricTrimMaxTaps { get; set; } = 0;
 
         /// <summary>最大追蹤歷史記錄數量</summary>
         public int MaxTrackingHistory { get; set; } = 1000;
@@ -77,9 +66,7 @@ namespace ArtaleAI.Models.Config
         public PlatformBoundsConfig PlatformBounds { get; set; } = new();
     }
 
-    /// <summary>
-    /// 平台邊界處理設定
-    /// </summary>
+    /// <summary>接近地圖邊界時的緩衝與冷卻。</summary>
     public class PlatformBoundsConfig
     {
         /// <summary>緩衝區大小（像素，接近邊界時提前觸發減速）</summary>

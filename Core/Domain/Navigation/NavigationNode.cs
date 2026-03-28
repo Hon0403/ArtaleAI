@@ -9,10 +9,10 @@ namespace ArtaleAI.Core.Domain.Navigation
     /// </summary>
     public enum NavigationNodeType
     {
-        Platform,   // 一般平台行走點
-        Rope,       // 繩索點
-        Portal,     // 傳送門
-        MonsterZone // 怪物區
+        Platform,
+        Rope,
+        Portal,
+        MonsterZone
     }
 
     /// <summary>

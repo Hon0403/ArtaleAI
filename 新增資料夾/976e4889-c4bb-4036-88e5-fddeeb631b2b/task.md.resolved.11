@@ -1,8 +1,0 @@
-# 路徑編輯整合
-
-## 實作進度
-- [x] 1. HandleClick 改為 `[x, y, actionCode]` 格式
-- [x] 2. Render 已支援根據 actionCode 顯示顏色
-- [x] 3. HandleDeleteAction 支援新格式
-- [x] 4. 建置成功
-- [ ] 5. 🔔 **驗收後提醒刪除舊功能**

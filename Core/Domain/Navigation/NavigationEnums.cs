@@ -6,8 +6,8 @@ namespace ArtaleAI.Core.Domain.Navigation
     /// </summary>
     public enum MovementResult
     {
-        Success,          // 成功合法到達終點
-        Failed,           // 發生超時、丟失、掉落或無效目標等失敗
-        NeedsCorrection   // 觸發穿越防呆，但誤差過大，需要決策層進行微調
+        Success,
+        Failed,
+        NeedsCorrection
     }
 }

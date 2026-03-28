@@ -1,7 +1,0 @@
-# 鍵盤 Hook 實作 ✅
-
-## 實作進度
-- [x] 1. 在 RouteRecorderService 加入鍵盤 Hook API
-- [x] 2. 加入 Hook 回調捕捉 Alt 按鍵
-- [x] 3. DetectKeys 結合 Hook 資料
-- [x] 4. 建置成功 (82 警告)

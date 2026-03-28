@@ -1,6 +1,0 @@
-{
-  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
-  "summary": "Implementation plan for a graph-based pathfinding system that can plan routes through waypoints, handle rope climbing, and jump connections between platforms.",
-  "updatedAt": "2026-01-17T15:43:43.533863100Z",
-  "version": "1"
-}

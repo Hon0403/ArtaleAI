@@ -3,9 +3,7 @@ using ArtaleAI.API.Models;
 
 namespace ArtaleAI.API.Config
 {
-    /// <summary>
-    /// API 專用配置類別
-    /// </summary>
+    /// <summary>怪物圖下載與影像處理的靜態預設設定。</summary>
     public static class ApiConfig
     {
         public static string BaseUrl { get; private set; } = "https://maplestory.io/api/cms/361/";
@@ -24,7 +22,6 @@ namespace ArtaleAI.API.Config
                 BaseUrl = baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/";
             }
             
-            // 初始化預設設定
             MonsterDownload = new MonsterDownloadSettings
             {
                 BaseUrl = "https://maplestory.io",

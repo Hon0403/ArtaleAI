@@ -14,27 +14,20 @@ using Timer = System.Threading.Timer;
 
 namespace ArtaleAI.Core
 {
-    /// <summary>
-    /// 路徑規劃追蹤器 - 負責持續檢測玩家位置和路徑狀態
-    /// </summary>
+    /// <summary>依小地圖追蹤更新路徑狀態、邊解析與救援重規劃。</summary>
     public partial class PathPlanningTracker : IDisposable
     {
-        // 導航圖相關欄位
         private NavigationGraph? _navGraph;
 
-        // Readonly 欄位
         private readonly GameVisionCore _gameVision;
         private readonly Random _random = new Random();
-        private readonly object _randomLock = new object(); // 執行緒安全鎖
+        private readonly object _randomLock = new object();
         private readonly List<MinimapTrackingResult> _trackingHistory;
-        private readonly object _historyLock = new object(); // 執行緒安全鎖
+        private readonly object _historyLock = new object();
 
-        // 可變欄位 (volatile 確保多執行緒可見性)
         private INavigationStateMachine? _fsm;
 
-        /// <summary>
-        /// 取得當前路徑規劃狀態
-        /// </summary>
+        /// <summary>目前規劃中的路徑與索引。</summary>
         public PathPlanningState? CurrentPathState { get; private set; }
 
         public event Action<MinimapTrackingResult>? OnTrackingUpdated;
@@ -43,10 +36,7 @@ namespace ArtaleAI.Core
 
         public NavigationGraph? NavGraph => _navGraph;
 
-        /// <summary>
-        /// 🛡️ SSOT 感知介面：判定當前角色是否已抵達目標 Hitbox。
-        /// 物理執行層應主動拉取 (Pull) 此判定，而非等待推播。
-        /// </summary>
+        /// <summary>目前路徑點之 Hitbox 是否包含玩家位置。</summary>
         public bool IsPlayerAtTarget()
         {
             var state = CurrentPathState;
@@ -94,9 +84,6 @@ namespace ArtaleAI.Core
                 var prevTarget = path[currentIndex - 1];
                 var currentTarget = path[currentIndex];
 
-                // 關鍵：CurrentPathState.PlannedPath[0] 在「救援重定位」時可能是角色當前座標，
-                // 距離最近節點中心 > 15px；若仍用固定半徑找 nearest node，會導致 edge 解析失敗而回傳 null。
-                // 因此優先使用 PlannedPathNodes（nodeId）來取得邊，讓解析語意與 A* 重規劃一致（SSOT）。
                 if (CurrentPathState.PlannedPathNodes != null &&
                     CurrentPathState.PlannedPathNodes.Count > currentIndex &&
                     CurrentPathState.PlannedPathNodes.Count > currentIndex - 1)
@@ -113,8 +100,6 @@ namespace ArtaleAI.Core
                     }
                 }
 
-                // fallback：仍保留基於座標的解析，但改用較寬鬆的半徑以降低救援後漂移導致的 edge 缺失。
-                // 這是保護性機制，應該在 PlannedPathNodes 未填入時才會觸發。
                 var currNode = _navGraph.FindNearestNode(new System.Drawing.PointF(currentTarget.X, currentTarget.Y), 60.0f);
                 var prevNode = _navGraph.FindNearestNode(new System.Drawing.PointF(prevTarget.X, prevTarget.Y), 60.0f);
 
@@ -186,8 +171,7 @@ namespace ArtaleAI.Core
 
             if (mapData.Nodes == null || mapData.Nodes.Count == 0)
             {
-                // A2: 完全不支援舊 MapData（強制升級到 NavGraph 結構）
-                Logger.Error("[路徑追蹤] 不相容的 MapData：缺少 Nodes。已禁止進行 LegacyMapMigrator 遷移（A2）。");
+                Logger.Error("[路徑追蹤] 不相容的 MapData：缺少 Nodes。");
                 CurrentPathState = new PathPlanningState
                 {
                     IsPathCompleted = true
@@ -231,9 +215,7 @@ namespace ArtaleAI.Core
             }
         }
 
-        /// <summary>
-        /// 與 MainForm 一致：臨時目標優先，否則為當前路徑點索引所指座標。
-        /// </summary>
+        /// <summary>以臨時目標或下一路徑點計算距離。</summary>
         private static void RecalculateDistanceToNextWaypoint(PathPlanningState state, SdPointF playerPos)
         {
             var targetOpt = state.TemporaryTarget ?? state.NextWaypoint;
@@ -252,7 +234,6 @@ namespace ArtaleAI.Core
             var playerPos = trackingResult.PlayerPosition;
             if (!playerPos.HasValue || playerPos.Value == SdPointF.Empty) return;
 
-            // SSOT：座標快照必須與追蹤結果一致；若僅因 IsPathCompleted 略過更新，GetCurrentPosition 會與 UI/實際角色脫節（移動迴圈會基於凍結座標無限長按方向鍵）。
             state.CurrentPlayerPosition = playerPos.Value;
 
             if (state.IsPathCompleted) return;
@@ -270,7 +251,6 @@ namespace ArtaleAI.Core
 
             RecalculateDistanceToNextWaypoint(state, playerPos.Value);
 
-            // 僅更新快照事件，不再主動發送 NotifyTargetReached，由 FSM/Executor 輪詢 IsPlayerAtTarget。
             OnPathStateChanged?.Invoke(state);
         }
 
@@ -313,7 +293,6 @@ namespace ArtaleAI.Core
                     var pathObj = _navGraph.FindPath(startNode.Id, goalNode.Id);
                     if (pathObj != null && pathObj.Edges.Count > 0)
                     {
-                        // 跳過含有未實作動作的路徑（JumpDown 尚未支援）
                         bool hasUnsupportedAction = pathObj.Edges.Any(e =>
                             e.ActionType == NavigationActionType.JumpDown);
                         if (hasUnsupportedAction) continue;
@@ -340,8 +319,6 @@ namespace ArtaleAI.Core
                         }
                     }
 
-                    // 💡 [修正] 徹底移除路徑簡化機制，落實導航原始主義
-                    // 救援流程可能先設 IsPathCompleted=true 再進入隨機選路；此處必須清旗標，否則 UpdatePathState 不再寫入 CurrentPlayerPosition，移動層會永遠讀到過期座標。
                     CurrentPathState.IsPathCompleted = false;
                     CurrentPathState.PlannedPath = newPlannedPath;
                     CurrentPathState.PlannedPathNodes = newNodeIds;
@@ -363,7 +340,6 @@ namespace ArtaleAI.Core
 
         public void Dispose()
         {
-            // 不需要 StopTracking，因為已經廢除主動追蹤迴圈
             if (_fsm != null)
             {
                 _fsm.OnStateChanged -= OnFsmStateChanged;
@@ -381,17 +357,14 @@ namespace ArtaleAI.Core
             if (!currentPosNullable.HasValue) return false;
             var currentPos = currentPosNullable.Value;
 
-            // 取得原始終點節點 ID（路徑的最後一個節點）
             string originalTargetNodeId = CurrentPathState.PlannedPathNodes.Last();
             var originalTargetNode = _navGraph.GetNode(originalTargetNodeId);
             if (originalTargetNode == null) return false;
 
             Logger.Info($"[導航救援] 啟動全域重定位流程。當前位置: {currentPos:F1}，原始目標: {originalTargetNode.Id}");
 
-            // 🛡️ 物理緩衝：確保清空所有舊有的按鍵指令，防止重新規劃後因慣性衝過頭
             _fsm?.CancelNavigation("啟動全域重定位救援");
 
-            // 🔍 實作「全域節點檢索」：設定搜尋半徑為 150.0 像素，不再受限於 5px 高度落差
             var nearestNode = _navGraph.FindNearestNode(currentPos, 150.0f);
 
             if (nearestNode == null)
@@ -403,7 +376,6 @@ namespace ArtaleAI.Core
             float dist = (float)Math.Sqrt(Math.Pow(currentPos.X - nearestNode.Position.X, 2) + Math.Pow(currentPos.Y - nearestNode.Position.Y, 2));
             Logger.Info($"[導航救援] 找到最近補給節點 {nearestNode.Id} (距離:{dist:F1}px)，重新啟動 A* 規劃...");
 
-            // 🚀 執行 A* 重規劃：從最近節點規劃至原始終點
             var pathObj = _navGraph.FindPath(nearestNode.Id, originalTargetNodeId);
             
             if (pathObj == null || pathObj.Edges.Count == 0 && nearestNode.Id != originalTargetNodeId)
@@ -412,9 +384,8 @@ namespace ArtaleAI.Core
                 return false;
             }
 
-            // 構建全新路徑狀態
             var updatedPath = new List<SdPointF> { currentPos };
-            var updatedNodes = new List<string> { nearestNode.Id }; // 最近節點作為新起點軌跡
+            var updatedNodes = new List<string> { nearestNode.Id };
 
             if (pathObj != null)
             {
@@ -429,13 +400,11 @@ namespace ArtaleAI.Core
                 }
             }
 
-            // 更新 CurrentPathState 並觸發無縫重啟
             lock (_randomLock)
             {
                 CurrentPathState.PlannedPath = updatedPath;
                 CurrentPathState.PlannedPathNodes = updatedNodes;
 
-                // 🛡️ [修正] 邊界保護：若救援後已在目標點，直接標記完成並啟動下一目標。
                 if (updatedPath.Count <= 1)
                 {
                     Logger.Info("[導航救援] 重定位完成：角色已位於目標節點。");
@@ -445,7 +414,7 @@ namespace ArtaleAI.Core
                 else
                 {
                     CurrentPathState.IsPathCompleted = false;
-                    CurrentPathState.CurrentWaypointIndex = 1; // 從第一個路徑點開始執行
+                    CurrentPathState.CurrentWaypointIndex = 1;
                 }
             }
 

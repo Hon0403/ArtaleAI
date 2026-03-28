@@ -1,6 +1,0 @@
-{
-  "artifactType": "ARTIFACT_TYPE_TASK",
-  "summary": "實作分時啟動策略以解決啟動遲緩問題。\n1. 更新 FFmpeg 環境變數為極速模式。\n2. 重構 OnLoaded 為異步連線排隊。\n3. 驗證分時啟動效果。",
-  "updatedAt": "2026-03-27T13:26:25.742885200Z",
-  "version": "4"
-}

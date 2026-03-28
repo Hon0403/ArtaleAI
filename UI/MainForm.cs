@@ -11,7 +11,7 @@ using ArtaleAI.UI;
 using ArtaleAI.UI.MapEditing;
 using ArtaleAI.Models.Visualization;
 using ArtaleAI.Utils;
-using ArtaleAI.Core.Domain.Navigation;  // 邊驅動動作架構
+using ArtaleAI.Core.Domain.Navigation;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
 using System.Collections.Concurrent;
@@ -40,19 +40,16 @@ namespace ArtaleAI
         private GameVisionCore? gameVision;
         private AppConfig Config => AppConfig.Instance;
 
-        // 檢測狀態管理
         private List<Rectangle> _currentMinimapBoxes = new();
         private List<Rectangle> _currentMinimapMarkers = new();
-        private List<Mat> currentMonsterMatTemplates = new();
-
-        private string _selectedMonsterName = string.Empty;
+        private MonsterTemplateStore? _monsterTemplates;
+        /// <summary>無模板時供 <see cref="GamePipeline"/> 重複指派，避免每幀配置新 <see cref="List{Mat}"/>。</summary>
+        private static readonly List<Mat> s_emptyMonsterTemplates = new();
         private LiveViewManager? liveViewManager;
 
-        // 圖像同步鎖
         private Bitmap? _currentDisplayFrame;
         private readonly object imageUpdateLock = new object();
 
-        // 其他服務
         private MinimapViewer? _minimapViewer;
         private MapFileManager? _mapFileManager;
         private MonsterImageFetcher? _monsterDownloader;
@@ -66,28 +63,21 @@ namespace ArtaleAI
 
 
 
-        // 狀態訊息輸出控制
         private DateTime _lastStatusUpdate = DateTime.MinValue;
-        private const int StatusUpdateIntervalMs = 500; // 狀態訊息更新間隔（500ms）
+        private const int StatusUpdateIntervalMs = 500;
 
-        // 🔧 UI 更新節流控制（避免 UI 更新太頻繁造成卡頓）
         private DateTime _lastUIUpdate = DateTime.MinValue;
-        private const int UIUpdateIntervalMs = 33; // UI 更新間隔（33ms = 約 30Hz，人眼幾乎察覺不到）
-        private volatile bool _isUIUpdatePending = false; // 是否有 UI 更新在等待執行
-        private volatile bool _isLiveViewTabActive = false; // 🔧 快取的 Tab 狀態（避免每幀都 Invoke）
-        private volatile bool _isPathEditingTabActive = false; // 🔧 快取的路徑編輯 Tab 狀態
+        private const int UIUpdateIntervalMs = 33;
+        private volatile bool _isUIUpdatePending = false;
+        private volatile bool _isLiveViewTabActive = false;
+        private volatile bool _isPathEditingTabActive = false;
 
-        // 視覺與導航狀態旗標
-        private volatile bool _visionDataReady = false; // 🔧 幀驅動同步旗標：視覺處理完成後設為 true
+        private volatile bool _visionDataReady = false;
 
-        // 訊息輸出去重（避免重複輸出相同訊息）
         private float _lastReportedDistance = -1;
-        // 🔗 核心組件橋接 (為了向下相容)
         private string _lastReportedAction = "";
 
-        /// <summary>
-        /// 安全報告路徑規劃動作（避免重複，線程安全）
-        /// </summary>
+        /// <summary>路徑動作狀態列去重（執行緒安全）。</summary>
         private void ReportAction(string action)
         {
             if (action == _lastReportedAction) return;
@@ -95,11 +85,11 @@ namespace ArtaleAI
 
             if (InvokeRequired)
             {
-                BeginInvoke(new Action(() => MsgLog.ShowStatus(textBox1, $"🎯 {action}")));
+                BeginInvoke(new Action(() => MsgLog.ShowStatus(textBox1, action)));
             }
             else
             {
-                MsgLog.ShowStatus(textBox1, $"🎯 {action}");
+                MsgLog.ShowStatus(textBox1, action);
             }
         }
 
@@ -109,7 +99,6 @@ namespace ArtaleAI
 
         public MainForm()
         {
-            // 🔧 初始化日誌系統（在所有初始化之前）
             Logger.Initialize("Logs", enableConsole: true);
             Logger.Info("[系統] ArtaleAI 正在啟動...");
 
@@ -135,13 +124,12 @@ namespace ArtaleAI
 
                 _mapEditor = new MapEditor(config);
                 gameVision = new GameVisionCore();
+                _monsterTemplates = new MonsterTemplateStore(gameVision);
 
-                // 架構考量：MapFileManager 不再接收 UI 引用，只接收 MapEditor
                 _mapFileManager = new MapFileManager(_mapEditor);
                 _minimapViewer = new MinimapViewer(this, config);
                 _monsterDownloader = new MonsterImageFetcher(this);
 
-                // ComboBox 由 MainForm 自行管理（不再由 MapFileManager 操作）
                 PopulateMapFilesComboBox();
                 cbo_MapFiles.DropDown += (s, e) => PopulateMapFilesComboBox();
 
@@ -172,22 +160,17 @@ namespace ArtaleAI
                 _fsm = new NavigationStateMachine(_navigationExecutor, tracker);
                 _pathPlanningManager.Tracker.BindStateMachine(_fsm);
 
-                // 架構考量：GamePipeline 封裝每幀處理流程，OverlayRenderer 負責繪製
                 _gamePipeline = new GamePipeline(gameVision, _pathPlanningManager, _movementController);
-                _movementController.SetSyncProvider(_gamePipeline); // 🔗 核心同步：移動層
-                _navigationExecutor.SetSyncProvider(_gamePipeline); // 🔗 核心同步：執行層
+                _movementController.SetSyncProvider(_gamePipeline);
+                _navigationExecutor.SetSyncProvider(_gamePipeline);
                 _overlayRenderer = new OverlayRenderer();
 
-                // ── 事件訂閱 ──
-
-                // MapFileManager 事件 → UI 更新
                 _mapFileManager.MapSaved += OnMapSaved;
                 _mapFileManager.MapLoaded += OnMapFileLoaded;
                 _mapFileManager.StatusMessage += OnMapFileManagerStatusMessage;
                 _mapFileManager.ErrorMessage += OnMapFileManagerErrorMessage;
                 _mapFileManager.FileListChanged += OnMapFileListChanged;
 
-                // GamePipeline 事件 → UI 更新
                 _gamePipeline.OnFrameProcessed += OnGamePipelineFrameProcessed;
                 _gamePipeline.OnStatusMessage += msg =>
                 {
@@ -198,11 +181,6 @@ namespace ArtaleAI
                 };
                 _gamePipeline.OnPathTrackingResult += OnPathTrackingUpdated;
 
-                // PathPlanningManager 事件
-                // Bug Fix：移除對 OnTrackingUpdated 的越級訂閱
-                // 原因：GamePipeline 內部已呼叫 ProcessTrackingResult 並透過
-                // OnPathTrackingResult 事件傳遞結果，重複訂閱會導致每幀呼叫兩次
-                // _pathPlanningManager.OnTrackingUpdated += OnPathTrackingUpdated; // 已由 GamePipeline 統一管理
                 liveViewManager = new LiveViewManager(config);
                 liveViewManager.OnFrameReady += OnFrameAvailable;
                 numericUpDownZoom.Value = Config.General.ZoomFactor;
@@ -216,10 +194,7 @@ namespace ArtaleAI
             }
         }
 
-        /// <summary>
-        /// 刷新主控台的路徑檔案下拉選單
-        /// </summary>
-        /// <param name="suppressLog">是否隱藏Log</param>
+        /// <summary>重新列舉 <c>MapData</c> 內 JSON 路徑檔並填入下拉選單。</summary>
         private void RefreshLoadPathFileOptions(bool suppressLog = false)
         {
             try
@@ -238,7 +213,6 @@ namespace ArtaleAI
                     Directory.CreateDirectory(mapDataDirectory);
                 }
 
-                // Add default None option
                 cbo_LoadPathFile.Items.Add("null");
 
                 var mapFiles = Directory.GetFiles(mapDataDirectory, "*.json");
@@ -248,7 +222,6 @@ namespace ArtaleAI
                     cbo_LoadPathFile.Items.Add(Path.GetFileNameWithoutExtension(file));
                 }
 
-                // 還原選擇
                 if (!string.IsNullOrEmpty(currentSelection) && cbo_LoadPathFile.Items.Contains(currentSelection))
                 {
                     cbo_LoadPathFile.Text = currentSelection;
@@ -268,26 +241,10 @@ namespace ArtaleAI
         {
             try
             {
-                var monstersDirectory = PathManager.MonstersDirectory;
-                var monsterNames = new List<string>();
-
-                if (Directory.Exists(monstersDirectory))
-                {
-                    var subDirectories = Directory.GetDirectories(monstersDirectory);
-                    monsterNames = subDirectories.Select(p => Path.GetFileName(p) ?? string.Empty).Where(n => !string.IsNullOrEmpty(n)).ToList();
-                }
-
-                cbo_MonsterTemplates.Items.Clear();
-                // Add default None option
-                cbo_MonsterTemplates.Items.Add("null");
-
-                foreach (var name in monsterNames)
-                {
-                    cbo_MonsterTemplates.Items.Add(name);
-                }
-
+                MonsterTemplateStore.PopulateMonsterCombo(cbo_MonsterTemplates, PathManager.MonstersDirectory);
                 cbo_MonsterTemplates.SelectedIndexChanged += OnMonsterSelectionChanged;
-                MsgLog.ShowStatus(textBox1, $" 載入 {monsterNames.Count} 個怪物模板");
+                int count = MonsterTemplateStore.EnumerateMonsterFolderNames(PathManager.MonstersDirectory).Count;
+                MsgLog.ShowStatus(textBox1, $" 載入 {count} 個怪物模板");
             }
             catch (Exception ex)
             {
@@ -295,7 +252,6 @@ namespace ArtaleAI
             }
         }
 
-        // 🔧 性能優化：使用非阻塞 UI 更新 + 節流控制
         private void UpdateDisplay(Bitmap newFrame)
         {
             if (newFrame?.Width <= 0 || newFrame?.Height <= 0)
@@ -304,13 +260,11 @@ namespace ArtaleAI
                 return;
             }
 
-            // 🔧 UI 節流：如果距離上次更新時間太短，或有更新正在等待，則跳過此幀
             var now = DateTime.UtcNow;
             var elapsed = (now - _lastUIUpdate).TotalMilliseconds;
 
             if (elapsed < UIUpdateIntervalMs || _isUIUpdatePending)
             {
-                // 跳過此幀以避免 UI 堆積，但記錄以便調試
                 newFrame?.Dispose();
                 return;
             }
@@ -338,7 +292,6 @@ namespace ArtaleAI
 
             if (InvokeRequired)
             {
-                // 🔧 使用非阻塞的 BeginInvoke，不會造成背景執行緒等待
                 BeginInvoke(updateAction);
             }
             else
@@ -349,30 +302,18 @@ namespace ArtaleAI
 
         private void BindEvents()
         {
-            // UI 控制項事件綁定
             tabControl1.SelectedIndexChanged += TabControl1_SelectedIndexChanged;
             numericUpDownZoom.ValueChanged += numericUpDownZoom_ValueChanged;
 
-            // 地圖編輯模式事件
             rdo_PathMarker.CheckedChanged += OnEditModeChanged;
             rdo_RopeMarker.CheckedChanged += OnEditModeChanged;
             rdo_DeleteMarker.CheckedChanged += OnEditModeChanged;
 
-            // 小地圖滑鼠事件
-            // Event bindings for Paint, MouseMove, MouseLeave are already in Designer.cs
-
-            // 🎨 設定深色主題背景
             pictureBoxMinimap.BackColor = Color.FromArgb(45, 45, 48);
 
-            // 按鈕事件
-            // Event bindings for btn_SaveMap and btn_New are already in Designer.cs
-
-            // 🔧 自動攻擊相關事件綁定（更新快取狀態）
             ckB_Start.CheckedChanged += (s, e) => UpdateAutoAttackState();
             cbo_LoadPathFile.SelectedIndexChanged += (s, e) => UpdateAutoAttackState();
             cbo_DetectMode.SelectedIndexChanged += (s, e) => UpdateAutoAttackState();
-            // cbo_MonsterTemplates 已在 InitializeMonsterTemplateSystem 中綁定 OnMonsterSelectionChanged
-            // 我們需要額外呼叫 UpdateAutoAttackState
             cbo_MonsterTemplates.SelectedIndexChanged += (s, e) => UpdateAutoAttackState();
 
         }
@@ -405,7 +346,7 @@ namespace ArtaleAI
 
             if (isNewFile)
             {
-                PopulateMapFilesComboBox(); // 刷新下拉清單以包含新檔案
+                PopulateMapFilesComboBox();
             }
 
             RefreshMinimap();
@@ -434,9 +375,7 @@ namespace ArtaleAI
 
         #region 辨識模式控制
 
-        /// <summary>
-        /// 初始化辨識模式下拉選單
-        /// </summary>
+        /// <summary>依設定檔填入怪物偵測模式下拉選單。</summary>
         private void InitializeDetectionModeDropdown()
         {
             cbo_DetectMode.Items.Clear();
@@ -475,9 +414,6 @@ namespace ArtaleAI
             cbo_DetectMode.SelectedIndexChanged += OnDetectionModeChanged;
         }
 
-        /// <summary>
-        /// 辨識模式變更事件 - 重構版
-        /// </summary>
         private void OnDetectionModeChanged(object? sender, EventArgs e)
         {
             var selectedDisplayText = cbo_DetectMode.SelectedItem?.ToString();
@@ -485,21 +421,17 @@ namespace ArtaleAI
 
             var config = AppConfig.Instance;
 
-            // 1. 直接從顯示名稱找到模式 key（內嵌邏輯）
             var selectedMode = config.Vision.DetectionModes?
                 .FirstOrDefault(kvp => kvp.Value.DisplayName == selectedDisplayText).Key
                 ?? config.Vision.DefaultMode ?? "Normal";
 
-            // 2. 直接找到最佳遮擋設定（內嵌邏輯）
             var optimalOcclusion = "None";
             if (config.Vision.DetectionModes?.TryGetValue(selectedMode, out var modeConfig) == true)
             {
                 optimalOcclusion = modeConfig.Occlusion;
             }
 
-            // 3. 套用設定
             config.Vision.DetectionMode = selectedMode;
-            //GameConfig.Instance.MonsterDetection.OcclusionHandling = optimalOcclusion.ToString();
 
             MsgLog.ShowStatus(textBox1, $" 偵測模式: {selectedMode} | 遮擋: {optimalOcclusion}");
         }
@@ -543,16 +475,12 @@ namespace ArtaleAI
 
         private async void TabControl1_SelectedIndexChanged(object? sender, EventArgs e)
         {
-            // 🔧 性能優化：快取 Tab 狀態，避免每幀都進行 Invoke 檢查
             _isLiveViewTabActive = tabControl1.SelectedIndex == 2;
-            _isPathEditingTabActive = tabControl1.SelectedIndex == 1; // 路徑編輯分頁
+            _isPathEditingTabActive = tabControl1.SelectedIndex == 1;
 
-            // 🔧 修復：當切換到即時顯示分頁且 LiveView 已在運行時，不要中斷它
-            // 這可以避免路徑追蹤期間因為 LiveView 重啟導致的位置資料遺失
             bool isLiveViewRunning = liveViewManager?.IsRunning == true;
             bool isSwitchingToLiveView = _isLiveViewTabActive;
 
-            // 只有在非切換到即時顯示分頁，或 LiveView 未運行時才停止資源
             if (!isSwitchingToLiveView || !isLiveViewRunning)
             {
                 StopAndReleaseAllResources();
@@ -564,9 +492,8 @@ namespace ArtaleAI
 
             switch (tabControl1.SelectedIndex)
             {
-                case 0: // 主控台頁面
+                case 0:
                     UpdateWindowTitle("ArtaleAI");
-                    // 🔧 修復：若自動打怪已啟動，保持顯示小地圖視窗
                     if (ckB_Start.Checked)
                     {
                         _minimapViewer?.Show();
@@ -576,28 +503,23 @@ namespace ArtaleAI
                         _minimapViewer?.Hide();
                     }
                     break;
-                case 1: // 路徑編輯頁面
-                    StartPathEditingModeAsync();
-                    _minimapViewer?.Hide(); // 隱藏小地圖視窗
-                    // 標題會在載入地圖檔案時更新
+                case 1:
+                    await StartPathEditingModeAsync();
+                    _minimapViewer?.Hide();
                     break;
-                case 2: // 即時顯示頁面
+                case 2:
                     UpdateWindowTitle("ArtaleAI - 即時顯示");
 
-                    // 🔧 只有當 LiveView 未運行時才啟動它
                     if (!isLiveViewRunning)
                     {
                         await StartLiveViewModeAsync();
                     }
 
-
-                    // 顯示小地圖放大視窗
-                    _minimapViewer?.Show();
                     _minimapViewer?.Show();
                     break;
                 default:
                     UpdateWindowTitle("ArtaleAI");
-                    _minimapViewer?.Hide(); // 隱藏小地圖視窗
+                    _minimapViewer?.Hide();
                     break;
             }
         }
@@ -606,9 +528,7 @@ namespace ArtaleAI
 
 
 
-        /// <summary>
-        /// 路徑編輯模式：只載入靜態小地圖
-        /// </summary>
+        /// <summary>擷取並顯示小地圖底圖供路徑編輯。</summary>
         private async Task StartPathEditingModeAsync()
         {
             MsgLog.ShowStatus(textBox1, "載入路徑編輯模式...");
@@ -619,7 +539,6 @@ namespace ArtaleAI
                 var result = await LoadMinimapWithMat(MinimapUsage.PathEditing);
                 if (result?.MinimapImage != null)
                 {
-                    //  直接內嵌圖像設定邏輯
                     Action setImage = () =>
                     {
                         var oldImage = pictureBoxMinimap.Image;
@@ -660,6 +579,12 @@ namespace ArtaleAI
             var config = Config;
             try
             {
+                if (gameVision == null)
+                {
+                    MsgLog.ShowError(textBox1, "視覺核心尚未初始化");
+                    return null;
+                }
+
                 Logger.Debug("[小地圖] 開始 LoadMinimapWithMat");
                 MsgLog.ShowStatus(textBox1, "正在載入小地圖...");
 
@@ -670,7 +595,6 @@ namespace ArtaleAI
                     return null;
                 }
 
-                //  使用 GetSnapshotAsync
                 var result = await gameVision.GetSnapshotAsync(
                     IntPtr.Zero,
                     config,
@@ -691,9 +615,7 @@ namespace ArtaleAI
 
 
 
-        /// <summary>
-        /// 即時顯示模式：啟動所有即時處理功能
-        /// </summary>
+        /// <summary>定位小地圖並啟動 LiveView 擷取。</summary>
         private async Task StartLiveViewModeAsync()
         {
             MsgLog.ShowStatus(textBox1, "正在啟動即時畫面...");
@@ -701,7 +623,6 @@ namespace ArtaleAI
 
             try
             {
-                // 先載入小地圖
                 var result = await LoadMinimapWithMat(MinimapUsage.LiveViewOverlay);
                 if (result?.MinimapScreenRect.HasValue == true)
                 {
@@ -709,7 +630,6 @@ namespace ArtaleAI
                     _gamePipeline?.SetMinimapBoxes(new List<Rectangle> { result.MinimapScreenRect.Value });
                     MsgLog.ShowStatus(textBox1, "小地圖位置已定位");
 
-                    // 使用LiveViewManager啟動Timer
                     var captureItem = WindowFinder.TryCreateItemForWindow(Config.General.GameWindowTitle);
                     if (captureItem != null)
                     {
@@ -728,10 +648,7 @@ namespace ArtaleAI
             }
         }
 
-        /// <summary>
-        /// 當 LiveViewManager 傳來新畫面時，委派給 GamePipeline 處理
-        /// 架構考量：MainForm 只負責 Dispose 檢查和 UI 更新觸發，所有偵測邏輯已移至 GamePipeline
-        /// </summary>
+        /// <summary>新幀進入：交給 <see cref="GamePipeline"/> 並更新即時預覽／編輯器重繪。</summary>
         private void OnFrameAvailable(Mat frameMat, DateTime captureTime)
         {
             if (IsDisposed || Disposing)
@@ -749,23 +666,16 @@ namespace ArtaleAI
                     var config = Config;
                     if (config == null) return;
 
-                    // 同步可變狀態到 GamePipeline
                     if (_gamePipeline != null)
                     {
                         _gamePipeline.AutoAttackEnabled = _autoAttackEnabled;
-                        _gamePipeline.SelectedMonsterName = _selectedMonsterName;
-                        _gamePipeline.MonsterTemplates = currentMonsterMatTemplates;
+                        _gamePipeline.SelectedMonsterName = _monsterTemplates?.SelectedMonsterName ?? string.Empty;
+                        _gamePipeline.MonsterTemplates = _monsterTemplates?.Templates ?? s_emptyMonsterTemplates;
 
-                        // 委派過去的 195 行邏輯
                         _gamePipeline.ProcessFrame(frameMat, captureTime, config);
 
-                        // Bug Fix：同步 VisionDataReady 旗標回 MainForm
-                        // 原因：ProcessPathPlanningUpdate 現在在 GamePipeline 內設定此旗標，
-                        // 但 OnPathTrackingUpdated 仍檢查 MainForm._visionDataReady
                         _visionDataReady = _gamePipeline.VisionDataReady;
 
-                        // [修復]：補回即時顯示畫面渲染
-                        // 因為 frameMat 將在 using 區塊結束後自動 Dispose，故必須在此提早繪製
                         if (_isLiveViewTabActive && _overlayRenderer != null)
                         {
                             var resultSnapshot = _gamePipeline.GetCurrentSnapshot();
@@ -775,7 +685,6 @@ namespace ArtaleAI
                         }
                     }
 
-                    // UI 更新：路徑編輯分頁的紅點跟隨
                     var now = DateTime.UtcNow;
                     if (_isPathEditingTabActive)
                     {
@@ -791,7 +700,6 @@ namespace ArtaleAI
                         }
                     }
 
-                    // 獨立視窗更新：僅在視窗可見時推送影像，避免不必要的 clone/繪製成本。
                     if (_minimapViewer?.IsVisible == true)
                     {
                         using var minimapClone = gameVision?.GetLastMinimapMatClone();
@@ -814,19 +722,9 @@ namespace ArtaleAI
         }
 
 
-        // ============================================================
-        // 已遷移至 GamePipeline 的方法：
-        //   ProcessMonsters → GamePipeline.ProcessMonsterDetection
-        //   CheckAutoAttackCondition → GamePipeline.CheckAutoAttackCondition
-        //   PerformAutoAttackAsync → GamePipeline.PerformAutoAttackSequenceAsync
-        //   RenderAndDisplayOverlays → OverlayRenderer.Render
-        // ============================================================
-
-
-        // 🔧 快取的自動攻擊啟用狀態（由 UI 執行緒更新，避免跨執行緒存取）
         private volatile bool _autoAttackEnabled = false;
 
-        /// <summary>更新自動攻擊啟用狀態</summary>
+        /// <summary>依勾選與下拉選項更新 <see cref="_autoAttackEnabled"/>。</summary>
         private void UpdateAutoAttackState()
         {
             _autoAttackEnabled = ckB_Start.Checked &&
@@ -835,31 +733,16 @@ namespace ArtaleAI
                                  cbo_MonsterTemplates.SelectedIndex > 0;
         }
 
-        // ============================================================
-        // GamePipeline 事件處理
-        // ============================================================
-
-        /// <summary>
-        /// GamePipeline 每幀處理完成後的事件處理
-        /// 將偵測結果透過 OverlayRenderer 繪製到畫面上
-        /// </summary>
+        /// <summary>同步 GamePipeline 輸出的小地圖框與玩家標記（LiveView 疊加在 <see cref="OnFrameAvailable"/> 繪製）。</summary>
         private void OnGamePipelineFrameProcessed(FrameProcessingResult result)
         {
             if (result == null) return;
 
-            // 同步偵測結果到 MainForm 的共享狀態（供其他方法使用）
             _currentMinimapBoxes = result.MinimapBoxes;
             _currentMinimapMarkers = result.MinimapMarkers;
-
-            // 注意：即時顯示分頁 (LiveView) 的疊加層繪製，
-            // 已經移至 OnFrameAvailable 函式內，以確保能拿到尚未 Dispose 的 frameMat。
         }
 
-        // ============================================================
-        // MapFileManager 事件處理 + ComboBox 管理
-        // ============================================================
-
-        /// <summary>填充地圖檔案下拉選單（從 MapFileManager 取得檔案清單）</summary>
+        /// <summary>由 <see cref="MapFileManager"/> 列舉檔名填入地圖下拉選單。</summary>
         private void PopulateMapFilesComboBox()
         {
             try
@@ -872,7 +755,6 @@ namespace ArtaleAI
                 foreach (var file in files)
                     cbo_MapFiles.Items.Add(file);
 
-                // 恢復之前的選擇
                 if (!string.IsNullOrEmpty(currentSelection) && cbo_MapFiles.Items.Contains(currentSelection))
                     cbo_MapFiles.SelectedItem = currentSelection;
             }
@@ -884,7 +766,7 @@ namespace ArtaleAI
 
 
 
-        /// <summary>地圖載入完成事件處理 — 更新標題列和小地圖</summary>
+        /// <summary>地圖載入後更新標題與小地圖顯示。</summary>
         private void OnMapFileLoaded(string fileName)
         {
             if (InvokeRequired)
@@ -895,7 +777,6 @@ namespace ArtaleAI
 
             UpdateWindowTitle($"地圖編輯器 - {fileName}");
 
-            // 如果是新地圖，清空下拉選單選取，避免混淆
             if (fileName == "(新地圖)")
             {
                 cbo_MapFiles.SelectedIndex = -1;
@@ -939,49 +820,40 @@ namespace ArtaleAI
         }
 
 
-        /// <summary>
-        /// 建立路徑可視化資料（供 MinimapViewer 使用）
-        /// </summary>
+        /// <summary>組裝獨立小地圖視窗所需的路徑／繩索／Hitbox 疊加資料。</summary>
         private PathVisualizationData? BuildPathVisualizationData()
         {
             try
             {
                 var pathData = new PathVisualizationData();
 
-                // 取得路徑節點與連線資料（從新版 NavigationGraph）
                 var graph = _pathPlanningManager?.Tracker?.NavGraph;
                 if (graph != null && graph.NodeCount > 0)
                 {
-                    // 1. 取得所有節點 (區分平台與繩索)
                     var allNodes = graph.GetAllNodes();
 
                     var platformNodes = allNodes.Where(n => n.Type == ArtaleAI.Core.Domain.Navigation.NavigationNodeType.Platform).ToList();
                     var ropeNodes = allNodes.Where(n => n.Type == ArtaleAI.Core.Domain.Navigation.NavigationNodeType.Rope).ToList();
 
-                    // 將平台節點轉換為視覺化用的 WaypointWithPriority
                     pathData.WaypointPaths = platformNodes
                         .Select(n => new WaypointWithPriority(
                             new SdPointF(n.Position.X, n.Position.Y),
-                            0f, // 暫時給預設值，因為優先權系統可能已重構
+                            0f,
                             false,
                             _pathPlanningManager?.Tracker?.CurrentTarget?.Position.X == n.Position.X && _pathPlanningManager?.Tracker?.CurrentTarget?.Position.Y == n.Position.Y))
                         .ToList();
 
-                    // 2. 將繩索節點轉換為 RopeWithAccessibility
-                    // 注意：舊版資料有 TopY 和 BottomY，新版目前只有單點
-                    // 這裡暫時用上下延伸一點範圍來繪圖，如果有新版 Edge 資料可再優化
                     pathData.Ropes = ropeNodes
                         .Select(n => new RopeWithAccessibility(
                             n.Position.X,
-                            n.Position.Y - 50, // 假設往上延伸 50px
-                            n.Position.Y + 50, // 假設往下延伸 50px
+                            n.Position.Y - 50,
+                            n.Position.Y + 50,
                             0f,
                             false,
                             false))
                         .ToList();
                 }
 
-                // 玩家位置（從當前小地圖標記取得中心點）
                 if (_currentMinimapMarkers.Any() && !minimapBounds.IsEmpty)
                 {
                     var marker = _currentMinimapMarkers.First();
@@ -989,7 +861,6 @@ namespace ArtaleAI
                         marker.X + marker.Width / 2f - minimapBounds.X,
                         marker.Y + marker.Height / 2f - minimapBounds.Y);
                 }
-                // 目標位置（從路徑系統取得）
                 var nextWp = _pathPlanningManager?.CurrentState?.NextWaypoint;
                 if (nextWp.HasValue && !minimapBounds.IsEmpty)
                 {
@@ -999,8 +870,6 @@ namespace ArtaleAI
                 }
 
 
-                // 🎯 臨時目標位置 (動作點/中間點)
-                // 修正：已經是小地圖相對座標，不需減去 minimapBounds
                 var tempTarget = _pathPlanningManager?.Tracker?.CurrentPathState?.TemporaryTarget;
                 if (tempTarget.HasValue && !minimapBounds.IsEmpty)
                 {
@@ -1009,13 +878,11 @@ namespace ArtaleAI
                         tempTarget.Value.Y);
                 }
 
-                // 🏁 下一個即將到達的節點（立即目標）
                 if (nextWp.HasValue)
                 {
                     pathData.FinalDestination = new SdPointF(nextWp.Value.X, nextWp.Value.Y);
                 }
 
-                // === 診斷層：SSOT Hitbox + 繩索對位帶 + 當前動作 ===
                 var tracker = _pathPlanningManager?.Tracker;
                 var currentTargetNode = tracker?.CurrentTarget;
                 if (currentTargetNode?.Hitbox is BoundingBox hitbox)
@@ -1053,13 +920,10 @@ namespace ArtaleAI
                         if (!float.IsNaN(ropeX))
                         {
                             pathData.RopeAlignCenterX = ropeX;
-                            // 與執行層一致：對位容許量上限為 2.0f
                             pathData.RopeAlignTolerance = Math.Min((float)AppConfig.Instance.Navigation.WaypointReachDistance, 2.0f);
                         }
                     }
                 }
-                // [移除] 動態插值已廢除，不再顯示 intermediate points
-
                 return pathData;
             }
             catch (Exception ex)
@@ -1069,14 +933,11 @@ namespace ArtaleAI
             }
         }
 
-        /// <summary>
-        /// 完全停止並釋放所有分頁處理資源
-        /// </summary>
+        /// <summary>停止 LiveView 擷取並清空即時預覽參考。</summary>
         private void StopAndReleaseAllResources()
         {
             try
             {
-                // 使用LiveViewManager停止
                 liveViewManager?.StopLiveView();
                 _currentDisplayFrame = null;
                 MsgLog.ShowStatus(textBox1, "所有資源已釋放");
@@ -1106,9 +967,9 @@ namespace ArtaleAI
                 _ => EditMode.None
             };
 
-            // 路線標記／兩點連線／選取：皆需「動作類型」語意（連線動作或批次套用）。
             groupBox_Action.Enabled = selectedMode is EditMode.Waypoint or EditMode.Select or EditMode.Link;
 
+            if (_mapEditor == null) return;
             _mapEditor.SetEditMode(selectedMode);
             pictureBoxMinimap.Invalidate();
 
@@ -1122,9 +983,7 @@ namespace ArtaleAI
 
         #region Merged UI Events (from partial classes)
 
-        /// <summary>
-        /// 更新獨立小地圖視窗的可見性
-        /// </summary>
+        /// <summary>依 LiveView／自動導航狀態顯示或隱藏獨立小地圖視窗。</summary>
         private void UpdateMinimapViewerVisibility()
         {
             try
@@ -1134,7 +993,6 @@ namespace ArtaleAI
                 bool autoStartChecked = ckB_Start.Checked;
                 bool liveViewReady = liveViewManager?.IsRunning == true && _isLiveViewTabActive;
 
-                // 即時顯示分頁可直接預覽；若是自動導航流程，仍維持原先可見規則。
                 if (liveViewReady || (pathLoaded && autoStartChecked))
                 {
                     _minimapViewer.Show();
@@ -1212,22 +1070,20 @@ namespace ArtaleAI
             cbo_ActionType.Items.Add(new ComboBoxItem("ClimbUp (上爬)", 11));
             cbo_ActionType.Items.Add(new ComboBoxItem("ClimbDown (下爬)", 12));
 
-            cbo_ActionType.SelectedIndex = 0; // Default Walk
+            cbo_ActionType.SelectedIndex = 0;
         }
 
         private void cbo_ActionType_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (cbo_ActionType.SelectedItem is ComboBoxItem item)
-            {
-                _mapEditor.SetCurrentActionType(item.Value);
-                pictureBoxMinimap.Invalidate();
-            }
+            if (cbo_ActionType.SelectedItem is not ComboBoxItem item || _mapEditor == null) return;
+
+            _mapEditor.SetCurrentActionType(item.Value);
+            pictureBoxMinimap.Invalidate();
         }
 
         private void UpdateActionComboBoxSelection(int action)
         {
             if (action == -1) return;
-            // 舊資料中的 9/10（左/右跳）在 UI 下拉統一顯示為智慧側跳
             int targetAction = (action == 9 || action == 10) ? 13 : action;
 
             foreach (ComboBoxItem item in cbo_ActionType.Items)
@@ -1254,17 +1110,15 @@ namespace ArtaleAI
         private void pictureBoxMinimap_MouseMove(object sender, MouseEventArgs e)
         {
 
-            //  3. 簡化：更新預覽位置
             if (_mapEditor != null && !minimapBounds.IsEmpty && pictureBoxMinimap.Image != null)
             {
                 var imagePoint = TranslatePictureBoxPointToImage(new PointF(e.X, e.Y), pictureBoxMinimap);
                 var screenPoint = new PointF(minimapBounds.X + imagePoint.X, minimapBounds.Y + imagePoint.Y);
 
                 _mapEditor.UpdateMousePosition(screenPoint);
-                _mapEditor.UpdateHoveredNode(screenPoint); // 更新懸停節點高亮
+                _mapEditor.UpdateHoveredNode(screenPoint);
                 pictureBoxMinimap.Invalidate();
 
-                // 🔧 更新座標顯示標籤（使用小地圖相對座標，與路徑檔一致）
                 lbl_MouseCoords.Text = $"座標: ({imagePoint.X:F1}, {imagePoint.Y:F1})";
             }
         }
@@ -1277,7 +1131,6 @@ namespace ArtaleAI
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
 
-            //  計算 PictureBox 在 Zoom 模式下的縮放參數
             float pbWidth = pictureBoxMinimap.ClientSize.Width;
             float pbHeight = pictureBoxMinimap.ClientSize.Height;
             float imgWidth = pictureBoxMinimap.Image.Width;
@@ -1291,20 +1144,17 @@ namespace ArtaleAI
 
             if (pbAspect > imgAspect)
             {
-                // PictureBox 比較寬,上下留黑邊
                 scaleY = pbHeight / imgHeight;
                 scaleX = scaleY;
                 offsetX = (pbWidth - imgWidth * scaleX) / 2;
             }
             else
             {
-                // PictureBox 比較高,左右留黑邊
                 scaleX = pbWidth / imgWidth;
                 scaleY = scaleX;
                 offsetY = (pbHeight - imgHeight * scaleY) / 2;
             }
 
-            //  座標轉換函數: 螢幕絕對座標 → PictureBox 控制項座標
             PointF ConvertScreenToDisplay(PointF screenPoint)
             {
                 float relX = screenPoint.X - minimapBounds.X;
@@ -1315,71 +1165,55 @@ namespace ArtaleAI
                 );
             }
 
-            // 🕸️ 繪製網格線 (在路徑之前繪製)
             DrawPathEditorGrid(e.Graphics, imgWidth, imgHeight, scaleX, scaleY, offsetX, offsetY);
 
-            //  呼叫 MapEditor 的 Render (繪製所有路徑和預覽線)
             _mapEditor.Render(e.Graphics, ConvertScreenToDisplay);
 
-            // 📏 繪製座標刻度尺（上方和左側）
             DrawPathEditorRuler(e.Graphics, imgWidth, imgHeight, scaleX, scaleY, offsetX, offsetY);
-
-            // 繪製錄製中的路徑（即時顯示）
 
         }
 
 
 
-        /// <summary>
-        /// 🕸️ 在路徑編輯的小地圖上繪製網格線
-        /// </summary>
+        /// <summary>路徑編輯小地圖底圖上的對齊網格。</summary>
         private void DrawPathEditorGrid(Graphics g, float imgWidth, float imgHeight,
             float scaleX, float scaleY, float offsetX, float offsetY)
         {
-            const int MajorTickInterval = 10;   // 主刻度間距 (座標)
-            const int RulerSize = 18;           // 避開刻度尺區域
+            const int MajorTickInterval = 10;
+            const int RulerSize = 18;
 
-            // 網格樣式 (非常淡的白色)
             using var gridPen = new Pen(Color.FromArgb(30, 255, 255, 255), 1);
 
-            // X 軸網格 (垂直線)
             for (int x = 0; x <= (int)imgWidth; x++)
             {
                 if (x % MajorTickInterval == 0 && x != 0)
                 {
                     float screenX = offsetX + x * scaleX;
-                    // 從刻度尺下方開始畫
                     g.DrawLine(gridPen, screenX, offsetY + RulerSize, screenX, offsetY + imgHeight * scaleY);
                 }
             }
 
-            // Y 軸網格 (水平線)
             for (int y = 0; y <= (int)imgHeight; y++)
             {
                 if (y % MajorTickInterval == 0 && y != 0)
                 {
                     float screenY = offsetY + y * scaleY;
-                    // 從刻度尺右方開始畫
                     g.DrawLine(gridPen, offsetX + RulerSize, screenY, offsetX + imgWidth * scaleX, screenY);
                 }
             }
         }
 
-        /// <summary>
-        /// 📏 在路徑編輯的小地圖上繪製座標刻度尺（上方和左側）
-        /// </summary>
+        /// <summary>路徑編輯小地圖上方與左側的座標刻度尺。</summary>
         private void DrawPathEditorRuler(Graphics g, float imgWidth, float imgHeight,
             float scaleX, float scaleY, float offsetX, float offsetY)
         {
-            // 刻度尺參數
-            const int RulerSize = 18;           // 刻度尺寬度/高度
-            const int MajorTickInterval = 10;   // 主刻度間距 (座標)
-            const int MinorTickInterval = 5;    // 次刻度間距 (座標)
+            const int RulerSize = 18;
+            const int MajorTickInterval = 10;
+            const int MinorTickInterval = 5;
 
-            // 🎨 深色主題配色
-            var bgColor = Color.FromArgb(30, 30, 30);            // 刻度尺背景（更深）
-            var tickColor = Color.FromArgb(100, 100, 100);       // 刻度線（柔和灰）
-            var textColor = Color.FromArgb(200, 200, 200);       // 文字（亮灰）
+            var bgColor = Color.FromArgb(30, 30, 30);
+            var tickColor = Color.FromArgb(100, 100, 100);
+            var textColor = Color.FromArgb(200, 200, 200);
             var majorTickLength = RulerSize - 4;
             var minorTickLength = RulerSize / 2;
 
@@ -1388,7 +1222,6 @@ namespace ArtaleAI
             using var textBrush = new SolidBrush(textColor);
             using var font = new Font("Consolas", 7f, FontStyle.Regular);
 
-            // ===== 上方刻度尺 (X 軸) =====
             var topRulerRect = new RectangleF(offsetX, 0, imgWidth * scaleX, RulerSize);
             g.FillRectangle(bgBrush, topRulerRect);
 
@@ -1412,7 +1245,6 @@ namespace ArtaleAI
                 }
             }
 
-            // ===== 左側刻度尺 (Y 軸) =====
             var leftRulerRect = new RectangleF(0, offsetY + RulerSize, RulerSize, imgHeight * scaleY - RulerSize);
             g.FillRectangle(bgBrush, leftRulerRect);
 
@@ -1436,7 +1268,6 @@ namespace ArtaleAI
                 }
             }
 
-            // 左上角方塊（交接處）
             g.FillRectangle(bgBrush, 0, 0, RulerSize, RulerSize);
         }
 
@@ -1477,14 +1308,12 @@ namespace ArtaleAI
 
                 lbl_MouseCoords.Text = "座標: (-, -)";
 
-                // 🔧 新增：清除編輯器相關狀態
                 if (_mapEditor != null)
                 {
                     _mapEditor.UpdateMousePosition(new PointF(-1000, -1000));
                     _mapEditor.UpdateHoveredNode(new PointF(-1000, -1000));
                 }
 
-                // 重繪畫布
                 pictureBoxMinimap.Invalidate();
             }
             catch (Exception ex)
@@ -1505,7 +1334,6 @@ namespace ArtaleAI
 
                 if (!_mapFileManager.HasCurrentMap)
                 {
-                    // 如果是新地圖且無路徑，先給提示
                     using (SaveFileDialog saveFileDialog = new SaveFileDialog())
                     {
                         saveFileDialog.Filter = "JSON Files (*.json)|*.json|All Files (*.*)|*.*";
@@ -1556,7 +1384,6 @@ namespace ArtaleAI
         {
             try
             {
-                // 在視窗與控制項仍有效時先行持久化，避免關閉後狀態遺失。
                 AppConfig.Instance.Save();
             }
             catch (Exception ex)
@@ -1571,7 +1398,6 @@ namespace ArtaleAI
         {
             try
             {
-                // 修復：正確釋放 PictureBox.Image
                 var liveViewImage = pictureBoxLiveView.Image;
                 var minimapImage = pictureBoxMinimap.Image;
                 pictureBoxLiveView.Image = null;
@@ -1584,16 +1410,10 @@ namespace ArtaleAI
                 _currentDisplayFrame?.Dispose();
                 _currentDisplayFrame = null;
 
-                foreach (var template in currentMonsterMatTemplates)
-                {
-                    template?.Dispose();
-                }
-                currentMonsterMatTemplates.Clear();
+                _monsterTemplates?.Dispose();
 
                 _currentMinimapMarkers.Clear();
                 _currentMinimapBoxes.Clear();
-                // 修復：取消事件訂閱以避免記憶體洩漏
-                // 注意：Lambda 訂閱無法直接取消，但會在 Dispose 時自動清理
                 if (_mapFileManager != null)
                 {
                     _mapFileManager.MapSaved -= OnMapSaved;
@@ -1601,11 +1421,6 @@ namespace ArtaleAI
                     _mapFileManager.StatusMessage -= OnMapFileManagerStatusMessage;
                     _mapFileManager.ErrorMessage -= OnMapFileManagerErrorMessage;
                     _mapFileManager.FileListChanged -= OnMapFileListChanged;
-                }
-
-                if (_pathPlanningManager != null)
-                {
-                    // OnTrackingUpdated 已不直接訂閱（由 GamePipeline 統一管理）
                 }
 
                 if (liveViewManager != null)
@@ -1629,7 +1444,6 @@ namespace ArtaleAI
                 Logger.Error("[系統] Form關閉錯誤", ex);
             }
 
-            // 🔧 關閉日誌系統（確保所有日誌寫入檔案）
             Logger.Shutdown();
 
             base.OnFormClosed(e);
@@ -1639,48 +1453,29 @@ namespace ArtaleAI
 
         private async void OnMonsterSelectionChanged(object? sender, EventArgs e)
         {
+            if (_monsterTemplates == null) return;
+
             try
             {
                 if (cbo_MonsterTemplates.SelectedItem == null) return;
-                string selectedMonster = cbo_MonsterTemplates.SelectedItem.ToString();
+                string selectedMonster = cbo_MonsterTemplates.SelectedItem.ToString() ?? string.Empty;
                 if (string.IsNullOrEmpty(selectedMonster)) return;
 
                 if (selectedMonster == "null")
                 {
-                    foreach (var template in currentMonsterMatTemplates) template?.Dispose();
-                    currentMonsterMatTemplates.Clear();
-                    _selectedMonsterName = null;
+                    _monsterTemplates.ReleaseTemplates();
                     MsgLog.ShowStatus(textBox1, "已清除怪物模板選擇");
                     return;
                 }
 
                 MsgLog.ShowStatus(textBox1, $"載入怪物模板: {selectedMonster}");
-
-                // 清理現有模板
-                foreach (var template in currentMonsterMatTemplates)
-                {
-                    template?.Dispose();
-                }
-                currentMonsterMatTemplates.Clear();
-
-                //  使用靜態屬性載入模板
-                currentMonsterMatTemplates = await gameVision?.LoadMonsterTemplatesAsync(
-                    selectedMonster,
-                    PathManager.MonstersDirectory
-                ) ?? new List<Mat>();
-
-                _selectedMonsterName = selectedMonster;
-                MsgLog.ShowStatus(textBox1, $"已載入 {currentMonsterMatTemplates.Count} 個模板");
+                await _monsterTemplates.LoadSelectionAsync(selectedMonster, PathManager.MonstersDirectory);
+                MsgLog.ShowStatus(textBox1, $"已載入 {_monsterTemplates.Templates.Count} 個模板");
             }
             catch (Exception ex)
             {
                 MsgLog.ShowError(textBox1, $"載入模板錯誤: {ex.Message}");
-
-                foreach (var template in currentMonsterMatTemplates)
-                {
-                    template?.Dispose();
-                }
-                currentMonsterMatTemplates.Clear();
+                _monsterTemplates.ReleaseTemplates();
             }
         }
 
@@ -1693,30 +1488,21 @@ namespace ArtaleAI
 
                 if (string.IsNullOrWhiteSpace(monsterName)) return;
 
+                if (_monsterDownloader == null)
+                {
+                    MsgLog.ShowError(textBox1, "下載器尚未初始化");
+                    return;
+                }
+
                 btn_DownloadMonster.Enabled = false;
                 btn_DownloadMonster.Text = "下載中...";
 
                 var result = await _monsterDownloader.DownloadMonsterAsync(monsterName);
 
-                if (result?.Success == true)
+                if (result is { Success: true } ok)
                 {
-                    // 🔄 重新載入怪物列表，不使用 MonsterTemplateStore
-                    var monstersDirectory = PathManager.MonstersDirectory;
-                    var monsterNames = new List<string>();
-
-                    if (Directory.Exists(monstersDirectory))
-                    {
-                        var subDirectories = Directory.GetDirectories(monstersDirectory);
-                        monsterNames = subDirectories.Select(Path.GetFileName).ToList();
-                    }
-
-                    cbo_MonsterTemplates.Items.Clear();
-                    foreach (var name in monsterNames)
-                    {
-                        cbo_MonsterTemplates.Items.Add(name);
-                    }
-
-                    MsgLog.ShowStatus(textBox1, $" 成功下載 {result.DownloadedCount} 個模板");
+                    MonsterTemplateStore.PopulateMonsterCombo(cbo_MonsterTemplates, PathManager.MonstersDirectory);
+                    MsgLog.ShowStatus(textBox1, $" 成功下載 {ok.DownloadedCount} 個模板");
                 }
             }
             catch (Exception ex)
@@ -1736,28 +1522,34 @@ namespace ArtaleAI
 
             try
             {
-                // 簡化：直接內嵌邏輯，減少方法層級
                 if (rdoButton.Checked)
                 {
-                    // 自動啟動 LiveView 來獲取畫面（必須啟動才能處理路徑規劃）
                     if (liveViewManager == null || !liveViewManager.IsRunning)
                     {
                         var captureItem = WindowFinder.TryCreateItemForWindow(Config.General.GameWindowTitle);
                         if (captureItem == null)
                         {
                             MsgLog.ShowError(textBox1, "找不到遊戲視窗，請先開啟遊戲。");
-                            rdoButton.Checked = false; // 取消選中
+                            rdoButton.Checked = false;
                             return;
                         }
 
                         MsgLog.ShowStatus(textBox1, "正在啟動背景擷取以處理路徑規劃...");
 
-                        // 啟動 LiveView（背景運行，不需要切換分頁）
                         if (liveViewManager != null)
                         {
                             liveViewManager.StartLiveView(captureItem);
+                            bool firstFrame = await liveViewManager.WaitForFirstFrameAsync(TimeSpan.FromSeconds(2));
+                            if (!firstFrame)
+                                Logger.Debug("[路徑規劃] 首幀未於 2 秒內就緒，仍繼續啟動追蹤。");
                         }
-                        await Task.Delay(500);
+                    }
+
+                    if (_pathPlanningManager == null)
+                    {
+                        MsgLog.ShowError(textBox1, "路徑規劃管理器尚未初始化");
+                        rdoButton.Checked = false;
+                        return;
                     }
 
                     await _pathPlanningManager.StartAsync(Config.General.GameWindowTitle);
@@ -1765,7 +1557,8 @@ namespace ArtaleAI
                 }
                 else
                 {
-                    await _pathPlanningManager.StopAsync();
+                    if (_pathPlanningManager != null)
+                        await _pathPlanningManager.StopAsync();
                     MsgLog.ShowStatus(textBox1, "路徑規劃已停止");
                 }
             }
@@ -1775,16 +1568,14 @@ namespace ArtaleAI
                 MsgLog.ShowError(textBox1, $"路徑規劃{action}失敗: {ex.Message}");
                 if (rdoButton.Checked)
                 {
-                    rdoButton.Checked = false; // 發生錯誤時取消選中
+                    rdoButton.Checked = false;
                 }
             }
         }
 
         #region 路徑規劃專用方法
 
-        /// <summary>
-        /// 路徑追蹤更新事件處理
-        /// </summary>
+        /// <summary>小地圖追蹤回呼：更新狀態列並驅動 FSM 啟動下一邊。</summary>
         private void OnPathTrackingUpdated(MinimapTrackingResult result)
         {
             if (InvokeRequired)
@@ -1793,9 +1584,6 @@ namespace ArtaleAI
                 return;
             }
 
-            // 小地圖框與玩家標記統一由 GamePipeline 快照更新（OnGamePipelineFrameProcessed）。
-            // 這個回調只處理路徑追蹤狀態與導航驅動，避免多來源覆寫造成競態。
-
             var playerPosOpt = result.PlayerPosition;
             if (playerPosOpt.HasValue && playerPosOpt.Value != SdPointF.Empty)
             {
@@ -1803,21 +1591,18 @@ namespace ArtaleAI
 
 
 
-                // 路徑規劃狀態顯示和自動移動控制（僅在有規劃路徑時）
                 if (_pathPlanningManager?.CurrentState != null)
                 {
                     var pathState = _pathPlanningManager.CurrentState;
                     var progress = $"{pathState.CurrentWaypointIndex + 1}/{pathState.PlannedPath.Count}";
                     var distance = pathState.DistanceToNextWaypoint;
 
-                    // 優先使用 TemporaryTarget (例如繩索點)，否則使用 NextWaypoint
                     var nextWaypointOpt = pathState.TemporaryTarget ?? pathState.NextWaypoint;
 
                     if (nextWaypointOpt.HasValue)
                     {
                         var nextWaypoint = nextWaypointOpt.Value;
 
-                        // 優化：限制狀態訊息輸出頻率，且只在距離變化時輸出
                         var now = DateTime.UtcNow;
                         var elapsed = (now - _lastStatusUpdate).TotalMilliseconds;
                         bool distanceChanged = Math.Abs(distance - _lastReportedDistance) > 1.0f;
@@ -1829,20 +1614,17 @@ namespace ArtaleAI
                             _lastReportedDistance = (float)distance;
                         }
 
-                        // 自動移動控制（長按模式）- 加入冷卻時間和方向偵測
                         if (Config.Navigation.EnableAutoMovement && _movementController != null && _pathPlanningManager.IsRunning)
                         {
-                            // 🔧 幀驅動同步：檢查旗標
-                            if (!_visionDataReady)
-                            {
-                                return; // 還沒有新的視覺數據，跳過控制
-                            }
-                            _visionDataReady = false; // 消費旗標，等待下一幀
+                            // 架構：追蹤回呼經 BeginInvoke 到 UI，可能早於 OnFrameAvailable 末尾同步 _visionDataReady，
+                            // 造成誤判；Pipeline 在觸發事件前已設 VisionDataReady，以此為單一真相來源。
+                            if (_gamePipeline == null || !_gamePipeline.VisionDataReady)
+                                return;
+                            _gamePipeline.VisionDataReady = false;
+                            _visionDataReady = false;
 
-                            // 架構考量：從當前導航邊讀取動作，直接使用 NavigationActionType，不再轉換
                             NavigationEdge? currentEdge = _pathPlanningManager?.Tracker?.CurrentNavigationEdge;
 
-                            // 判斷是否有特殊動作（非普通 Walk）
                             bool hasAction = currentEdge != null &&
                                            currentEdge.ActionType != NavigationActionType.Walk;
 
@@ -1851,17 +1633,12 @@ namespace ArtaleAI
                                 Logger.Info($"[導航狀態] 玩家=({playerPos.X:F1},{playerPos.Y:F1}) 目標=({nextWaypoint.X},{nextWaypoint.Y}) Edge={currentEdge.FromNodeId}->{currentEdge.ToNodeId} Action={currentEdge.ActionType}");
                             }
 
-                            // 1. 決定是否已經到達 (SSOT: 優先使用 Hitbox 判定)
                             bool isAtTarget = _pathPlanningManager?.Tracker?.IsPlayerAtTarget() ?? false;
-                            
-                            // 物理引擎在 Walk 邊會自行停穩並達成 Success；
-                            // 此處 UI 僅負責啟動 (Start) 或在中斷後重啟。
+
                             bool walkEdge = currentEdge != null && currentEdge.ActionType == NavigationActionType.Walk;
 
                             if (isAtTarget && !hasAction)
                             {
-                                // 只有在非特殊動作（單純 Walk 且已進 Hitbox）時，才主動通知到達
-                                // 事實上在新的架構中，這主要是為了觸發索引推進
                                 if (!walkEdge) _fsm?.NotifyTargetReached();
                             }
                             else if (currentEdge == null)
@@ -1872,7 +1649,6 @@ namespace ArtaleAI
                             }
                             else
                             {
-                                // 呼叫 FSM: 同步防護杜絕機關槍效應
                                 if (_fsm != null)
                                 {
                                     if (_fsm.TryStartNavigation(currentEdge, (SdPointF)playerPos, (SdPointF)nextWaypoint))
@@ -1884,13 +1660,11 @@ namespace ArtaleAI
                         }
                         else if (!Config.Navigation.EnableAutoMovement)
                         {
-                            // 調試訊息：確認自動移動是否啟用
                             Logger.Debug($"[調試] 自動移動未啟用: EnableAutoMovement={Config.Navigation.EnableAutoMovement}");
                         }
                     }
                     else
                     {
-                        // 優化：限制狀態訊息輸出頻率
                         var now = DateTime.UtcNow;
                         var elapsed = (now - _lastStatusUpdate).TotalMilliseconds;
                         if (elapsed >= StatusUpdateIntervalMs)
@@ -1909,8 +1683,6 @@ namespace ArtaleAI
         }
         #endregion
 
-        // ShouldAddNewPoint 已廢棄 - RouteRecorderService 內部處理距離檢查 (Removed comment)
-
         private async void ckB_Start_CheckedChanged(object sender, EventArgs e)
         {
             if (sender is not CheckBox chkBox) return;
@@ -1919,20 +1691,18 @@ namespace ArtaleAI
             {
                 if (chkBox.Checked)
                 {
-                    // 自動啟動 LiveView 來獲取畫面（必須啟動才能處理怪物辨識和路徑規劃）
                     if (liveViewManager == null || !liveViewManager.IsRunning)
                     {
                         var captureItem = WindowFinder.TryCreateItemForWindow(Config.General.GameWindowTitle);
                         if (captureItem == null)
                         {
                             MsgLog.ShowError(textBox1, "找不到遊戲視窗，請先開啟遊戲。");
-                            chkBox.Checked = false; // 取消選中
+                            chkBox.Checked = false;
                             return;
                         }
 
                         MsgLog.ShowStatus(textBox1, "正在啟動背景擷取...");
 
-                        // 先載入小地圖（路徑規劃需要小地圖位置）
                         try
                         {
                             var minimapResult = await LoadMinimapWithMat(MinimapUsage.LiveViewOverlay);
@@ -1942,7 +1712,6 @@ namespace ArtaleAI
                                 _gamePipeline?.SetMinimapBoxes(new List<Rectangle> { minimapResult.MinimapScreenRect.Value });
                                 MsgLog.ShowStatus(textBox1, "小地圖位置已定位");
 
-                                // 🔧 修復：啟動時強制顯示小地圖視窗
                                 _minimapViewer?.Show();
                             }
                         }
@@ -1951,22 +1720,22 @@ namespace ArtaleAI
                             Logger.Error($"[小地圖] 載入小地圖錯誤: {ex.Message}");
                         }
 
-                        // 啟動 LiveView（背景運行，不需要切換分頁）
                         if (liveViewManager != null)
                         {
                             liveViewManager.StartLiveView(captureItem);
+                            bool firstFrame = await liveViewManager.WaitForFirstFrameAsync(TimeSpan.FromSeconds(2));
+                            if (!firstFrame)
+                                Logger.Debug("[自動打怪] 首幀未於 2 秒內就緒，仍繼續後續流程。");
                         }
-                        await Task.Delay(500);
                     }
 
-                    // 檢查並啟動怪物辨識（如果有選定模板和辨識模式）
-                    bool hasMonsterTemplate = !string.IsNullOrEmpty(_selectedMonsterName) && currentMonsterMatTemplates.Any();
+                    bool hasMonsterTemplate = !string.IsNullOrEmpty(_monsterTemplates?.SelectedMonsterName) &&
+                                              (_monsterTemplates?.Templates.Any() == true);
                     bool hasDetectionMode = !string.IsNullOrEmpty(Config.Vision.DetectionMode);
 
                     if (hasMonsterTemplate && hasDetectionMode)
                     {
-                        MsgLog.ShowStatus(textBox1, $"怪物辨識已啟動（模板：{_selectedMonsterName}，模式：{Config.Vision.DetectionMode}）");
-                        // 怪物辨識會在 OnFrameAvailable 中自動處理，不需要額外啟動
+                        MsgLog.ShowStatus(textBox1, $"怪物辨識已啟動（模板：{_monsterTemplates?.SelectedMonsterName}，模式：{Config.Vision.DetectionMode}）");
                     }
                     else
                     {
@@ -1980,7 +1749,6 @@ namespace ArtaleAI
                         }
                     }
 
-                    // 檢查並啟動路徑規劃（如果有選定路徑檔）
                     int platformNodeCount = 0;
                     if (loadedPathData?.Nodes != null)
                     {
@@ -1991,7 +1759,7 @@ namespace ArtaleAI
                         }
                     }
 
-                    if (platformNodeCount > 0)
+                    if (platformNodeCount > 0 && _pathPlanningManager != null)
                     {
                         if (!_pathPlanningManager.IsRunning)
                         {
@@ -2010,16 +1778,13 @@ namespace ArtaleAI
                 }
                 else
                 {
-                    // 停止路徑規劃（如果正在運行）
                     if (_pathPlanningManager != null && _pathPlanningManager.IsRunning)
                     {
                         await _pathPlanningManager.StopAsync();
                         MsgLog.ShowStatus(textBox1, "路徑規劃已停止");
                     }
-                    // 怪物辨識會在 LiveView 停止時自動停止（因為沒有畫面就不會處理）
                 }
 
-                // 🔧 更新獨立視窗可見性（根據條件顯示/隱藏）
                 UpdateMinimapViewerVisibility();
             }
             catch (Exception ex)
@@ -2028,7 +1793,7 @@ namespace ArtaleAI
                 MsgLog.ShowError(textBox1, $"自動打怪{action}失敗: {ex.Message}");
                 if (chkBox.Checked)
                 {
-                    chkBox.Checked = false; // 發生錯誤時取消選中
+                    chkBox.Checked = false;
                 }
             }
         }

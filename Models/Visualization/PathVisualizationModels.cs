@@ -4,9 +4,7 @@ using SdRectF = System.Drawing.RectangleF;
 
 namespace ArtaleAI.Models.Visualization
 {
-    /// <summary>
-    /// 路徑可視化資料 - 用於在 MinimapViewer 上繪製路徑
-    /// </summary>
+    /// <summary>供 MinimapViewer 繪製路徑、繩索與診斷標記之 DTO。</summary>
     public class PathVisualizationData
     {
         /// <summary>路徑點列表（帶優先級，用於熱力圖）</summary>
@@ -47,15 +45,13 @@ namespace ArtaleAI.Models.Visualization
         public string? CurrentAction { get; set; }
     }
 
-    /// <summary>
-    /// 帶優先級的路徑點（用於熱力圖可視化）
-    /// </summary>
+    /// <summary>帶優先級之路徑點（熱力圖可視化）。</summary>
     public class WaypointWithPriority
     {
         public SdPointF Position { get; set; }
-        public float Priority { get; set; }           // 優先級分數 0.0 ~ 5.0+
-        public bool IsBlacklisted { get; set; }       // 是否在黑名單
-        public bool IsCurrentTarget { get; set; }     // 是否為當前目標
+        public float Priority { get; set; }
+        public bool IsBlacklisted { get; set; }
+        public bool IsCurrentTarget { get; set; }
 
         public WaypointWithPriority(SdPointF position, float priority = 0, bool isBlacklisted = false, bool isCurrentTarget = false)
         {
@@ -66,17 +62,15 @@ namespace ArtaleAI.Models.Visualization
         }
     }
 
-    /// <summary>
-    /// 帶可達性資訊的繩索（用於可視化）
-    /// </summary>
+    /// <summary>帶可達性與距離資訊之繩索（可視化用）。</summary>
     public class RopeWithAccessibility
     {
-        public float X { get; set; }                  // 繩索 X 座標
-        public float TopY { get; set; }               // 繩索頂部 Y
-        public float BottomY { get; set; }            // 繩索底部 Y
-        public float DistanceToPlayer { get; set; }   // 與玩家的 X 距離
-        public bool IsPlayerOnRope { get; set; }      // 玩家是否在此繩索上
-        public bool IsTargetRope { get; set; }        // 是否為當前目標繩索
+        public float X { get; set; }
+        public float TopY { get; set; }
+        public float BottomY { get; set; }
+        public float DistanceToPlayer { get; set; }
+        public bool IsPlayerOnRope { get; set; }
+        public bool IsTargetRope { get; set; }
 
         public RopeWithAccessibility(float x, float topY, float bottomY, float distance = 0, bool isOnRope = false, bool isTarget = false)
         {

@@ -1,6 +1,0 @@
-{
-  "artifactType":  "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
-  "summary":  "Fix the issue where independent minimap window is hidden when in Main Console tab, even if Auto-Attack is active.\nModify TabControl1_SelectedIndexChanged to respect ckB_Start state.\nExplictly show minimap window when ckB_Start is checked.",
-  "updatedAt":  "2026-01-04T14:40:14.490817300Z",
-  "version":  "16"
-}

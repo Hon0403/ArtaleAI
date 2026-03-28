@@ -13,9 +13,7 @@ using SdPointF = System.Drawing.PointF;
 
 namespace ArtaleAI.Services
 {
-    /// <summary>
-    /// 角色移動控制器 - 負責發送鍵盤指令控制遊戲角色移動
-    /// </summary>
+    /// <summary>SendInput 封裝與走路／爬繩等連續移動行為。</summary>
     public class CharacterMovementController : IKeyboardService, IDisposable
     {
         public void SetGameWindowTitle(string windowTitle)
@@ -24,11 +22,10 @@ namespace ArtaleAI.Services
         }
 
         private bool _isDisposed = false;
-        private CancellationTokenSource? _movementCancellationToken;
         private readonly object _lockObject = new object();
         private ushort _currentPressedKey = 0; 
         private string _gameWindowTitle = ""; 
-        private GamePipeline? _syncProvider; // 視覺訊號提供者 (SSOT Sync)
+        private GamePipeline? _syncProvider;
 
         private static readonly int _cachedInputSize = CalculateInputSize();
 
@@ -39,8 +36,6 @@ namespace ArtaleAI.Services
             int actualSize = Marshal.SizeOf(typeof(INPUT));
             return actualSize == expectedSize ? actualSize : expectedSize;
         }
-
-        #region Windows API
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
@@ -98,14 +93,12 @@ namespace ArtaleAI.Services
         private const ushort VK_UP = 0x26;      
         private const ushort VK_DOWN = 0x28;    
         private const ushort VK_LEFT = 0x25;    
-        private const ushort VK_RIGHT = 0x27;   
-
-        #endregion
+        private const ushort VK_RIGHT = 0x27;
 
         public void SetSyncProvider(GamePipeline provider)
         {
             _syncProvider = provider;
-            Logger.Info("[MovementController] 已綁定視覺同步提供者 (Frame-Driven Sync Alive)");
+            Logger.Info("[MovementController] 已綁定視覺同步提供者");
         }
 
         private async Task WaitForNextFrameAsync(CancellationToken ct)
@@ -116,7 +109,6 @@ namespace ArtaleAI.Services
             }
             else
             {
-                // Fallback: 若未同步則使用標準 16ms (約 60fps)
                 await Task.Delay(16, ct);
             }
         }
@@ -126,7 +118,7 @@ namespace ArtaleAI.Services
             try
             {
                 int v = AppConfig.Instance.Navigation.OvershootCorrectionMaxTaps;
-                if (v < 1) return 1;
+                if (v < 1) return 0;
                 return v > 20 ? 20 : v;
             }
             catch (InvalidOperationException)
@@ -164,9 +156,7 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>
-        /// Hitbox 已成立時仍可能偏離節點 X（寬 Hitbox + 預測煞車）；短按朝目標收斂，利於後續側跳。
-        /// </summary>
+        /// <summary>在 Hitbox 內時以短按收斂與 waypoint 的 X 殘差（可關）。</summary>
         private async Task ApplyGeometricWalkTrimIfNeededAsync(
             SdPointF targetPos,
             Func<SdPointF?> getPlayerPosition,
@@ -195,7 +185,6 @@ namespace ArtaleAI.Services
 
                 ushort towardKey = dx > 0 ? VK_RIGHT : VK_LEFT;
                 float adx = Math.Abs(dx);
-                // 殘差小時必須極短按，避免平台邊緣一按就掉層（見 log 158→174.2）
                 int tapMs = adx < 1.8f ? 10 : (adx < 3.5f ? 14 : (adx < 7f ? 20 : 26));
                 await TapKeyAsync(towardKey, tapMs, 70, ct);
                 await WaitForNextFrameAsync(ct);
@@ -223,11 +212,7 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>
-        /// 長按移動直到進入碰撞體（isReachedExternally）。
-        /// 成功唯一條件為 <paramref name="isReachedExternally"/> 回傳 true（類 Unity OnTrigger 概念）。
-        /// 若因延遲導致越界（Overshoot），會發動反向微調對準。
-        /// </summary>
+        /// <summary>長按走向目標 X；以 <paramref name="isReachedExternally"/> 為到達；可預測煞車、越界反向短按。</summary>
         public async Task<MovementResult> MoveToTargetAsync(SdPointF targetPos, Func<SdPointF?> getPlayerPosition, float fallToleranceY, Func<bool> isReachedExternally, CancellationToken cancellationToken = default)
         {
             if (_isDisposed) return MovementResult.Failed;
@@ -240,7 +225,6 @@ namespace ArtaleAI.Services
                 return MovementResult.Failed;
             }
 
-            // 👁️ 等待視覺獲取玩家座標
             SdPointF? initialPosNullable = null;
             for (int i = 0; i < 20; i++) 
             {
@@ -268,17 +252,16 @@ namespace ArtaleAI.Services
             
             try
             {
-                // 1. 第一階段：長按移動直到觸發碰撞
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     var currentPosNullable = getPlayerPosition();
                     if (!currentPosNullable.HasValue)
                     {
-                        StopMovement(); // 上一幀 HoldKey 仍可能為按下狀態；追蹤空幀必須放鍵，否則角色會在「邏輯以為在等待」時仍持續滑步。
+                        StopMovement();
                         if (!visionLossWatcher.IsRunning) visionLossWatcher.Start();
                         if (visionLossWatcher.ElapsedMilliseconds > 1500)
                         {
-                            Logger.Error("[移動] ❌ 嚴重：視覺丟失超過 1.5 秒，緊急停鍵。");
+                            Logger.Error("[移動] 視覺丟失超過 1.5 秒，緊急停鍵。");
                             return MovementResult.Failed;
                         }
                         await WaitForNextFrameAsync(cancellationToken);
@@ -290,22 +273,20 @@ namespace ArtaleAI.Services
                     float nowX = currentPos.X;
                     DateTime nowTime = DateTime.UtcNow;
 
-                    // 🏎️ 預測性煞車 (Predictive Braking) 演算法 - 像停車一樣精準
                     if (lastObservedX.HasValue)
                     {
                         double dt = (nowTime - lastObservedTime).TotalSeconds;
                         if (dt > 0)
                         {
-                            float vx = (nowX - lastObservedX.Value) / (float)dt; // 像素/秒
+                            float vx = (nowX - lastObservedX.Value) / (float)dt;
                             float remainingDist = Math.Abs(targetPos.X - nowX);
 
-                            // 🏎️ 還原 3/21 參數：預演慣性 (假設放鍵後還會滑行約 66ms)
                             float predictStopDist = Math.Abs(vx) * 0.066f;
 
                             if (remainingDist <= predictStopDist + 1.2f)
                             {
                                 StopMovement();
-                                Logger.Info($"[移動] 🏎️ 預測性煞車：距離 {remainingDist:F1}px(預估滑行:{predictStopDist:F1}px)，提前放鍵。");
+                                Logger.Info($"[移動] 預測性煞車：距離 {remainingDist:F1}px(預估滑行:{predictStopDist:F1}px)，提前放鍵。");
                                 break;
                             }
                         }
@@ -314,14 +295,12 @@ namespace ArtaleAI.Services
                     lastObservedX = nowX;
                     lastObservedTime = nowTime;
 
-                    // 墜落偵測 (物理熔斷)
                     if (Math.Abs(currentPos.Y - initialY) > fallToleranceY)
                     {
                         Logger.Warning($"[移動] 偵測到墜落 (Y偏移:{Math.Abs(currentPos.Y - initialY):F1})，中止導航。");
                         return MovementResult.Failed;
                     }
 
-                    // 碰撞熔斷：進入 Hitbox 立即放鍵
                     if (isReachedExternally())
                     {
                         StopMovement();
@@ -329,7 +308,6 @@ namespace ArtaleAI.Services
                         break;
                     }
 
-                    // 檢查是否已經明顯衝過頭
                     float currentDx = targetPos.X - currentPos.X;
                     if (Math.Sign(currentDx) != expectedSignX && Math.Sign(currentDx) != 0)
                     {
@@ -343,10 +321,8 @@ namespace ArtaleAI.Services
                     await WaitForNextFrameAsync(cancellationToken);
                 }
 
-                // 2. 第二階段：物理停穩與越界校正
                 StopMovement();
-                
-                // 等待物理停穩 (SSOT 感知)
+
                 if (await WaitForHitboxAsync(isReachedExternally, 200, cancellationToken))
                 {
                     await ApplyGeometricWalkTrimIfNeededAsync(targetPos, getPlayerPosition, isReachedExternally, cancellationToken);
@@ -356,7 +332,6 @@ namespace ArtaleAI.Services
 
                 await WaitForStabilityAsync(getPlayerPosition, cancellationToken);
 
-                // 物理停穩後再次確認
                 if (isReachedExternally())
                 {
                     await ApplyGeometricWalkTrimIfNeededAsync(targetPos, getPlayerPosition, isReachedExternally, cancellationToken);
@@ -364,12 +339,10 @@ namespace ArtaleAI.Services
                         return MovementResult.Success;
                 }
 
-                // 3. 第三階段：反向微調 (Bang-Bang 對準)
                 var finalPos = getPlayerPosition();
                 if (finalPos.HasValue)
                 {
                     float finalDx = targetPos.X - finalPos.Value.X;
-                    // 如果越界（方向與起點方向相反），執行反向碎步
                     if (Math.Sign(finalDx) != expectedSignX && Math.Sign(finalDx) != 0)
                     {
                         int maxTaps = GetOvershootCorrectionMaxTaps();
@@ -406,23 +379,20 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>
-        /// 動態停穩偵測：監控座標直到物理位移趨近於零
-        /// </summary>
+        /// <summary>連續幀位移低於門檻視為停穩，逾時回傳 false。</summary>
         private async Task<bool> WaitForStabilityAsync(Func<SdPointF?> getPlayerPosition, CancellationToken ct)
         {
             const int RequiredStableCount = 3;
-            const float StabilityTolerance = 0.2f; // 0.2px 以下視為靜態 (忽略視覺抖動)
-            
+            const float StabilityTolerance = 0.2f;
+
             int stableFrames = 0;
             SdPointF? lastPos = getPlayerPosition();
             
-            // 最多等待 500ms，防止極端情況下的死循環
             var stabilityTimeout = System.Diagnostics.Stopwatch.StartNew();
             
             while (stabilityTimeout.ElapsedMilliseconds < 500 && !ct.IsCancellationRequested)
             {
-                await WaitForNextFrameAsync(ct); // 配合視覺訊號檢測位移
+                await WaitForNextFrameAsync(ct);
                 var currentPos = getPlayerPosition();
                 
                 if (currentPos.HasValue && lastPos.HasValue)
@@ -441,7 +411,7 @@ namespace ArtaleAI.Services
                     lastPos = currentPos;
                 }
             }
-            return false; // 超時未停穩
+            return false;
         }
 
         private async Task<bool> WaitForHitboxAsync(Func<bool> isReachedExternally, int timeoutMs, CancellationToken ct)
@@ -480,7 +450,6 @@ namespace ArtaleAI.Services
                     SendKeyInput(_currentPressedKey, true);
                     _currentPressedKey = 0;
                 }
-                _movementCancellationToken?.Cancel();
             }
         }
 
@@ -589,10 +558,8 @@ namespace ArtaleAI.Services
         {
             FocusGameWindow();
 
-            // 🛡️ 物理鎖定：在發動抓取動作前，確保角色慣性歸零（視覺同步）
             await WaitForStabilityAsync(() => getPlayerPosition() as PointF?, ct);
 
-            // SSOT：WaitForStability 期間慣性仍可能改變 X；必須以穩定後即時座標計算 dx，不可再用進入方法時的 playerPos。
             var pStable = getPlayerPosition();
             float dx = ropeX - pStable.X;
             float adx = Math.Abs(dx);
@@ -628,12 +595,10 @@ namespace ArtaleAI.Services
             }
             else
             {
-                // 🚀 A* 簡約主義：不再進行側向跳抓。若對位偏差過大，直接判定失敗以便由導航層重跑對位
                 Logger.Warning($"[爬繩] 對位偏移過大 ({dx:F1}px)，拒絕發動側跳，回傳 Failed。");
                 return false;
             }
 
-            // 🚀 移除 300ms 固定等待，立即開始狀態觀測
             bool stillOnRope = true;
             bool success = false;
             var climbPhase = System.Diagnostics.Stopwatch.StartNew();

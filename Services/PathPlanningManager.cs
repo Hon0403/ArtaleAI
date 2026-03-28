@@ -3,74 +3,43 @@ using ArtaleAI.Core;
 using ArtaleAI.Models.Minimap;
 using ArtaleAI.Models.PathPlanning;
 using ArtaleAI.Utils;
-using System.Diagnostics;
 using System.Drawing;
-using Windows.Graphics.Capture;
-using SdPoint = System.Drawing.Point;
 using SdPointF = System.Drawing.PointF;
 
 namespace ArtaleAI.Services
 {
-    /// <summary>
-    /// 路徑規劃管理器 - 統籌路徑追蹤、事件訂閱與狀態同步
-    /// </summary>
+    /// <summary>訂閱 <see cref="PathPlanningTracker"/> 事件並對外轉發路徑狀態。</summary>
     public class PathPlanningManager : IDisposable
     {
         private readonly PathPlanningTracker _tracker;
         private readonly AppConfig _config;
         private bool _isRunning;
 
-        // 儲存 lambda 引用以便取消訂閱
         private Action<PathPlanningState>? _pathStateChangedHandler;
         private Action<SdPointF>? _waypointReachedHandler;
 
-        /// <summary>
-        /// 路徑狀態變更事件 - 當路徑點切換或路徑完成時觸發
-        /// </summary>
         public event Action<PathPlanningState>? OnPathStateChanged;
 
-        /// <summary>
-        /// 路徑點到達事件 - 當角色到達指定路徑點時觸發
-        /// </summary>
         public event Action<SdPointF>? OnWaypointReached;
- 
-        // 📁 資源目錄 (向下相容)
+
         public string MapDataDirectory => "MapData";
         public string MonstersDirectory => "Monsters";
 
 
-        /// <summary>
-        /// 取得路徑追蹤器實例
-        /// </summary>
         public PathPlanningTracker Tracker => _tracker;
 
-        /// <summary>
-        /// 取得當前路徑規劃狀態快照
-        /// </summary>
         public PathPlanningState? CurrentState => _tracker.CurrentPathState;
 
-        /// <summary>
-        /// 檢查路徑規劃是否正在運行
-        /// </summary>
         public bool IsRunning => _isRunning;
 
-        /// <summary>
-        /// 初始化路徑規劃管理器
-        /// </summary>
-        /// <param name="tracker">路徑追蹤器實例</param>
-        /// <param name="config">應用程式設定</param>
         public PathPlanningManager(PathPlanningTracker tracker, AppConfig config)
         {
             _tracker = tracker ?? throw new ArgumentNullException(nameof(tracker));
             _config = config ?? throw new ArgumentNullException(nameof(config));
         }
 
-        /// <summary>
-        /// 啟動路徑規劃追蹤系統
-        /// 自動尋找遊戲視窗並開始追蹤小地圖玩家位置
-        /// </summary>
-        /// <param name="gameWindowTitle">遊戲視窗標題</param>
-        /// <exception cref="InvalidOperationException">找不到指定的遊戲視窗時拋出</exception>
+        /// <summary>訂閱追蹤器事件並標記為運行中（實際幀資料由外部 <c>ProcessTrackingResult</c> 餵入）。</summary>
+        /// <exception cref="InvalidOperationException">找不到遊戲視窗時。</exception>
         public Task StartAsync(string gameWindowTitle)
         {
             if (_isRunning)
@@ -85,7 +54,6 @@ namespace ArtaleAI.Services
                 throw new InvalidOperationException($"無法找到遊戲視窗: {gameWindowTitle}");
             }
 
-            // 簡化：使用 lambda 訂閱（儲存引用以便取消訂閱）
             _pathStateChangedHandler = state => OnPathStateChanged?.Invoke(state);
             _waypointReachedHandler = waypoint =>
             {
@@ -97,17 +65,13 @@ namespace ArtaleAI.Services
             _tracker.OnWaypointReached += _waypointReachedHandler;
 
 
-            // 啟動追蹤
             _isRunning = true;
 
             Logger.Info("[路徑規劃管理] 路徑規劃已啟動");
             return Task.CompletedTask;
         }
 
-        /// <summary>
-        /// 停止路徑規劃追蹤系統
-        /// 取消所有事件訂閱並停止追蹤器
-        /// </summary>
+        /// <summary>取消事件訂閱並清除運行旗標。</summary>
         public Task StopAsync()
         {
             if (!_isRunning)
@@ -116,7 +80,6 @@ namespace ArtaleAI.Services
                 return Task.CompletedTask;
             }
 
-            // 取消訂閱（使用儲存的 lambda 引用）
             if (_pathStateChangedHandler != null)
                 _tracker.OnPathStateChanged -= _pathStateChangedHandler;
             if (_waypointReachedHandler != null)
@@ -136,25 +99,17 @@ namespace ArtaleAI.Services
         }
 
 
-        /// <summary>
-        /// 手動處理小地圖追蹤結果
-        /// 供 LiveView 模式直接傳入追蹤資料使用
-        /// </summary>
-        /// <param name="result">小地圖追蹤結果</param>
+        /// <summary>將一幀小地圖追蹤結果交給內部 <see cref="PathPlanningTracker"/>。</summary>
         public void ProcessTrackingResult(MinimapTrackingResult result)
         {
             _tracker.ProcessTrackingResult(result);
         }
 
-        /// <summary>
-        /// 釋放路徑規劃管理器使用的所有資源
-        /// 如果正在運行會自動停止追蹤
-        /// </summary>
+        /// <summary>若仍在運行則非同步停止後釋放追蹤器。</summary>
         public void Dispose()
         {
             if (_isRunning)
             {
-                // 修復：避免死鎖，使用 Task.Run 在背景執行緒執行
                 try
                 {
                     Task.Run(async () => await StopAsync()).GetAwaiter().GetResult();

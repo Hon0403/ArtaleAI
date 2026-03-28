@@ -1,9 +1,0 @@
-# Task Checklist
-
-- [ ] **Implement Static Rope Injection** <!-- id: 0 -->
-    - [ ] Create `InjectRopeNodes` method in [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) <!-- id: 1 -->
-    - [ ] Integrate into [InitializePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#499-541) <!-- id: 2 -->
-    - [ ] Logic: Detect gaps -> Find Rope -> Insert Nodes (ClimbUp/Down) <!-- id: 3 -->
-- [ ] **Verify Injection** <!-- id: 4 -->
-    - [ ] Load path and check logs for "Injected Rope Node" messages <!-- id: 5 -->
-    - [ ] Verify character climbs the rope naturally <!-- id: 6 -->

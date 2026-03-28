@@ -1,7 +1,0 @@
-- [x] 修改 `MainWindow.xaml.cs` (基本修復與環境變數已完成)
-- [x] 實作分時連線與極速旗標
-    - [x] 更新 `OPENCV_FFMPEG_CAPTURE_OPTIONS` 包含 `fflags`, `flags`
-    - [x] 重構 `OnLoaded` 為 `async` 並加入 `Task.Delay(300)`
-- [x] 驗證
-    - [x] 執行 `dotnet build`
-    - [x] 執行 `dotnet run` 驗證分時啟動效果，畫面依序且快速出現

@@ -11,10 +11,7 @@ using YamlDotNet.Serialization.NamingConventions;
 
 namespace ArtaleAI.Models.Config
 {
-    /// <summary>
-    /// 應用程式組態設定類別
-    /// 使用 Singleton 模式管理全域設定，支援從 YAML 檔案載入和儲存
-    /// </summary>
+    /// <summary>全域 YAML 組態（Singleton）；子區塊見 General、Vision、Navigation 等。</summary>
     public class AppConfig : INotifyPropertyChanged
     {
         private static AppConfig? _instance;

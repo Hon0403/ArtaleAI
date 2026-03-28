@@ -1,7 +1,0 @@
-# 鍵盤 Hook 實作
-
-## 實作進度
-- [/] 1. 在 RouteRecorderService 加入鍵盤 Hook
-- [ ] 2. 記錄 Alt 按鍵事件
-- [ ] 3. 錄製時結合 Hook 資料
-- [ ] 4. 建置測試

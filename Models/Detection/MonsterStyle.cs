@@ -7,10 +7,10 @@ namespace ArtaleAI.Models.Detection
     public class MonsterStyle
     {
         /// <summary>邊框顏色（格式：R,G,B）</summary>
-        public string FrameColor { get; set; }
-        
+        public string FrameColor { get; set; } = "0,255,0";
+
         /// <summary>文字顏色（格式：R,G,B）</summary>
-        public string TextColor { get; set; }
+        public string TextColor { get; set; } = "255,255,255";
         
         /// <summary>邊框粗細（像素）</summary>
         public int FrameThickness { get; set; }
@@ -25,6 +25,6 @@ namespace ArtaleAI.Models.Detection
         public bool ShowConfidence { get; set; } 
         
         /// <summary>文字格式化字串</summary>
-        public string TextFormat { get; set; } 
+        public string TextFormat { get; set; } = "{0:F0}%";
     }
 }

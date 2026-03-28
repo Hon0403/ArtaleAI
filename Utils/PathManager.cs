@@ -2,11 +2,7 @@ using System.Windows.Forms;
 
 namespace ArtaleAI.Utils
 {
-    /// <summary>
-    /// 應用程式路徑管理工具
-    /// 所有路徑以執行檔所在目錄（Application.StartupPath）為基準，
-    /// 確保開發偵錯與正式部署時行為一致。
-    /// </summary>
+    /// <summary>以 <see cref="Application.StartupPath"/> 為根的路徑常數。</summary>
     public static class PathManager
     {
         /// <summary>地圖資料目錄（存放 .json 地圖檔案）</summary>

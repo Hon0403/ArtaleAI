@@ -9,10 +9,7 @@ using SdPointF = System.Drawing.PointF;
 
 namespace ArtaleAI.Services
 {
-    /// <summary>
-    /// 導航有限狀態機 (FSM) 實作
-    /// 負責接收大腦的指令，將邊界條件 (Edge) 交由真正的執行器處理，並嚴格管控狀態。
-    /// </summary>
+    /// <summary>導航 FSM：序列化邊執行、錯誤救援與狀態轉移。</summary>
     public class NavigationStateMachine : INavigationStateMachine
     {
         private NavigationState _currentState = NavigationState.Idle;
@@ -32,10 +29,7 @@ namespace ArtaleAI.Services
 
         public event Action<NavigationState, NavigationState>? OnStateChanged;
 
-        /// <summary>
-        /// 嘗試指示狀態機開始執行一段導航邊。
-        /// 匹配 INavigationStateMachine 介面
-        /// </summary>
+        /// <inheritdoc />
         public bool TryStartNavigation(NavigationEdge edge, SdPointF currentPos, SdPointF targetPos)
         {
             lock (_stateLock)
@@ -107,15 +101,10 @@ namespace ArtaleAI.Services
                     return;
                 }
 
-                // 僅當執行器明確回報 Completed 才允許推進 waypoint。
-                // 禁止以「動作種類」(Jump/Transition) 直接判定成功，避免假成功導致掉層與路徑飄移。
                 if (!token.IsCancellationRequested &&
                     exeResult == NavigationExecutor.ExecutionResult.Completed)
                 {
-                    if (exeResult == NavigationExecutor.ExecutionResult.Completed)
-                    {
-                        Logger.Debug("[FSM] 接收到執行層 Success 訊號，立即進入 Reached_Waypoint");
-                    }
+                    Logger.Debug("[FSM] 接收到執行層 Success 訊號，立即進入 Reached_Waypoint");
                     ChangeState(NavigationState.Reached_Waypoint);
                 }
             }
@@ -137,9 +126,7 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>
-        /// 緊急中斷所有的導航任務
-        /// </summary>
+        /// <inheritdoc />
         public void CancelNavigation(string reason = "使用者強制中斷")
         {
             lock (_stateLock)
@@ -154,9 +141,7 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>
-        /// 通知狀態機角色已經到達目標容許範圍內。
-        /// </summary>
+        /// <inheritdoc />
         public void NotifyTargetReached()
         {
             lock (_stateLock)

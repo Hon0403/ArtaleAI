@@ -1,6 +1,0 @@
-{
-  "artifactType": "ARTIFACT_TYPE_TASK",
-  "summary": "Serilog migration task tracking - All phases completed. Total 91 Debug.WriteLine calls migrated to Logger.",
-  "updatedAt": "2025-12-14T07:08:38.145230800Z",
-  "version": "6"
-}

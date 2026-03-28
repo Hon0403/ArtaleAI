@@ -30,10 +30,9 @@ namespace ArtaleAI.Core
         private int _lastPixelCount = 0; 
         private readonly object _minimapMatLock = new object();
 
-        // 🚀 效能優化：地圖 ROI 快取
         private Rectangle? _cachedMinimapRect = null;
         private DateTime _lastFullScanTime = DateTime.MinValue;
-        private const int FullScanIntervalMs = 2000; // 每 2 秒才強制校正一次（若沒丟失）
+        private const int FullScanIntervalMs = 2000;
         #endregion
 
         #region 公開屬性
@@ -95,7 +94,6 @@ namespace ArtaleAI.Core
         /// <returns>血條矩形區域，未檢測到時返回 null</returns>
         public Rectangle? DetectBloodBar(Mat frameMat, Rectangle? uiExcludeRect, AppConfig config, out int cameraOffsetY)
         {
-            // 1. 提取相機區域（內嵌邏輯）
             Mat cameraArea;
             if (uiExcludeRect.HasValue)
             {
@@ -114,32 +112,25 @@ namespace ArtaleAI.Core
 
             using (cameraArea)
             {
-                // 2. 轉換為 HSV 並創建紅色遮罩（內嵌邏輯）
                 using var hsvImage = new Mat();
                 Cv2.CvtColor(cameraArea, hsvImage, ColorConversionCodes.BGR2HSV);
 
                 using var redMask = new Mat();
                 
-                // 紅色在 HSV 空間中分佈在兩端 (0-10 和 160-180)
-                // 範圍 1: 低色相
                 var lower1 = new Scalar(config.Vision.LowerRedHsv[0], config.Vision.LowerRedHsv[1], config.Vision.LowerRedHsv[2]);
                 var upper1 = new Scalar(config.Vision.UpperRedHsv[0], config.Vision.UpperRedHsv[1], config.Vision.UpperRedHsv[2]);
                 using var mask1 = new Mat();
                 Cv2.InRange(hsvImage, lower1, upper1, mask1);
 
-                // 範圍 2: 高色相 (160-180) - 使用相同的飽和度與明度門檻
                 var lower2 = new Scalar(160, config.Vision.LowerRedHsv[1], config.Vision.LowerRedHsv[2]);
                 var upper2 = new Scalar(180, 255, 255);
                 using var mask2 = new Mat();
                 Cv2.InRange(hsvImage, lower2, upper2, mask2);
 
-                // 合併兩個遮罩
                 Cv2.BitwiseOr(mask1, mask2, redMask);
 
-                // 3. 找最佳血條（保留，因為邏輯複雜）
                 var bestBar = FindBestRedBar(redMask, config);
 
-                //  直接返回轉換後的座標,不需要額外函數
                 return bestBar.HasValue
                     ? new Rectangle(bestBar.Value.X, bestBar.Value.Y + cameraOffsetY,
                                    bestBar.Value.Width, bestBar.Value.Height)
@@ -162,7 +153,6 @@ namespace ArtaleAI.Core
 
             if (bloodBar.HasValue)
             {
-                //  一次計算兩種框架
                 var (detectionBoxes, attackRangeBoxes) =
                     CalculateBloodBarRelatedBoxes(bloodBar.Value, config);
 
@@ -183,7 +173,6 @@ namespace ArtaleAI.Core
         public (List<Rectangle> DetectionBoxes, List<Rectangle> AttackRangeBoxes)
             CalculateBloodBarRelatedBoxes(Rectangle bloodBarRect, AppConfig config)
         {
-            // 計算偵測框
             var dotCenterX = bloodBarRect.X + bloodBarRect.Width / 2;
             var dotCenterY = bloodBarRect.Y + bloodBarRect.Height + config.Vision.DotOffsetY;
 
@@ -194,7 +183,6 @@ namespace ArtaleAI.Core
                 config.Vision.DetectionBoxHeight
             );
 
-            // 計算攻擊範圍框
             var playerCenterX = bloodBarRect.X + bloodBarRect.Width / 2 + config.Appearance.AttackRange.OffsetX;
             var playerCenterY = bloodBarRect.Y + bloodBarRect.Height + config.Appearance.AttackRange.OffsetY;
 
@@ -229,13 +217,11 @@ namespace ArtaleAI.Core
             {
                 var config = AppConfig.Instance;
 
-                // 1. 固定位置模式 (Fixed Mode)
                 if (config.Vision.UseFixedMinimapPosition)
                 {
                     return new Rectangle(0, 0, config.Vision.FixedMinimapWidth, config.Vision.FixedMinimapHeight);
                 }
 
-                // 2. 🚀 快取驗證模式 (ROI Cache Validation)
                 var now = DateTime.UtcNow;
                 if (_cachedMinimapRect.HasValue && (now - _lastFullScanTime).TotalMilliseconds < FullScanIntervalMs)
                 {
@@ -245,7 +231,6 @@ namespace ArtaleAI.Core
                     }
                 }
 
-                // 3. 顏色基礎偵測模式 (Color-Based Mode) - 全域掃描
                 var result = FindMinimapByColor(fullFrameMat);
                 if (result.HasValue)
                 {
@@ -277,7 +262,6 @@ namespace ArtaleAI.Core
                 byte g = byte.Parse(colorParts[1].Trim());
                 byte r = byte.Parse(colorParts[2].Trim());
 
-                // 採樣 4 個角點
                 int[] xs = { rect.Left, rect.Right - 1 };
                 int[] ys = { rect.Top, rect.Bottom - 1 };
 
@@ -291,7 +275,11 @@ namespace ArtaleAI.Core
                 }
                 return true;
             }
-            catch { return false; }
+            catch (Exception ex)
+            {
+                Logger.Error($"[小地圖] VerifyMinimapAt 例外 (rect={rect})", ex);
+                return false;
+            }
         }
 
         /// <summary>
@@ -308,24 +296,20 @@ namespace ArtaleAI.Core
             {
                 var config = AppConfig.Instance;
 
-                // 解析邊框顏色 (BGR)
                 var colorParts = config.Vision.MinimapFrameColorBgr.Split(',');
                 byte b = byte.Parse(colorParts[0].Trim());
                 byte g = byte.Parse(colorParts[1].Trim());
                 byte r = byte.Parse(colorParts[2].Trim());
                 var frameColor = new Scalar(b, g, r);
 
-                // 1. 建立白色遮罩
                 using var maskWhite = new Mat();
                 Cv2.InRange(fullFrameMat, frameColor, frameColor, maskWhite);
 
-                // 2. 連通分量分析
                 using var labels = new Mat();
                 using var stats = new Mat();
                 using var centroids = new Mat();
                 int numLabels = Cv2.ConnectedComponentsWithStats(maskWhite, labels, stats, centroids, PixelConnectivity.Connectivity8);
 
-                // 3. 遍歷每個連通區域（跳過背景 label 0）
                 for (int i = 1; i < numLabels; i++)
                 {
                     int x0 = stats.At<int>(i, (int)ConnectedComponentsTypes.Left);
@@ -333,17 +317,14 @@ namespace ArtaleAI.Core
                     int rw = stats.At<int>(i, (int)ConnectedComponentsTypes.Width);
                     int rh = stats.At<int>(i, (int)ConnectedComponentsTypes.Height);
 
-                    // 過濾過小的區域
                     if (rw < config.Vision.MinMinimapWidth || rh < config.Vision.MinMinimapHeight)
                         continue;
 
                     int x1 = x0 + rw - 1;
                     int y1 = y0 + rh - 1;
 
-                    // 4. 驗證四邊是完整的白色邊框 (1px)
                     bool validFrame = true;
 
-                    // 上邊
                     for (int x = x0; x <= x1 && validFrame; x++)
                     {
                         var pixel = fullFrameMat.At<Vec3b>(y0, x);
@@ -351,7 +332,6 @@ namespace ArtaleAI.Core
                             validFrame = false;
                     }
 
-                    // 下邊
                     for (int x = x0; x <= x1 && validFrame; x++)
                     {
                         var pixel = fullFrameMat.At<Vec3b>(y1, x);
@@ -359,7 +339,6 @@ namespace ArtaleAI.Core
                             validFrame = false;
                     }
 
-                    // 左邊
                     for (int y = y0; y <= y1 && validFrame; y++)
                     {
                         var pixel = fullFrameMat.At<Vec3b>(y, x0);
@@ -367,7 +346,6 @@ namespace ArtaleAI.Core
                             validFrame = false;
                     }
 
-                    // 右邊
                     for (int y = y0; y <= y1 && validFrame; y++)
                     {
                         var pixel = fullFrameMat.At<Vec3b>(y, x1);
@@ -378,11 +356,10 @@ namespace ArtaleAI.Core
                     if (!validFrame)
                         continue;
 
-                    // 5. 找到有效框後，計算內部非白色區域的 BoundingBox
                     using var roiMat = fullFrameMat[new OpenCvSharp.Rect(x0, y0, rw, rh)];
                     using var maskNonWhite = new Mat();
                     Cv2.InRange(roiMat, frameColor, frameColor, maskNonWhite);
-                    Cv2.BitwiseNot(maskNonWhite, maskNonWhite); // 反轉：非白色區域為白
+                    Cv2.BitwiseNot(maskNonWhite, maskNonWhite);
 
                     using var nonZeroMat = new Mat();
                     Cv2.FindNonZero(maskNonWhite, nonZeroMat);
@@ -391,17 +368,15 @@ namespace ArtaleAI.Core
 
                     var innerRect = Cv2.BoundingRect(nonZeroMat);
 
-                    // 轉換回原始座標
                     int minimapX = x0 + innerRect.X;
                     int minimapY = y0 + innerRect.Y;
                     int minimapW = innerRect.Width;
                     int minimapH = innerRect.Height;
 
-                    //Logger.Info($"[小地圖-顏色偵測] 找到小地圖: ({minimapX}, {minimapY}) {minimapW}x{minimapH}");
                     return new Rectangle(minimapX, minimapY, minimapW, minimapH);
                 }
 
-                return null; // 沒有符合條件的區域
+                return null;
             }
             catch (Exception ex)
             {
@@ -425,7 +400,7 @@ namespace ArtaleAI.Core
         /// 檢測小地圖位置、玩家位置和其他玩家位置
         /// </summary>
         /// <param name="fullFrameMat">完整畫面 Mat</param>
-        /// <param name="captureTime">🔧 畫面擷取時間戳，用於精確時間同步</param>
+        /// <param name="captureTime">該幀擷取時間（寫入追蹤結果以利同步）。</param>
         /// <returns>小地圖追蹤結果，失敗時返回 null</returns>
         public MinimapTrackingResult? GetMinimapTracking(Mat fullFrameMat, DateTime captureTime)
         {
@@ -444,28 +419,24 @@ namespace ArtaleAI.Core
                     minimapRect.Value.X, minimapRect.Value.Y,
                     minimapRect.Value.Width, minimapRect.Value.Height));
 
-                // 保存小地圖 Mat 供 MinimapViewer 使用（線程安全）
                 lock (_minimapMatLock)
                 {
                     LastMinimapMat?.Dispose();
                     LastMinimapMat = minimapMat.Clone();
                 }
 
-                // ✅ 方案1：使用顏色匹配偵測玩家位置（比模板匹配更穩定，不會誤判其他玩家）
                 System.Drawing.PointF? playerPos = null;
                 try
                 {
                     var playerStyle = AppConfig.Instance.Appearance.MinimapPlayer;
 
-                    // 解析玩家顏色 RGB（圖片是 RGB 格式）
                     var colorParts = playerStyle.PlayerColorBgr.Split(',');
-                    int r = int.Parse(colorParts[0].Trim());  // 第一個是 R
-                    int g = int.Parse(colorParts[1].Trim());  // 第二個是 G  
-                    int b = int.Parse(colorParts[2].Trim());  // 第三個是 B
+                    int r = int.Parse(colorParts[0].Trim());
+                    int g = int.Parse(colorParts[1].Trim());
+                    int b = int.Parse(colorParts[2].Trim());
                     int tolerance = playerStyle.ColorTolerance;
                     int minPixels = playerStyle.MinPixelCount;
 
-                    // ✅ 圖片是 BGR 格式，Scalar 順序是 (B, G, R)
                     var lowerBound = new Scalar(
                         Math.Max(0, b - tolerance),
                         Math.Max(0, g - tolerance),
@@ -477,22 +448,17 @@ namespace ArtaleAI.Core
                         Math.Min(255, r + tolerance)
                     );
 
-                    // 執行顏色匹配
                     using var mask = new Mat();
                     Cv2.InRange(minimapMat, lowerBound, upperBound, mask);
 
-                    // 🚀 方案優化：使用影像矩 (Moments) 代替 C# 像素迴圈
                     var moments = Cv2.Moments(mask, true);
                     if (moments.M00 >= minPixels)
                     {
-                        // 質心計算公式：x = M10/M00, y = M01/M00
                         float avgX = (float)(moments.M10 / moments.M00);
                         float avgY = (float)(moments.M01 / moments.M00);
 
-                        // 🔧基準點回歸像素中心點並套用垂直偏移
                         playerPos = new System.Drawing.PointF(avgX, avgY + playerStyle.OffsetY);
 
-                        // 只在規模變化較大時輸出（選用性）
                         if (Math.Abs(moments.M00 - _lastPixelCount) > 5)
                         {
                             _lastPixelCount = (int)moments.M00;
@@ -500,7 +466,7 @@ namespace ArtaleAI.Core
                     }
                     else
                     {
-                        Debug.WriteLine($"[顏色匹配] ⚠️ 像素數不足: {moments.M00:F0} < {minPixels}");
+                        Debug.WriteLine($"[顏色匹配] 像素數不足: {moments.M00:F0} < {minPixels}");
                     }
                 }
                 catch (Exception ex)
@@ -508,7 +474,6 @@ namespace ArtaleAI.Core
                     Logger.Error($"[小地圖] 顏色匹配偵測錯誤: {ex.Message}");
                 }
 
-                //  直接內嵌其他玩家檢測（使用浮點數座標）
                 var otherPlayers = new List<System.Drawing.PointF>();
                 if (AppConfig.Instance.Navigation.EnableOtherPlayersDetection == true)
                 {
@@ -518,7 +483,6 @@ namespace ArtaleAI.Core
                         var result = MatchTemplateInternal(minimapMat, "OtherPlayers", threshold);
                         if (result.HasValue)
                         {
-                            // 轉換為浮點數座標
                             otherPlayers.Add(new System.Drawing.PointF(
                                 result.Value.Location.X,
                                 result.Value.Location.Y
@@ -534,7 +498,7 @@ namespace ArtaleAI.Core
                 return new MinimapTrackingResult(
                     playerPos,
                     otherPlayers,
-                    captureTime, // 🔧 使用傳入的擷取時間戳，而非當前時間
+                    captureTime,
                     1.0
                 )
                 {
@@ -565,28 +529,18 @@ namespace ArtaleAI.Core
 
             try
             {
-                // 定義綠色範圍 (BGR 格式)
-                // 純綠色 = (0, 255, 0)，容許一些誤差
                 var lowerGreen = new Scalar(0, 240, 0);
                 var upperGreen = new Scalar(20, 255, 20);
 
                 using var greenMask = new Mat();
                 Cv2.InRange(template, lowerGreen, upperGreen, greenMask);
 
-                // 反轉遮罩：綠色區域變 0，非綠色區域變 255
                 using var invertedMask = new Mat();
                 Cv2.BitwiseNot(greenMask, invertedMask);
 
-                // 🔧 優化：侵蝕 (Erode) 遮罩，減少邊緣雜訊
-                // SqDiff 對邊緣非常敏感。怪物邊緣常有「半綠色」的像素 (Anti-aliasing)，
-                // 這些像素既不是純綠 (所以沒被 InRange 抓到)，又跟背景不同 (導致 SqDiff 變大)。
-                // 我們對白色區域 (有效區域) 進行侵蝕，讓它「內縮」一點，排除掉邊緣。
-                // 3x3 的結構元素通常足夠 (迭代 1 次)
                 var element = Cv2.GetStructuringElement(MorphShapes.Rect, new OpenCvSharp.Size(3, 3));
                 Cv2.Erode(invertedMask, invertedMask, element, null, 1);
 
-                // 🔧 關鍵修復：將單通道遮罩轉換為與模板相同的通道數
-                // OpenCV MatchTemplate 需要遮罩與模板有相同的通道數
                 var result = new Mat();
                 if (template.Channels() == 3)
                 {
@@ -634,7 +588,7 @@ namespace ArtaleAI.Core
             string monsterName = "",
             List<Mat>? templateMasks = null)
         {
-            if (templateMats?.Count == 0) return new List<DetectionResult>();
+            if (templateMats == null || templateMats.Count == 0) return new List<DetectionResult>();
 
             var allResults = new List<DetectionResult>();
 
@@ -643,7 +597,6 @@ namespace ArtaleAI.Core
                 var templateMat = templateMats[i];
                 if (templateMat?.Empty() != false) continue;
 
-                // 取得或建立遮罩
                 Mat? mask = null;
                 bool disposeMask = false;
 
@@ -653,12 +606,10 @@ namespace ArtaleAI.Core
                 }
                 else
                 {
-                    // 動態產生綠色遮罩
                     mask = CreateGreenMask(templateMat);
                     disposeMask = true;
                 }
 
-                // 🔧 除錯：記錄遮罩資訊
                 if (mask != null && !mask.Empty())
                 {
                     Logger.Debug($"[遮罩] 遮罩尺寸: {mask.Width}x{mask.Height}, Channels={mask.Channels()}, 模板尺寸: {templateMat.Width}x{templateMat.Height}");
@@ -672,7 +623,6 @@ namespace ArtaleAI.Core
                 {
                     using var result = new Mat();
 
-                    // 🔧 除錯：記錄模板和來源的格式資訊
                     Logger.Debug($"[怪物偵測] 模板: {templateMat.Width}x{templateMat.Height}, Channels={templateMat.Channels()}, 來源: {sourceMat.Width}x{sourceMat.Height}, Channels={sourceMat.Channels()}");
 
                     if (mode == MonsterDetectionMode.Grayscale)
@@ -683,29 +633,22 @@ namespace ArtaleAI.Core
                     }
                     else
                     {
-                        // 彩色匹配使用綠色遮罩（如果可用）
                         if (mask != null && !mask.Empty())
                         {
-                            // 使用 SqDiffNormed (歸一化平方差)，支援遮罩且比 CCorr 更嚴格
                             Cv2.MatchTemplate(sourceMat, templateMat, result, TemplateMatchModes.SqDiffNormed, mask);
                         }
                         else
                         {
-                            // 如果沒遮罩，依然可以用 SqDiffNormed，或者維持 CCoeffNormed (但為了邏輯一致建議統一)
-                            // 這裡為了保持邏輯統一，全部改用 SqDiffNormed
                             Cv2.MatchTemplate(sourceMat, templateMat, result, TemplateMatchModes.SqDiffNormed);
                         }
                     }
 
                     if (!result.Empty())
                     {
-                        // 🔧 優化：改用 SqDiffNormed (歸一化平方差)
 
-                        // 1. 先取得全局最佳匹配，用於除錯與診斷
                         Cv2.MinMaxLoc(result, out double globalMinVal, out _, out OpenCvSharp.Point globalMinLoc, out _);
                         float globalBestScore = (float)(1.0 - globalMinVal);
 
-                        // 記錄全局最佳狀況，這樣即使低於閾值我們也能知道「最像的地方」分數是多少
                         Logger.Debug($"[怪物偵測] 全局最佳: 分數={globalBestScore:F4} (差異={globalMinVal:F4}), 位置={globalMinLoc}");
 
                         int count = 0;
@@ -713,10 +656,8 @@ namespace ArtaleAI.Core
 
                         while (count < maxResults)
                         {
-                            // Iterative: 尋找當前最佳
                             Cv2.MinMaxLoc(result, out double minVal, out _, out OpenCvSharp.Point minLoc, out _);
 
-                            // 轉換閾值邏輯
                             if (minVal > (1.0 - threshold))
                             {
                                 break;
@@ -724,7 +665,6 @@ namespace ArtaleAI.Core
 
                             float matchScore = (float)(1.0 - minVal);
 
-                            // 恢復日誌以便觀察
                             Logger.Debug($"[怪物偵測] 發現匹配: 分數={matchScore:F4} (差異={minVal:F4}), 位置={minLoc}");
 
                             allResults.Add(new DetectionResult(
@@ -737,7 +677,6 @@ namespace ArtaleAI.Core
 
                             count++;
 
-                            // NMS
                             int floodW = templateMat.Width / 2;
                             int floodH = templateMat.Height / 2;
                             var floodRect = new OpenCvSharp.Rect(
@@ -757,7 +696,6 @@ namespace ArtaleAI.Core
                 }
                 finally
                 {
-                    // 釋放動態產生的遮罩
                     if (disposeMask) mask?.Dispose();
                 }
             }
@@ -769,14 +707,12 @@ namespace ArtaleAI.Core
         /// 非同步載入怪物模板
         /// 從指定資料夾載入所有模板圖像並轉換為 Mat 格式，支援快取機制
         /// </summary>
-        // 用於快取自動估算的閾值
 
 
         public async Task<List<Mat>> LoadMonsterTemplatesAsync(string monsterName, string monstersDirectory)
         {
             try
             {
-                // 先檢查是否有已載入的模板快取 (Mat)
                 if (_monsterTemplateCache.TryGetValue(monsterName, out var cachedMats))
                     return cachedMats;
 
@@ -792,7 +728,6 @@ namespace ArtaleAI.Core
                 {
                     try
                     {
-                        // 1. 讀取圖片
                         using var tempBitmap = new System.Drawing.Bitmap(file);
 
                         if (tempBitmap == null || tempBitmap.Width < 5 || tempBitmap.Height < 5)
@@ -800,29 +735,23 @@ namespace ArtaleAI.Core
 
                         using var originalMat = BitmapConverter.ToMat(tempBitmap);
 
-                        // 2. 準備用於匹配的 Mat (BGR 3通道)
                         Mat matForMatching = new Mat();
 
                         if (originalMat.Channels() == 4)
                         {
-                            // BGRA -> BGR (移除 Alpha 通道)
                             Cv2.CvtColor(originalMat, matForMatching, ColorConversionCodes.BGRA2BGR);
                         }
                         else if (originalMat.Channels() == 1)
                         {
-                            // 灰階 -> BGR
                             Cv2.CvtColor(originalMat, matForMatching, ColorConversionCodes.GRAY2BGR);
                         }
                         else
                         {
-                            // 已經是 BGR (假設)
                             matForMatching = originalMat.Clone();
                         }
 
                         loadedMatTemplates.Add(matForMatching);
 
-                        // 3. 自動產生水平翻轉版本 (應對怪物面向不同方向)
-                        // 使用 FlipMode.Y (Code=1) 進行水平翻轉
                         Mat flippedMat = matForMatching.Clone();
                         Cv2.Flip(flippedMat, flippedMat, FlipMode.Y);
                         loadedMatTemplates.Add(flippedMat);
@@ -880,7 +809,6 @@ namespace ArtaleAI.Core
                         var rect = new Rectangle(boundingRect.X, boundingRect.Y,
                             boundingRect.Width, boundingRect.Height);
 
-                        //  內嵌驗證邏輯
                         var width = rect.Width;
                         var height = rect.Height;
                         var area = width * height;
@@ -982,8 +910,6 @@ namespace ArtaleAI.Core
                         continue;
                     }
 
-                    // 由於 ScreenCapture 現在回傳 BGR 格式，模板也應該保持 BGR
-                    // ImRead(Color) 預設就是 BGR 3通道，直接使用即可
                     Mat finalTemplate = originalTemplate.Clone();
 
 
@@ -1092,7 +1018,6 @@ namespace ArtaleAI.Core
             }
             catch
             {
-                // 忽略解析錯誤，返回預設顏色
             }
 
             return Color.White;
@@ -1202,7 +1127,6 @@ namespace ArtaleAI.Core
             GraphicsCapturer? capturer = null;
             try
             {
-                // 1. 尋找或確認捕捉目標
                 selectedItem = await GetOrSelectCaptureItem(windowHandle, config, selectedItem, progressReporter);
                 if (selectedItem == null)
                 {
@@ -1210,11 +1134,9 @@ namespace ArtaleAI.Core
                     return null;
                 }
 
-                // 2. 建立捕捉器並抓取一幀
                 capturer = new GraphicsCapturer(selectedItem);
                 await Task.Delay(100);
 
-                //  使用 ResourceManager 安全處理 Mat
                 using var fullFrame = capturer.TryGetNextMat();
                 if (fullFrame == null)
                 {
@@ -1229,19 +1151,17 @@ namespace ArtaleAI.Core
                     throw new Exception("無法偵測到小地圖區域");
                 }
 
-                //  安全裁切小地圖
                 using var minimapMat = new Mat(fullFrame, new OpenCvSharp.Rect(
                     minimapRect.Value.X, minimapRect.Value.Y,
                     minimapRect.Value.Width, minimapRect.Value.Height));
 
-                // 轉換為 Bitmap（OpenCvSharp.ToBitmap 內部會處理 BGR→RGB 轉換）
                 var minimapBitmap = OpenCvSharp.Extensions.BitmapConverter.ToBitmap(minimapMat);
 
                 return new MinimapResult(
-                    minimapBitmap,           // MinimapImage
-                    null,                    // PlayerPosition (如果沒有檢測到設為 null)
-                    selectedItem,            // CaptureItem  
-                    minimapRect.Value        // MinimapScreenRect
+                    minimapBitmap,
+                    null,
+                    selectedItem,
+                    minimapRect.Value
                 );
             }
             catch (Exception ex)
@@ -1281,7 +1201,7 @@ namespace ArtaleAI.Core
 
                     if (selectedItem != null)
                     {
-                        await SaveWindowSelection(selectedItem, config, progressReporter);
+                        await SaveWindowSelection(selectedItem, progressReporter);
                         progressReporter?.Invoke($"已記住選擇: {selectedItem.DisplayName}");
                     }
                 }
@@ -1297,19 +1217,17 @@ namespace ArtaleAI.Core
         /// <param name="item">選擇的擷取項目</param>
         /// <param name="config">應用程式設定（用於儲存記錄）</param>
         /// <param name="progressReporter">進度回報回調函數</param>
-        private static async Task SaveWindowSelection(GraphicsCaptureItem item, AppConfig config, Action<string>? progressReporter)
+        private static Task SaveWindowSelection(GraphicsCaptureItem item, Action<string>? progressReporter)
         {
             try
             {
                 progressReporter?.Invoke("正在保存視窗選擇到記憶中...");
 
-                // 保存視窗名稱
                 if (AppConfig.Instance != null)
                 {
                     AppConfig.Instance.General.LastSelectedWindowName = item.DisplayName;
                 }
 
-                // 嘗試獲取對應的程序資訊作為備用恢復方式
                 try
                 {
                     var process = Process.GetProcesses()
@@ -1335,6 +1253,8 @@ namespace ArtaleAI.Core
             {
                 progressReporter?.Invoke($"保存視窗選擇時發生錯誤: {ex.Message}");
             }
+
+            return Task.CompletedTask;
         }
 
         #region IDisposable
@@ -1347,12 +1267,10 @@ namespace ArtaleAI.Core
         {
             if (!_disposed)
             {
-                // 釋放地圖模板
                 foreach (var template in _mapTemplates.Values)
                     template?.Dispose();
                 _mapTemplates.Clear();
 
-                // 釋放怪物模板
                 foreach (var templates in _monsterTemplateCache.Values)
                 {
                     foreach (var mat in templates)
@@ -1360,7 +1278,6 @@ namespace ArtaleAI.Core
                 }
                 _monsterTemplateCache.Clear();
 
-                // 釋放最後的小地圖 Mat
                 lock (_minimapMatLock)
                 {
                     LastMinimapMat?.Dispose();

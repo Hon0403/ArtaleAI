@@ -24,9 +24,7 @@ namespace ArtaleAI.Models.Minimap
         public float OffsetY { get; set; }
     }
 
-    /// <summary>
-    /// 小地圖觀察窗樣式設定
-    /// </summary>
+    /// <summary>小地圖觀察窗之尺寸、縮放與顯示選項。</summary>
     public class MinimapViewerStyle
     {
         public bool Enabled { get; set; } = true;

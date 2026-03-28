@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using System.Threading.Tasks;
@@ -16,27 +17,7 @@ using SdRect = System.Drawing.Rectangle;
 
 namespace ArtaleAI.Services
 {
-    // ============================================================
-    // 架構考量：
-    // GamePipeline 是從 MainForm.OnFrameAvailable 提取出來的「遊戲迴圈協調器」。
-    // 它負責每幀的 5 步處理流程：
-    //   1. 小地圖追蹤
-    //   2. 自動攻擊決策
-    //   3. 路徑規劃觸發
-    //   4. 血條偵測排程
-    //   5. 怪物偵測排程
-    //
-    // 此類別不引用任何 System.Windows.Forms 元件。
-    // UI 更新全部透過 OnFrameProcessed 事件通知 MainForm 訂閱處理。
-    //
-    // 線程安全：
-    // 所有偵測結果使用 lock 保護（從 MainForm 原封不動搬遷），
-    // Pipeline 在背景執行緒被 LiveViewManager 呼叫，結果事件需在 UI 執行緒消費。
-    // ============================================================
-
-    /// <summary>
-    /// 每幀處理結果 — 供 MainForm / OverlayRenderer 訂閱使用
-    /// </summary>
+    /// <summary>單幀偵測與小地圖追蹤結果快照。</summary>
     public class FrameProcessingResult
     {
         public List<SdRect> BloodBars { get; init; } = new();
@@ -48,16 +29,13 @@ namespace ArtaleAI.Services
         public string? StatusMessage { get; set; }
     }
 
-    /// <summary>
-    /// 遊戲迴圈協調器 — Application 層核心
-    /// </summary>
+    /// <summary>每幀協調追蹤、路徑、攻擊與偵測；不依賴 WinForms。</summary>
     public class GamePipeline
     {
         private readonly GameVisionCore _gameVision;
         private readonly PathPlanningManager? _pathPlanningManager;
         private readonly CharacterMovementController? _movementController;
 
-        // 偵測結果（線程安全存取）
         private readonly object _bloodBarLock = new();
         private readonly object _monsterLock = new();
         private readonly object _minimapBoxLock = new();
@@ -70,11 +48,9 @@ namespace ArtaleAI.Services
         private List<SdRect> _currentMinimapBoxes = new();
         private List<SdRect> _currentMinimapMarkers = new();
 
-        // 偵測排程計時器
         private DateTime _lastBloodBarDetection = DateTime.MinValue;
         private DateTime _lastMonsterDetection = DateTime.MinValue;
 
-        // 攻擊狀態
         private volatile bool _isAttacking = false;
         private DateTime _lastAttackTime = DateTime.MinValue;
         private DateTime _lastDirectionChangeTime = DateTime.MinValue;
@@ -84,22 +60,23 @@ namespace ArtaleAI.Services
         private const ushort VK_LEFT = 0x25;
         private const ushort VK_RIGHT = 0x27;
 
-        // 幀驅動同步機制 (Vision-Driven Sync)
+        /// <summary>單幀處理超過此毫秒數寫入 Warning（Release 亦可見）。</summary>
+        private const double PipelineSlowFrameWarnMs = 120;
+
+#if DEBUG
+        /// <summary>單幀處理超過此毫秒數寫入 Debug（僅 Debug 組建）。</summary>
+        private const double PipelineSlowFrameDebugMs = 40;
+#endif
+
         private readonly SemaphoreSlim _frameSignal = new SemaphoreSlim(0, 1);
         private volatile bool _visionDataReady = false;
 
-        /// <summary>
-        /// 提供給執行層的同步介面：等待下一幀視覺數據處理完成。
-        /// </summary>
+        /// <summary>阻塞至本 pipeline 處理完下一幀並發信號。</summary>
         public async Task WaitForNextFrameAsync(CancellationToken ct)
         {
             try { await _frameSignal.WaitAsync(ct); }
             catch (OperationCanceledException) { }
         }
-
-        // ============================================================
-        // 外部可配置狀態（由 MainForm 透過屬性設定）
-        // ============================================================
 
         /// <summary>自動攻擊是否啟用（由 UI 執行緒更新）</summary>
         public volatile bool AutoAttackEnabled;
@@ -120,10 +97,6 @@ namespace ArtaleAI.Services
         /// <summary>攻擊中狀態（供外部查詢）</summary>
         public bool IsAttacking => _isAttacking;
 
-        // ============================================================
-        // 事件 — UI 層訂閱來更新畫面
-        // ============================================================
-
         /// <summary>每幀處理完成後觸發，攜帶所有偵測結果的快照</summary>
         public event Action<FrameProcessingResult>? OnFrameProcessed;
 
@@ -142,10 +115,6 @@ namespace ArtaleAI.Services
             _pathPlanningManager = pathPlanningManager;
             _movementController = movementController;
         }
-
-        // ============================================================
-        // 外部設定方法
-        // ============================================================
 
         /// <summary>更新小地圖邊界範圍（由 MainForm 傳入）</summary>
         public void SetMinimapBoxes(List<SdRect> boxes)
@@ -177,26 +146,17 @@ namespace ArtaleAI.Services
             };
         }
 
-        // ============================================================
-        // 核心：每幀處理入口
-        // 架構考量：這是原 MainForm.OnFrameAvailable L821-1016 的乾淨替代品
-        // ============================================================
-
-        /// <summary>
-        /// 處理一幀畫面 — 由 LiveViewManager.OnFrameReady 觸發
-        /// </summary>
-        /// <param name="frameMat">當前幀的 Mat（呼叫者負責 using）</param>
-        /// <param name="captureTime">畫面擷取時間戳</param>
-        /// <param name="config">應用程式配置</param>
+        /// <summary>處理單幀：追蹤、路徑、攻擊、血條／怪物偵測排程。</summary>
         public void ProcessFrame(Mat frameMat, DateTime captureTime, AppConfig config)
         {
             if (frameMat == null || frameMat.Empty()) return;
 
+            var sw = Stopwatch.StartNew();
             try
             {
                 var now = DateTime.UtcNow;
+                double captureLagMs = (now - captureTime).TotalMilliseconds;
 
-                // ── Step 1: 小地圖追蹤與路徑規劃同步 ──
                 MinimapTrackingResult? trackingResult = null;
                 List<SdRect> minimapBoxes;
                 lock (_minimapBoxLock) minimapBoxes = _currentMinimapBoxes.ToList();
@@ -210,14 +170,14 @@ namespace ArtaleAI.Services
                     }
                 }
 
-                // ── Step 2: 自動攻擊決策 ──
+                double msAfterMinimap = sw.Elapsed.TotalMilliseconds;
+
                 bool attackTriggered = false;
                 if (AutoAttackEnabled)
                 {
                     attackTriggered = ProcessAutoAttackDecision();
                 }
 
-                // ── Step 3: 路徑規劃觸發 ──
                 if (!attackTriggered)
                 {
                     _isAttacking = false;
@@ -227,15 +187,37 @@ namespace ArtaleAI.Services
                     }
                 }
 
-                // ── Step 4: 血條偵測排程 ──
+                double msAfterPathAttack = sw.Elapsed.TotalMilliseconds;
+
                 ProcessBloodBarDetection(frameMat, config, now);
 
-                // ── Step 5: 怪物偵測排程 ──
+                double msAfterBlood = sw.Elapsed.TotalMilliseconds;
+
                 ProcessMonsterDetection(frameMat, config, now);
 
-                // 發布結果快照事件
+                double msAfterMonster = sw.Elapsed.TotalMilliseconds;
+
                 var result = GetCurrentSnapshot();
                 OnFrameProcessed?.Invoke(result);
+
+                double totalMs = sw.Elapsed.TotalMilliseconds;
+                double tailMs = totalMs - msAfterMonster;
+                if (totalMs >= PipelineSlowFrameWarnMs)
+                {
+                    Logger.Warning(
+                        $"[GamePipeline] 慢幀 total={totalMs:F1}ms captureLag={captureLagMs:F1}ms " +
+                        $"minimap={msAfterMinimap:F1} pathAttack={msAfterPathAttack - msAfterMinimap:F1} " +
+                        $"blood={msAfterBlood - msAfterPathAttack:F1} monster={msAfterMonster - msAfterBlood:F1} tail={tailMs:F1}");
+                }
+#if DEBUG
+                else if (totalMs >= PipelineSlowFrameDebugMs)
+                {
+                    Logger.Debug(
+                        $"[GamePipeline] 幀耗時 total={totalMs:F1}ms captureLag={captureLagMs:F1}ms " +
+                        $"minimap={msAfterMinimap:F1} pathAttack={msAfterPathAttack - msAfterMinimap:F1} " +
+                        $"blood={msAfterBlood - msAfterPathAttack:F1} monster={msAfterMonster - msAfterBlood:F1} tail={tailMs:F1}");
+                }
+#endif
             }
             catch (Exception ex)
             {
@@ -243,17 +225,12 @@ namespace ArtaleAI.Services
             }
             finally
             {
-                // 🚀 核心同步啟動：確保無論處理成功與否，都喚醒等待中的移動執行緒
                 if (_frameSignal.CurrentCount == 0)
                 {
                     _frameSignal.Release();
                 }
             }
         }
-
-        // ============================================================
-        // Step 1: 小地圖追蹤
-        // ============================================================
 
         private void ProcessMinimapTracking(MinimapTrackingResult? trackingResult, List<SdRect> minimapBoxes)
         {
@@ -283,11 +260,6 @@ namespace ArtaleAI.Services
             }
         }
 
-        // ============================================================
-        // Step 2: 自動攻擊決策
-        // 架構考量：攻擊判定純邏輯（碰撞偵測），按鍵發送透過 MovementController
-        // ============================================================
-
         private bool ProcessAutoAttackDecision()
         {
             List<SdRect> attackRanges = _currentAttackRangeBoxes.ToList();
@@ -316,10 +288,7 @@ namespace ArtaleAI.Services
             return false;
         }
 
-        /// <summary>
-        /// 執行自動攻擊（轉向 + 攻擊鍵）
-        /// 從 MainForm.PerformAutoAttack L2462-2511 提取
-        /// </summary>
+        /// <summary>轉向最近目標並送出攻擊鍵。</summary>
         private async void PerformAutoAttack(SdRect playerBox, List<DetectionResult> targets)
         {
             if (targets == null || targets.Count == 0) return;
@@ -335,7 +304,6 @@ namespace ArtaleAI.Services
                 Math.Abs((m.BoundingBox.X + m.BoundingBox.Width / 2) - playerCenter.X)).FirstOrDefault();
             if (target == null) return;
 
-            // 方向控制（冷卻時間防止頻繁轉向）
             if ((now - _lastDirectionChangeTime).TotalMilliseconds > DirectionChangeCooldownMs)
             {
                 int monsterCenterX = target.BoundingBox.X + target.BoundingBox.Width / 2;
@@ -347,19 +315,15 @@ namespace ArtaleAI.Services
                 _lastDirectionChangeTime = now;
             }
 
-            // 攻擊
             _movementController.SendKeyInput(VK_CONTROL, false);
             await Task.Delay(20);
             _movementController.SendKeyInput(VK_CONTROL, true);
 
             _lastAttackTime = now;
-            OnStatusMessage?.Invoke($"⚔️ 自動攻擊: 鎖定 {target.Name}");
+            OnStatusMessage?.Invoke($"自動攻擊: 鎖定 {target.Name}");
         }
 
-        /// <summary>
-        /// 執行攻擊序列（停止移動→攻擊→等冷卻）
-        /// 從 MainForm.PerformAutoAttackAsync L1202-1232 提取
-        /// </summary>
+        /// <summary>停止移動、執行攻擊、冷卻後恢復。</summary>
         public async Task PerformAutoAttackSequenceAsync()
         {
             if (_isAttacking) return;
@@ -383,11 +347,6 @@ namespace ArtaleAI.Services
             }
         }
 
-        // ============================================================
-        // Step 3: 路徑規劃更新觸發
-        // 架構考量：路徑規劃結果透過事件回傳，MainForm 訂閱後驅動 OnPathTrackingUpdated
-        // ============================================================
-
         private void ProcessPathPlanningUpdate(MinimapTrackingResult result)
         {
             if (_pathPlanningManager == null || !_pathPlanningManager.IsRunning) return;
@@ -408,10 +367,6 @@ namespace ArtaleAI.Services
                 Logger.Error($"[GamePipeline] ProcessPathPlanning 錯誤: {ex.Message}");
             }
         }
-
-        // ============================================================
-        // Step 4: 血條偵測排程
-        // ============================================================
 
         private void ProcessBloodBarDetection(Mat frameMat, AppConfig config, DateTime now)
         {
@@ -446,11 +401,6 @@ namespace ArtaleAI.Services
                 OnStatusMessage?.Invoke($"血條偵測錯誤: {ex.Message}");
             }
         }
-
-        // ============================================================
-        // Step 5: 怪物偵測排程
-        // 從 MainForm.ProcessMonsters L1022-1132 提取
-        // ============================================================
 
         private void ProcessMonsterDetection(Mat frameMat, AppConfig config, DateTime now)
         {
@@ -499,7 +449,6 @@ namespace ArtaleAI.Services
                     }
                 }
 
-                // NMS 去重
                 if (allResults.Count > 1)
                 {
                     var dedupedResults = GameVisionCore.ApplyNMS(allResults, iouThreshold: 0.3, higherIsBetter: true)
@@ -518,7 +467,6 @@ namespace ArtaleAI.Services
 
                 _lastMonsterDetection = DateTime.UtcNow;
 
-                // 自動攻擊檢查
                 CheckAutoAttackCondition();
             }
             catch (Exception ex)
@@ -527,10 +475,7 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>
-        /// 自動攻擊條件檢查
-        /// 從 MainForm.CheckAutoAttackCondition L1161-1196 提取
-        /// </summary>
+        /// <summary>怪物與攻擊範圍相交時觸發攻擊序列。</summary>
         private void CheckAutoAttackCondition()
         {
             if (!AutoAttackEnabled || _isAttacking) return;

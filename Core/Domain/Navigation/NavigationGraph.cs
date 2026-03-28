@@ -7,10 +7,7 @@ using ArtaleAI.Utils;
 
 namespace ArtaleAI.Core.Domain.Navigation
 {
-    /// <summary>
-    /// 導航圖 (Navigation Graph)
-    /// 管理地圖上所有的節點與連接關係，提供拓撲查詢能力
-    /// </summary>
+    /// <summary>節點、邊與 A* 尋路。</summary>
     public class NavigationGraph
     {
         private const float PlatformHitboxWidth = 3.0f;
@@ -24,9 +21,7 @@ namespace ArtaleAI.Core.Domain.Navigation
         public string MapId { get; set; } = string.Empty;
         public string MapName { get; set; } = string.Empty;
 
-        /// <summary>
-        /// 從 <see cref="MapData"/> 建立導航圖，並自動套用 H 型繩索拓撲。
-        /// </summary>
+        /// <summary>由 <see cref="MapData"/> 建圖並套用繩索 H 拓撲。</summary>
         public static NavigationGraph FromMapData(MapData mapData)
         {
             if (mapData == null) throw new ArgumentNullException(nameof(mapData));
@@ -61,14 +56,8 @@ namespace ArtaleAI.Core.Domain.Navigation
             return graph;
         }
 
-        /// <summary>
-        /// 節點總數
-        /// </summary>
         public int NodeCount => _nodes.Count;
 
-        /// <summary>
-        /// 邊總數
-        /// </summary>
         public int EdgeCount => _adjacencyList.Values.Sum(list => list.Count);
 
         public void AddNode(NavigationNode node)
@@ -105,9 +94,6 @@ namespace ArtaleAI.Core.Domain.Navigation
             return node;
         }
 
-        /// <summary>
-        /// 取得指定節點的所有出邊 (Outgoing Edges)
-        /// </summary>
         public IEnumerable<NavigationEdge> GetOutgoingEdges(string nodeId)
         {
             if (_adjacencyList.TryGetValue(nodeId, out var edges))
@@ -117,9 +103,6 @@ namespace ArtaleAI.Core.Domain.Navigation
             return Enumerable.Empty<NavigationEdge>();
         }
 
-        /// <summary>
-        /// 取得兩點之間的邊 (若存在)
-        /// </summary>
         public NavigationEdge? GetEdge(string fromNodeId, string toNodeId)
         {
             if (_adjacencyList.TryGetValue(fromNodeId, out var edges))
@@ -129,12 +112,7 @@ namespace ArtaleAI.Core.Domain.Navigation
             return null;
         }
 
-        /// <summary>
-        /// 尋找距離指定座標最近的節點
-        /// 導入非對稱空間感知機制：X軸視為廉價移動，Y軸給予極端懲罰，徹底消滅退回搜尋導致的跨層幻覺。
-        /// </summary>
-        /// <param name="position">世界座標</param>
-        /// <param name="maxDistance">物理最大搜尋距離 (建議放寬)</param>
+        /// <summary>加權距離找最近節點；跨層 Y 懲罰以降低錯層匹配。</summary>
         public NavigationNode? FindNearestNode(System.Drawing.PointF position, float maxDistance = float.MaxValue, float sameLayerYThreshold = 15.0f, float yAxisPenaltyWeight = 10.0f)
         {
             NavigationNode? nearest = null;
@@ -163,13 +141,7 @@ namespace ArtaleAI.Core.Domain.Navigation
 
         public IEnumerable<NavigationNode> GetAllNodes() => _nodes.Values;
 
-        /// <summary>
-        /// A* 路徑搜尋演算法
-        /// 尋找從起點到終點的最短路徑
-        /// </summary>
-        /// <param name="startNodeId">起點節點 ID</param>
-        /// <param name="goalNodeId">終點節點 ID</param>
-        /// <returns>最短路徑，若無法到達則返回 null</returns>
+        /// <summary>A* 最短路徑；不可達時回傳 null。</summary>
         public NavigationPath? FindPath(string startNodeId, string goalNodeId)
         {
             if (!_nodes.ContainsKey(startNodeId) || !_nodes.ContainsKey(goalNodeId))
@@ -247,9 +219,6 @@ namespace ArtaleAI.Core.Domain.Navigation
             return null;
         }
 
-        /// <summary>
-        /// 啟發式函數：歐幾里得距離
-        /// </summary>
         private float Heuristic(string fromNodeId, string toNodeId)
         {
             if (!_nodes.TryGetValue(fromNodeId, out var from) ||
@@ -263,9 +232,6 @@ namespace ArtaleAI.Core.Domain.Navigation
             return (float)Math.Sqrt(dx * dx + dy * dy);
         }
 
-        /// <summary>
-        /// 回溯建構路徑
-        /// </summary>
         private NavigationPath ReconstructPath(
             Dictionary<string, (string nodeId, NavigationEdge edge)> cameFrom,
             string goalNodeId)

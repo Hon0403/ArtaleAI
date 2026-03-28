@@ -1,6 +1,0 @@
-{
-  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
-  "summary": "詳細的檔案整合與清理計畫，旨在消除專案中的重複定義與命名空間衝突。包含刪除 `Data/AppConfig.cs`, `Data/DataModels.cs`, `Services/Logger.cs` 等「殭屍代碼」，並統一模型引用至 `ArtaleAI.Models`。此外也涵根修復 `MonsterImageFetcher` 所需的 `ApiConfig.cs`。",
-  "updatedAt": "2026-03-23T08:15:41.292495700Z",
-  "version": "1"
-}
