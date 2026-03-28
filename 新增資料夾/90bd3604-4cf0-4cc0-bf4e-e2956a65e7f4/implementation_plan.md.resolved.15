@@ -1,0 +1,41 @@
+# Implementation Plan - Add Stuck Detection for Rope Climbing
+
+## Problem
+The user reports that the program sometimes doesn't realize the rope climb is finished, continuing to press climbing keys even after the character has stopped moving (e.g., standing at the top).
+This happens because the loop condition `currentPos.Y <= targetY` (for going up) might not be met if the character's "standing" Y coordinate is slightly larger than the "target" Y coordinate (due to map data discrepancies or animations), causing an infinite loop until the timeout.
+
+## Solution
+Implement a "Stuck/Arrival Detection" heuristic within [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#631-834):
+1. Track position changes between loop iterations.
+2. If the Y position changes by less than **0.1 pixels** for **20 consecutive frames** (approx. 1 second).
+3. AND the character is relatively close to the target (e.g., within **5.0 pixels**).
+4. Then assume the climb is finished (or blocked at the end) and break the loop gracefully.
+
+## Proposed Changes
+
+### Services/CharacterMovementController.cs
+
+#### [MODIFY] ClimbRopeAsync (Lines ~768-819)
+- Add `int stuckFrames = 0;` before the loop.
+- Inside the loop, comparing `currentPos.Y` with `lastPos.Y`:
+  ```csharp
+  if (Math.Abs(currentPos.Y - lastPos.Y) < 0.1f)
+  {
+      stuckFrames++;
+      if (stuckFrames > 20 && Math.Abs(currentPos.Y - targetY) < 5.0f)
+      {
+          Logger.Info($"[爬繩] 偵測到停止移動且接近目標 (Y={currentPos.Y:F1}, Dist={Math.Abs(currentPos.Y - targetY):F1})，視為完成");
+          break;
+      }
+  }
+  else
+  {
+      stuckFrames = 0;
+  }
+  ```
+
+## Verification Plan
+- **Manual Verification**:
+  - Observe rope climbing behavior.
+  - When character reaches top, log should explicitly state "Stuck/Stopped near target, considered complete" if the exact coordinate check failed.
+  - Character should immediately proceed to next waypoint.

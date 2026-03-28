@@ -1,0 +1,40 @@
+# 導航系統優化實作計畫 (反震盪與流暢度提升)
+
+## 第一階段：碰撞體導航重構 (已完成)
+✅ 移除所有基於像素距離的 `reachDistance` 判斷。
+✅ 實作「長按移動直至進入 Hitbox 即停」。
+✅ 實作「越界反向校正 (Overshoot Correction)」。
+✅ 移除 `NavigationStateMachine` 的 150ms 觀察期。
+✅ 經 `dotnet build` 驗證成功。
+
+## 第二階段：時間之戰 (清理累加延遲)
+目前系統中分散著多個「保險性質」或「過時」的 `Task.Delay`，這些延遲在新的碰撞體架構下已成為反應遲鈍的主因。
+
+### 1. 壓縮狀態輪詢精度
+在 [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs) 中：
+- `WaitForStabilityAsync`：輪詢間隔從 30ms 壓縮至 **10ms**。
+- `WaitForHitboxAsync`：輪詢間隔從 20ms 壓縮至 **10ms**。
+- `MoveToTargetAsync`：起步視覺獲取循環從 20ms 壓縮至 **10ms**。
+
+### 2. 移除爬繩保險延遲
+在 [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs) 中：
+- `ExecuteClimbAsync`：移除繩索對齊後的 `Task.Delay(100)` (L180)。
+
+在 [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs) 中：
+- `ClimbRopeAsync`：移除起步後的 `Task.Delay(300)` (L493)，改為對 Y 軸座標變化的即時檢測。
+
+### 3. 優化微調間隔
+- 縮短 `TapKeyAsync` 之中的間隔時間，讓微調動作更為緊湊。
+
+## 第三階段：狀態機阻塞處理 (待啟動)
+- 處理「導航 FSM」與「移動冷卻層 ([MovementStateMachine](file:///d:/Full_end/C%23/ArtaleAI/Services/MovementStateMachine.cs))」的交接衝突。
+- 移除 `MovementStateMachine` 中的硬編碼跳躍冷卻 (350ms-600ms)。
+
+## 開發者反饋要求
+> [!IMPORTANT]
+> 第二階段的操作會大幅提升角色的反應靈敏度。請確認是否有特定的 Windows 環境限制（如模擬鍵盤的最低響應時間）需要保留超過 10ms 的間隔？
+
+## 驗證計畫
+### 自動化/手動驗證
+- **測試點 A**：觀察連續節點切換時，角色是否有明顯的「發呆」現象（預期消失）。
+- **測試點 B**：爬繩起步是否能與走動無縫銜接（預期延遲 < 50ms）。

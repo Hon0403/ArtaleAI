@@ -1,0 +1,340 @@
+<current_dom_explanation>
+This is a temporary snapshot of the current page's DOM structure. The DOM will change if you navigate to or interact with another page. Use a tool like browser_get_dom to capture and preserve the DOM in your trajectory if needed for later reference.
+</current_dom_explanation>
+<current_dom>
+[0] (44,26)<button class='prc-Button-ButtonBase-9n-Xk react-tree-toggle-button-with-indicator position-relative ExpandFileTreeButton-module__expandButton__hDOcv ExpandFileTreeButton-module__filesButtonBreakpoint__zEvz3 fgColor-muted prc-Button-IconButton-fyge7' />
+[1] (122,26)<button aria-label='main branch' class='prc-Button-ButtonBase-9n-Xk ref-selector-class RefSelectorAnchoredOverlay-module__RefSelectorOverlayBtn__a3WK3' id='ref-picker-repos-header-ref-selector' />
+	[2] (122,26)<span  />
+		[3] (109,26)<span  />
+			[4] (109,26)<div  />
+				[5] (88,26)<div  />
+				[6] (120,26)<div  />
+					[7] (120,26)<span >main />
+Breadcrumbs
+[8] (271,26)<a class='Breadcrumb-module__repoLink__O2Nbs prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/tree/main'>MapleStoryAutoLevelUp />
+/
+[9] (387,26)<a class='Breadcrumb-module__directoryLink__kQy_t prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/tree/main/src'>src />
+/
+[10] (440,26)<a class='Breadcrumb-module__directoryLink__kQy_t prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/tree/main/src/legacy'>legacy />
+/
+mapScanner_legacy.py
+[11] (942,26)<button class='prc-Button-ButtonBase-9n-Xk FileNameStickyHeader-module__Button__LSEU_ FileNameStickyHeader-module__GoToTopButton__nxAFn' />
+	[12] (942,26)<span  />
+		[13] (953,26)<span >Top />
+File metadata and controls
+[14] (59,77)<button class='prc-SegmentedControl-Button-E48xz' />
+	[15] (59,77)<span  />
+		[16] (59,77)<div >Code />
+[17] (127,77)<button class='prc-SegmentedControl-Button-E48xz' />
+	[18] (127,77)<span  />
+		[19] (127,77)<div >Blame />
+[20] (789,77)<a class='prc-Button-ButtonBase-9n-Xk LinkButton-module__linkButton__nFnov BlobViewHeader-module__LinkButton__X9kx2' href='https://github.com/KenYu910645/MapleStoryAutoLevelUp/raw/refs/heads/main/src/legacy/mapScanner_legacy.py' />
+	[21] (789,77)<span  />
+		[22] (789,77)<span >Raw />
+[23] (825,77)<button class='prc-Button-ButtonBase-9n-Xk prc-Button-IconButton-fyge7' />
+[24] (854,77)<button class='prc-Button-ButtonBase-9n-Xk BlobViewHeader-module__downloadButton__ef459 prc-Button-IconButton-fyge7' />
+[25] (920,77)<button class='prc-Button-ButtonBase-9n-Xk prc-Button-IconButton-fyge7' id='_r_59_' />
+[26] (958,77)<button class='prc-Button-ButtonBase-9n-Xk BlobViewHeader-module__IconButton_2__RyjZg prc-Button-IconButton-fyge7' id='symbols-button' />
+[27] (74,113)<div >14 />
+[28] (74,135)<div >18 />
+[29] (540,113)<div  />
+	class
+	MapScanner
+	:
+[30] (540,135)<div  />
+	def
+	__init__
+	(
+	self
+	):
+30
+31
+32
+33
+34
+35
+36
+[31] (71,159)<div >37 />
+[32] (71,181)<div >38 />
+[33] (71,203)<div >39 />
+[34] (71,225)<div >40 />
+[35] (71,246)<div >41 />
+[36] (71,268)<div >42 />
+[37] (71,290)<div >43 />
+[38] (71,312)<div >44 />
+[39] (71,334)<div >45 />
+[40] (71,356)<div >46 />
+[41] (71,377)<div >47 />
+[42] (71,399)<div >48 />
+[43] (71,421)<div >49 />
+[44] (71,443)<div >50 />
+[45] (71,465)<div >51 />
+[46] (71,486)<div >52 />
+	[47] (96,487)<div aria-label='Collapse code section' class='LineNumber-module__codeFoldingChevron__sY2Yt' role='button' />
+[48] (71,508)<div >53 />
+[49] (71,530)<div >54 />
+[50] (71,552)<div >55 />
+[51] (71,574)<div >56 />
+[52] (71,595)<div >57 />
+[53] (71,617)<div >58 />
+[54] (71,639)<div >59 />
+[55] (71,661)<div >60 />
+[56] (71,683)<div >61 />
+[57] (71,704)<div >62 />
+[58] (71,726)<div >63 />
+[59] (71,748)<div >64 />
+[60] (71,770)<div >65 />
+[61] (71,792)<div >66 />
+[62] (71,814)<div >67 />
+	[63] (96,815)<div aria-label='Collapse code section' class='LineNumber-module__codeFoldingChevron__sY2Yt' role='button' />
+[64] (71,835)<div >68 />
+[65] (71,857)<div >69 />
+[66] (71,879)<div >70 />
+[67] (71,901)<div >71 />
+[68] (71,923)<div >72 />
+[69] (71,944)<div >73 />
+[70] (71,966)<div >74 />
+[71] (71,988)<div >75 />
+self
+.
+img_camera_gray_prev
+=
+None
+# NameTag
+self
+.
+img_nametag
+=
+load_image
+(
+"name_tag.png"
+)
+self
+.
+img_nametag_gray
+=
+load_image
+(
+"name_tag.png"
+,
+cv2
+.
+IMREAD_GRAYSCALE
+)
+self
+.
+img_map
+=
+np
+.
+zeros
+((
+2000
+,
+2000
+,
+3
+),
+dtype
+=
+np
+.
+uint8
+)
+# Cooridnate of top-left
+self
+.
+loc_nametag
+=
+(
+0
+,
+0
+)
+# nametag location on window
+self
+.
+loc_camera
+=
+(
+500
+,
+500
+)
+#
+self
+.
+fps_limit
+=
+10
+# Feature extraction
+self
+.
+feature_extractor
+=
+cv2
+.
+ORB_create
+(
+500
+)
+# Feature matching
+self
+.
+bf
+=
+cv2
+.
+BFMatcher
+(
+cv2
+.
+NORM_HAMMING
+,
+crossCheck
+=
+True
+)
+# Timer
+self
+.
+t_last_run
+=
+time
+.
+time
+()
+# Start game window capturing thread
+logger
+.
+info
+(
+"Waiting for game window to activate, please click on game window"
+)
+self
+.
+capture
+=
+GameWindowCapturor
+(
+self
+.
+cfg
+)
+def
+limit_fps
+(
+self
+):
+'''
+Limit FPS
+'''
+# If the loop finished early, sleep to maintain target FPS
+target_duration
+=
+1.0
+/
+self
+.
+fps_limit
+# seconds per frame
+frame_duration
+=
+time
+.
+time
+()
+-
+self
+.
+t_last_run
+if
+frame_duration
+<
+target_duration
+:
+time
+.
+sleep
+(
+target_duration
+-
+frame_duration
+)
+# Update FPS
+self
+.
+fps
+=
+round
+(
+1.0
+/
+(
+time
+.
+time
+()
+-
+self
+.
+t_last_run
+))
+self
+.
+t_last_run
+=
+time
+.
+time
+()
+# logger.info(f"FPS = {self.fps}")
+def
+ensure_map_capacity
+(
+self
+,
+x
+,
+y
+,
+h
+,
+w
+):
+'''
+ensure_map_capacity
+'''
+map_h
+,
+map_w
+=
+self
+.
+img_map
+.
+shape
+[:
+2
+]
+# Compute expansion margins
+expand_top
+=
+max
+(
+0
+,
+-
+y
+)
+expand_left
+=
+max
+(
+0
+,
+-
+x
+)
+
+</current_dom>

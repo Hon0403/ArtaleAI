@@ -1,0 +1,22 @@
+# 物理導航穩定化：ABS 反向主動煞車計畫
+
+## 目的
+解決 `MoveToTargetAsync` 在預測性放鍵後，因遊戲物理慣性導致角色持續「飄移」5px 以上的問題。
+
+## 執行方案
+
+### 1. [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **[MODIFY]** `MoveToTargetAsync` 邏輯。
+- **[ACT]**：
+    1. 將預測係數 `predictStopDist` 從 `0.060f` 提升至 `0.085f` (對抗 85ms 時延)。
+    2. **[核心] 反向點按 (Counter-Braking)**：
+       - 當觸發預測煞車時，在執行 `StopMovement()` 後，立即向反方向發送一個 25ms 的 `TapKeyAsync`。
+       - 例如：向右走時放開右鍵，隨即點按左鍵。
+
+### 2. **參數調律**
+- 增加 X 軸偏差的「零速度鎖定」判定。
+- 只有當速度 $Vx$ 真正趨近於零時，才允許 `ClimbRopeAsync` 發動起跳。
+
+## 預期效果
+- 角色將能夠在繩索正下方「即刻停穩」，偏差值從 5px 降至 1px 以內。
+- 徹底消除「對準了卻飄走」的現象。

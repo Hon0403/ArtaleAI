@@ -1,0 +1,36 @@
+# 全專案註解無情清理計畫
+
+## 核心動機
+遵循首席架構師「死碼殲滅」原則，移除專案中所有冗餘、過時或僅具描述性的非必要註解，提升代碼純度。
+
+## 待清理目標
+1.  **範圍**：涵蓋全專案 **65 個 [.cs](file:///d:/Full_end/C%23/ArtaleAI/Program.cs) 檔案**。
+2.  **開發標記**：移除所有 `🔧`、`🎯`、`🧠` 等表情符號標記與隨後的備忘內容。
+3.  **冗餘說明**：移除僅重申代碼邏輯的內聯註解（如 `// 切換狀態`、`// 初始化變數`）。
+4.  **歷史補丁記錄**：移除類似 `// 2025-02: 修復...` 或 `// 使用者要求...` 的過時背景說明。
+5.  **殭屍代碼**：移除所有註釋掉的代碼塊（// /* */）。
+
+## 執行順序 (涵蓋全專案 65 個檔案)
+### 1. UI 與 編輯器層 (12 檔案)
+*   **優先順序**：[MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs), [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs), [LiveViewManager.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/LiveViewManager.cs), [FloatingMagnifier.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/FloatingMagnifier.cs) 等。
+*   **重點**：掃除大量表情符號標記 (🚀, 🎯, 🔧) 與繁雜的 UI 狀態備註。
+
+### 2. Core 導航與視覺核心 (15 檔案)
+*   **範圍**：[GameVisionCore.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs), [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs), [ShortestPathPlanner.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/ShortestPathPlanner.cs), [NavigationGraph.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs) 等。
+*   **重點**：移除調試時留下的算法節點筆記。
+
+### 3. Services 執行服務層 (12 檔案)
+*   **範圍**：[NavigationStateMachine.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs), [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs), [GamePipeline.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/GamePipeline.cs), [ScreenCapture.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/ScreenCapture.cs) 等。
+*   **重點**：淨化非同步邏輯中的流程說明。
+
+### 4. Models 與 Config 資料層 (26 檔案)
+*   **範圍**：[MapData.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Map/MapData.cs), [AppConfig.cs](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs) (已部分清理), [ApiConfig.cs](file:///d:/Full_end/C%23/ArtaleAI/API/Config/ApiConfig.cs), [DetectionResult.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Detection/DetectionResult.cs) 等。
+*   **重點**：移除屬性定義旁的冗餘註解。
+
+## 驗證計畫
+### 自動化測試
+*   使用 C# 編譯器確認清理後各檔案結構完整，無大括號遺漏。
+*   核查 XML Documentation (`/// <summary>`) 是否被誤改（應保留對外 API 的必要說明）。
+
+### 手動核查
+*   隨機抽查各層代碼，確認是否達成「極致乾淨」標準。

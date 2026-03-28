@@ -1,0 +1,363 @@
+<current_dom_explanation>
+This is a temporary snapshot of the current page's DOM structure. The DOM will change if you navigate to or interact with another page. Use a tool like browser_get_dom to capture and preserve the DOM in your trajectory if needed for later reference.
+</current_dom_explanation>
+<current_dom>
+Skip to content
+Navigation Menu
+[0] (42,35)<button aria-label='Toggle navigation' class='js-details-target js-nav-padding-recalculate js-header-menu-toggle Button--link Button--medium Button d-lg-none color-fg-inherit p-1' />
+	[1] (42,35)<span  />
+		[2] (42,35)<span  />
+			[3] (42,28)<div  />
+			[4] (42,35)<div  />
+			[5] (42,41)<div  />
+[6] (500,36)<a aria-label='Homepage' class='tmp-mr-lg-3 color-fg-inherit flex-order-2 js-prevent-focus-on-mobile-nav' href='/' />
+[7] (894,36)<a class='HeaderMenu-link HeaderMenu-button d-inline-flex f5 no-underline border color-border-default rounded-2 px-2 py-1 color-fg-inherit js-prevent-focus-on-mobile-nav' href='/login?return_to=https%3A%2F%2Fgithub.com%2FKenYu910645%2FMapleStoryAutoLevelUp%2Fblob%2Fmain%2Fsrc%2Flegacy%2FmapleStoryAutoLevelUp_legacy.py'>Sign in />
+[8] (957,36)<button class='Button Button--iconOnly Button--invisible Button--medium AppHeader-button HeaderMenu-link border' id='icon-button-66aadc4c-0409-4a3b-9486-8535ce7341d6' />
+[9] (108,105)<a class='url fn' href='/KenYu910645'>KenYu910645 />
+/
+[10] (308,105)<a href='/KenYu910645/MapleStoryAutoLevelUp'>MapleStoryAutoLevelUp />
+Public
+[11] (658,105)<a aria-label='You must be signed in to change notification settings' class='btn-sm btn' href='/login?return_to=%2FKenYu910645%2FMapleStoryAutoLevelUp' id='repository-details-watch-button'>Notifications />
+[12] (792,105)<a class='btn-sm btn' href='/login?return_to=%2FKenYu910645%2FMapleStoryAutoLevelUp' id='fork-button'>Fork />
+	[13] (820,105)<span >124 />
+[14] (921,105)<a aria-label='You must be signed in to star a repository' class='tooltipped tooltipped-sw btn-sm btn' href='/login?return_to=%2FKenYu910645%2FMapleStoryAutoLevelUp' />
+	[15] (915,105)<span >Star />
+	[16] (950,105)<span >265 />
+[17] (65,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item selected' href='/KenYu910645/MapleStoryAutoLevelUp' id='code-tab' />
+	[18] (78,166)<span >Code />
+[19] (174,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/issues' id='issues-tab' />
+	[20] (168,166)<span >Issues />
+	[21] (212,166)<span >43 />
+[22] (324,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/pulls' id='pull-requests-tab' />
+	[23] (322,166)<span >Pull requests />
+	[24] (385,166)<span >3 />
+[25] (474,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/discussions' id='discussions-tab' />
+	[26] (487,166)<span >Discussions />
+[27] (591,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/actions' id='actions-tab' />
+	[28] (603,166)<span >Actions />
+[29] (695,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/projects' id='projects-tab' />
+	[30] (708,166)<span >Projects />
+[31] (801,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/security' id='security-tab' />
+	[32] (814,166)<span >Security />
+[33] (957,166)<button class='Button Button--iconOnly Button--secondary Button--medium UnderlineNav-item' id='action-menu-b578d4e3-08c8-4724-b318-39c1d9a5bafb-button' />
+[34] (34,227)<button class='prc-Button-ButtonBase-9n-Xk react-tree-toggle-button-with-indicator position-relative ExpandFileTreeButton-module__expandButton__hDOcv ExpandFileTreeButton-module__filesButtonBreakpoint__zEvz3 fgColor-muted prc-Button-IconButton-fyge7' />
+[35] (117,227)<button aria-label='main branch' class='prc-Button-ButtonBase-9n-Xk ref-selector-class RefSelectorAnchoredOverlay-module__RefSelectorOverlayBtn__a3WK3' id='ref-picker-repos-header-ref-selector-wide' />
+	[36] (117,227)<span  />
+		[37] (104,227)<span  />
+			[38] (104,227)<div  />
+				[39] (83,227)<div  />
+				[40] (115,227)<div  />
+					[41] (115,227)<span >main />
+Breadcrumbs
+[42] (286,222)<a class='Breadcrumb-module__repoLink__O2Nbs prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/tree/main'>MapleStoryAutoLevelUp />
+/
+[43] (416,222)<a class='Breadcrumb-module__directoryLink__kQy_t prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/tree/main/src'>src />
+/
+[44] (475,222)<a class='Breadcrumb-module__directoryLink__kQy_t prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/tree/main/src/legacy'>legacy />
+/
+mapleStoryAutoLevelUp_legacy.py
+[45] (508,251)<button class='prc-Button-ButtonBase-9n-Xk ml-2 prc-Button-IconButton-fyge7' />
+[46] (841,227)<span  />
+	[47] (764,227)<span  />
+	[48] (849,227)<input aria-label='Go to file' class='prc-components-Input-IwWrt' placeholder='Go to file' role='combobox' />
+[49] (966,227)<button class='prc-Button-ButtonBase-9n-Xk js-blob-dropdown-click NavigationMenu-module__IconButton__HpX3G prc-Button-IconButton-fyge7' id='_r_4b_' />
+Latest commit
+[50] (47,309)<a class='Link__StyledLink-sc-1syctfj-0 prc-Link-Link-9ZwDx' href='/KenYu910645' />
+	[51] (43,310)<img  />
+[52] (108,309)<a aria-label='commits by KenYu910645' class='Link__StyledLink-sc-1syctfj-0 iIGVMW AuthorAvatar-module__authorHoverableLink__MHTT8 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/commits?author=KenYu910645'>KenYu910645 />
+[53] (247,309)<a class='Link--secondary' href='/KenYu910645/MapleStoryAutoLevelUp/commit/6782b8d9e109e4bec9d325d17a8d9ef084ffc27e'>Fix f-string quoting errors />
+[54] (814,309)<a aria-label='Commit 6782b8d' class='Link--secondary prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/commit/6782b8d9e109e4bec9d325d17a8d9ef084ffc27e'>6782b8d />
+·
+History
+[55] (955,309)<a aria-label='View commit history for this file.' class='prc-Button-ButtonBase-9n-Xk LinkButton-module__linkButton__nFnov flex-items-center fgColor-default' href='/KenYu910645/MapleStoryAutoLevelUp/commits/main/src/legacy/mapleStoryAutoLevelUp_legacy.py' />
+	[56] (955,309)<span  />
+1452 lines (1272 loc) · 58 KB
+File metadata and controls
+[57] (59,420)<button class='prc-SegmentedControl-Button-E48xz' />
+	[58] (59,420)<span  />
+		[59] (59,420)<div >Code />
+[60] (127,420)<button class='prc-SegmentedControl-Button-E48xz' />
+	[61] (127,420)<span  />
+		[62] (127,420)<div >Blame />
+[63] (427,420)<a class='prc-Button-ButtonBase-9n-Xk LinkButton-module__linkButton__nFnov BlobViewHeader-module__LinkButton__X9kx2' href='https://github.com/KenYu910645/MapleStoryAutoLevelUp/raw/refs/heads/main/src/legacy/mapleStoryAutoLevelUp_legacy.py' />
+	[64] (427,420)<span  />
+		[65] (427,420)<span >Raw />
+[66] (463,420)<button class='prc-Button-ButtonBase-9n-Xk prc-Button-IconButton-fyge7' />
+[67] (492,420)<button class='prc-Button-ButtonBase-9n-Xk BlobViewHeader-module__downloadButton__ef459 prc-Button-IconButton-fyge7' />
+[68] (559,420)<button class='prc-Button-ButtonBase-9n-Xk prc-Button-IconButton-fyge7' id='_r_53_' />
+[69] (596,420)<button class='prc-Button-ButtonBase-9n-Xk BlobViewHeader-module__IconButton_2__RyjZg prc-Button-IconButton-fyge7' id='symbols-button' />
+[70] (319,16297)<textarea aria-label='file content' class='react-blob-textarea react-blob-print-hide' id='read-only-cursor-text-area' scrollable='true' />
+[71] (319,16288)<div class='react-code-line-container CodeLines-module__scrollContainerHidden__g7TeZ' scrollable='true' />
+	[72] (75,465)<div >1 />
+	[73] (75,486)<div >2 />
+	[74] (75,508)<div >3 />
+	[75] (75,530)<div >4 />
+	[76] (75,552)<div >5 />
+	[77] (75,574)<div >6 />
+	[78] (75,595)<div >7 />
+	[79] (75,617)<div >8 />
+	[80] (75,639)<div >9 />
+	[81] (71,661)<div >10 />
+	[82] (71,683)<div >11 />
+	[83] (71,704)<div >12 />
+	[84] (71,726)<div >13 />
+	[85] (71,748)<div >14 />
+	[86] (71,770)<div >15 />
+	[87] (71,792)<div >16 />
+	[88] (71,814)<div >17 />
+	[89] (71,835)<div >18 />
+	[90] (71,857)<div >19 />
+	[91] (71,879)<div >20 />
+	[92] (71,901)<div >21 />
+	[93] (71,923)<div >22 />
+	[94] (71,944)<div >23 />
+		[95] (96,945)<div aria-label='Collapse code section' class='LineNumber-module__codeFoldingChevron__sY2Yt' role='button' />
+	[96] (71,966)<div >24 />
+	25
+	'''
+	Execute this script:
+	python mapleStoryAutoLevelUp.py --map cloud_balcony --monster brown_windup_bear,pink_windup_bear
+	'''
+	# Standard import
+	import
+	time
+	import
+	random
+	import
+	argparse
+	import
+	glob
+	import
+	sys
+	#
+	import
+	numpy
+	as
+	np
+	import
+	cv2
+	# local import
+	from
+	config
+	.
+	legacy
+	.
+	config_legacy
+	import
+	Config
+	from
+	src
+	.
+	utils
+	.
+	logger
+	import
+	logger
+	from
+	src
+	.
+	utils
+	.
+	common
+	import
+	find_pattern_sqdiff
+	,
+	draw_rectangle
+	,
+	screenshot
+	,
+	nms
+	,
+	load_image
+	,
+	get_mask
+	from
+	KeyBoardController
+	import
+	KeyBoardController
+	from
+	GameWindowCapturorSelector
+	import
+	GameWindowCapturor
+	class
+	MapleStoryBot
+	:
+	'''
+	MapleStoryBot
+[97] (319,991)<div class='CodeLines-module__scrollBarContainer__fsxaw' scrollable='true' />
+Symbols
+[98] (960,421)<button class='prc-Button-ButtonBase-9n-Xk CodeNavSymbolNavigation-module__closeButton__XOIhD prc-Button-IconButton-fyge7' />
+Find definitions and references for functions and other symbols in this file by clicking a symbol below or in the code.
+[99] (811,534)<span  />
+	[100] (671,534)<span  />
+	[101] (823,534)<input aria-label='Filter symbols' class='prc-components-Input-IwWrt' placeholder='Filter symbols' role='combobox' />
+[102] (804,923)<div class='CodeNavSymbolTree-module__filterResults__tenjX' id='filter-results' scrollable='true' />
+	[103] (805,960)<li class='PRIVATE_TreeView-item prc-TreeView-TreeViewItem-Ter5f' id='0MapleStoryBot' role='treeitem' />
+		[104] (805,574)<div  />
+			[105] (665,574)<div  />
+			[106] (813,574)<div  />
+				[107] (813,574)<span  />
+					[108] (813,574)<div  />
+						[109] (700,574)<div >class />
+							[110] (700,574)<div  />
+							class
+						[111] (775,574)<div  />
+							[112] (775,574)<span >MapleStoryBot />
+		[113] (805,609)<li class='PRIVATE_TreeView-item prc-TreeView-TreeViewItem-Ter5f' id='0__init__' role='treeitem' />
+			[114] (805,609)<div  />
+				[115] (661,609)<div  />
+					[116] (661,609)<div  />
+						[117] (661,609)<div  />
+				[118] (818,609)<div  />
+					[119] (818,609)<span  />
+						[120] (818,609)<div  />
+							[121] (708,609)<div >func />
+								[122] (708,609)<div  />
+								func
+							[123] (756,609)<div  />
+								[124] (756,609)<span >__init__ />
+		[125] (805,644)<li class='PRIVATE_TreeView-item prc-TreeView-TreeViewItem-Ter5f' id='1get_minimap_location' role='treeitem' />
+			[126] (805,644)<div  />
+				[127] (661,644)<div  />
+					[128] (661,644)<div  />
+						[129] (661,644)<div  />
+				[130] (818,644)<div  />
+					[131] (818,644)<span  />
+						[132] (818,644)<div  />
+							[133] (708,644)<div >func />
+								[134] (708,644)<div  />
+								func
+							[135] (806,644)<div  />
+								[136] (806,644)<span >get_minimap_location />
+		[137] (805,679)<li class='PRIVATE_TreeView-item prc-TreeView-TreeViewItem-Ter5f' id='2get_player_location_on_minimap' role='treeitem' />
+			[138] (805,679)<div  />
+				[139] (661,679)<div  />
+					[140] (661,679)<div  />
+						[141] (661,679)<div  />
+				[142] (818,679)<div  />
+					[143] (818,679)<span  />
+						[144] (818,679)<div  />
+							[145] (708,679)<div >func />
+								[146] (708,679)<div  />
+								func
+							[147] (830,679)<div  />
+								[148] (841,679)<span >get_player_location_on_minimap />
+		[149] (805,714)<li class='PRIVATE_TreeView-item prc-TreeView-TreeViewItem-Ter5f' id='3get_nearest_color_code_on_minimap' role='treeitem' />
+			[150] (805,714)<div  />
+				[151] (661,714)<div  />
+					[152] (661,714)<div  />
+						[153] (661,714)<div  />
+				[154] (818,714)<div  />
+					[155] (818,714)<span  />
+						[156] (818,714)<div  />
+							[157] (708,714)<div >func />
+								[158] (708,714)<div  />
+								func
+							[159] (830,714)<div  />
+								[160] (855,714)<span >get_nearest_color_code_on_minimap />
+		[161] (805,749)<li class='PRIVATE_TreeView-item prc-TreeView-TreeViewItem-Ter5f' id='4switch_status' role='treeitem' />
+			[162] (805,749)<div  />
+				[163] (661,749)<div  />
+					[164] (661,749)<div  />
+						[165] (661,749)<div  />
+				[166] (818,749)<div  />
+					[167] (818,749)<span  />
+						[168] (818,749)<div  />
+							[169] (708,749)<div >func />
+								[170] (708,749)<div  />
+								func
+							[171] (777,749)<div  />
+								[172] (777,749)<span >switch_status />
+		[173] (805,784)<li class='PRIVATE_TreeView-item prc-TreeView-TreeViewItem-Ter5f' id='5get_nearest_monster' role='treeitem' />
+			[174] (805,784)<div  />
+				[175] (661,784)<div  />
+					[176] (661,784)<div  />
+						[177] (661,784)<div  />
+				[178] (818,784)<div  />
+					[179] (818,784)<span  />
+						[180] (818,784)<div  />
+							[181] (708,784)<div >func />
+								[182] (708,784)<div  />
+								func
+							[183] (802,784)<div  />
+								[184] (802,784)<span >get_nearest_monster />
+		[185] (805,819)<li class='PRIVATE_TreeView-item prc-TreeView-TreeViewItem-Ter5f' id='6solve_rune' role='treeitem' />
+			[186] (805,819)<div  />
+				[187] (661,819)<div  />
+					[188] (661,819)<div  />
+						[189] (661,819)<div  />
+				[190] (818,819)<div  />
+					[191] (818,819)<span  />
+						[192] (818,819)<div  />
+							[193] (708,819)<div >func />
+								[194] (708,819)<div  />
+								func
+							[195] (768,819)<div  />
+								[196] (768,819)<span >solve_rune />
+		[197] (805,855)<li class='PRIVATE_TreeView-item prc-TreeView-TreeViewItem-Ter5f' id='7is_player_stuck' role='treeitem' />
+			[198] (805,855)<div  />
+				[199] (661,855)<div  />
+					[200] (661,855)<div  />
+						[201] (661,855)<div  />
+				[202] (818,855)<div  />
+					[203] (818,855)<span  />
+						[204] (818,855)<div  />
+							[205] (708,855)<div >func />
+								[206] (708,855)<div  />
+								func
+							[207] (782,855)<div  />
+								[208] (782,855)<span >is_player_stuck />
+		[209] (805,890)<li class='PRIVATE_TreeView-item prc-TreeView-TreeViewItem-Ter5f' id='8is_player_stuck_minimap' role='treeitem' />
+			[210] (805,890)<div  />
+				[211] (661,890)<div  />
+					[212] (661,890)<div  />
+						[213] (661,890)<div  />
+				[214] (818,890)<div  />
+					[215] (818,890)<span  />
+						[216] (818,890)<div  />
+							[217] (708,890)<div >func />
+								[218] (708,890)<div  />
+								func
+							[219] (814,890)<div  />
+								[220] (814,890)<span >is_player_stuck_minimap />
+		[221] (805,925)<li class='PRIVATE_TreeView-item prc-TreeView-TreeViewItem-Ter5f' id='9get_nearest_color_code' role='treeitem' />
+			[222] (805,925)<div  />
+				[223] (661,925)<div  />
+					[224] (661,925)<div  />
+						[225] (661,925)<div  />
+				[226] (818,925)<div  />
+					[227] (818,925)<span  />
+						[228] (818,925)<div  />
+							[229] (708,925)<div >func />
+								[230] (708,925)<div  />
+								func
+							[231] (811,925)<div  />
+								[232] (811,925)<span >get_nearest_color_code />
+		[233] (805,960)<li class='PRIVATE_TreeView-item prc-TreeView-TreeViewItem-Ter5f' id='10get_hp_mp_exp' role='treeitem' />
+			[234] (805,960)<div  />
+				[235] (661,960)<div  />
+					[236] (661,960)<div  />
+						[237] (661,960)<div  />
+				[238] (818,960)<div  />
+					[239] (818,960)<span  />
+						[240] (818,960)<div  />
+							[241] (708,960)<div >func />
+								[242] (708,960)<div  />
+								func
+							[243] (785,960)<div  />
+								[244] (785,960)<span >get_hp_mp_exp />
+		[245] (805,995)<li class='PRIVATE_TreeView-item prc-TreeView-TreeViewItem-Ter5f' id='11is_rune_warning' role='treeitem' />
+			[246] (805,995)<div  />
+				[247] (661,995)<div  />
+					[248] (661,995)<div  />
+						[249] (661,995)<div  />
+				[250] (818,995)<div  />
+					[251] (818,995)<span  />
+						[252] (818,995)<div  />
+							[253] (708,995)<div >func />
+								[254] (708,995)<div  />
+								func
+							[255] (786,995)<div  />
+								[256] (786,995)<span >is_rune_warning />
+
+</current_dom>

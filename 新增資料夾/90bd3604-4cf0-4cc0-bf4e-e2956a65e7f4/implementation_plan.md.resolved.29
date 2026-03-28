@@ -1,0 +1,34 @@
+# Implementation Plan - Fix Wiggle Test Latency
+
+## Problem
+User reports the Wiggle Drift issue persists.
+They correctly identified that the "recognition time" might not be catching up.
+If [GameVisionCore](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#23-1346) updates at ~10FPS (100ms) or has latency, the `await Task.Delay(50)` after movement is too short.
+The code reads the *old* position (before movement), thinks `DeltaX < 1.0`, and repeats the test.
+Result: The character moves physically but the code doesn't see it, so it keeps moving it until it drifts too far.
+
+## Solution
+Increase the wait time **after** the physical movement finishes, before reading the new position.
+- **Current**: 50ms
+- **Proposed**: **300ms** (Safe margin for vision update)
+
+## Proposed Changes
+
+### Services/CharacterMovementController.cs
+
+#### [MODIFY] ClimbRopeAsync
+- **Post-Move Delay**:
+  ```csharp
+  SendKeyInput(VK_RIGHT, true); // Release Key
+  await Task.Delay(300, ct);    // Wait 300ms (was 50ms) for vision to catch up
+  float endX = getPlayerPosition().X; // Read new confirmed position
+  ```
+
+## Verification Plan
+- **Scenario**: Character climbs rope.
+- **Success**:
+  - Wiggle Move happens.
+  - Code waits 300ms.
+  - Position updates.
+  - Code detects `DeltaX > 1.0`.
+  - Loop breaks immediately.

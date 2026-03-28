@@ -1,0 +1,23 @@
+# 抓繩策略簡化與穩定化計畫
+
+## 目的
+解決角色在抓繩時演變成「側跳」導致偏離目標的問題，並清理 `CharacterMovementController` 中的遺留硬抓邏輯。
+
+## 執行方案
+
+### 1. [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **[DELETE]** 移除 L460-473 中的側跳補償邏輯（Direction + Menu + Up）。
+- **[MODIFY]** 在 `ClimbRopeAsync` 開頭加入 `await WaitForStabilityAsync()`，確保角色在繩索下方停穩後才發動。
+- **[SIMPLIFY]** 統一抓取路徑：不論 `dx` 大小，均視為需要對齊。若 `dx` 過大（> 8.5px），直接宣告失敗，交由導航層重跑對齊，而非強行側跳。
+
+### 2. [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs)
+- **[ENFORCE]** 確保 `ExecuteClimbAsync` 在發動抓繩前，對齊容差 `ropeAlignTol` 嚴格控制在 3.0f 以內，保證角色處於繩索感應正下方。
+
+## 預期效果
+- 抓繩動作將變為標準的「原地起跳 -> 向上抓取」。
+- 消除因慣性導致的側向飄移。
+- 導航邏輯與 A* 節點定義完全對齊。
+
+## 驗證計畫
+- 向下跳繩、向上爬繩測試。
+- 檢查日誌中是否還有座標卡死在 X=155.5 或類似偏離位置的情況。

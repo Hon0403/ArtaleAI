@@ -1,0 +1,38 @@
+# Implementation Plan - Fix Wiggle Test Drift
+
+## Problem
+The Wiggle Test fails to detect "Off Rope" status because the movement (StartX vs EndX) is too small (~2px) with the current 100ms press.
+This causes the test to repeat multiple times, leading to cumulative drift (10px+) until the character grabs an adjacent rope.
+
+## Solution
+As suggested by the user, we will **increase the check duration**.
+By pressing the Right key for **200ms** (instead of 100ms), the character will move more significantly (e.g., 4-5px).
+This will reliably trigger the `DeltaX > 2.0f` threshold on the **first attempt**, causing the loop to exit immediately.
+This prevents the cumulative drift and accidental rope grabbing.
+
+We will also add a **Drift Guard** as a safety net.
+
+## Proposed Changes
+
+### Services/CharacterMovementController.cs
+
+#### [MODIFY] ClimbRopeAsync
+- **Wiggle Press Duration**:
+  ```csharp
+  SendKeyInput(VK_RIGHT, false);
+  await Task.Delay(200, ct); // Increased from 100ms
+  SendKeyInput(VK_RIGHT, true);
+  ```
+- **Drift Guard**:
+  ```csharp
+  // 如果 X 軸偏離起始點太多，強制中止 (防止吸到隔壁繩索)
+  if (Math.Abs(currentPos.X - startPos.X) > 5.0f) { break; }
+  ```
+
+## Verification Plan
+- **Scenario**: Character climbs rope.
+- **Success**:
+  - Wiggle Test checks ONCE.
+  - Character moves ~4px right.
+  - Loop exits.
+  - No drift into adjacent ropes.

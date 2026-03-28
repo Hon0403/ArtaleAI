@@ -1,0 +1,28 @@
+# Jump Consistency and Navigation Improvements
+
+Successfully addressed the inconsistent jump behavior by unifying coordinate thresholds and refining navigation override logic.
+
+## Changes Made
+
+### 1. Unified Precision Thresholds
+- **File**: [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **Fix**: Modified [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#229-362) to use a dynamic horizontal threshold based on the requested `reachDistance`, instead of a hardcoded 5.0px value. This ensures the character reaches the 1.5px precision required for jump triggers without "stalling" prematurely.
+
+### 2. Refined Jump Action Preservation
+- **File**: [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- **Fix**: Added a Y-axis check to the jump preservation logic. The system now only preserves "original jump actions" if the player is on the same platform level as the target. If the player falls, the system correctly allows rope/A* navigation to handle recovery.
+
+### 3. Post-Jump Stability Delay
+- **File**: [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- **Fix**: Added a 100ms delay after landing from a jump before advancing to the next waypoint. This prevents immediate movement commands from causing the character to slip off platform edges upon landing.
+
+## Verification Results
+
+### Build Verification
+- Status: **SUCCESS**
+- Command: `dotnet build`
+- Results: The project builds successfully with no syntax errors in the modified files.
+
+### Log Analysis Summary
+- Before: Character often stalled near jump points or failed to recover using ropes when jump preservation was too aggressive.
+- After: thresholds are consistent, and navigation can recover from falls while still prioritizing jumps on the same level.

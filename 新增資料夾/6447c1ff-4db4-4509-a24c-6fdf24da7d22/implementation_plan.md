@@ -1,0 +1,22 @@
+# Implementation Plan - Fix LiveView Rollback
+
+## Problem
+The `LiveViewManager` uses a timer to trigger `OnDetectionTimer`. This method dequeues the latest frame and invokes `OnFrameReady`. However, it lacks re-entry protection. If the processing of `OnFrameReady` (which is synchronous on the timer thread) takes longer than the timer interval, the timer will fire again on a separate thread, leading to concurrent execution. This causes race conditions where an older frame (Thread A) might finish processing *after* a newer frame (Thread B), resulting in visual "rollback" or stuttering.
+
+## Proposed Changes
+
+### `UI/LiveViewManager.cs`
+
+#### [MODIFY] `OnDetectionTimer`
+- Add a `private volatile bool _isProcessingFrame` flag.
+- In `OnDetectionTimer`, check this flag.
+  - If `true`, return immediately (drop this timer tick, as the previous one is still working).
+  - If `false`, sets it to `true`, process the frame, and set it back to `false` in a `finally` block.
+- This ensures that `OnFrameReady` is never invoked concurrently, guaranteeing sequential frame presentation.
+
+## Verification Plan
+
+### Manual Verification
+1. **Stress Test**: Run the application in Path Editing mode.
+2. **Observe**: Move the character around. Ensure the red dot follows smoothly without jumping backward.
+3. **Log check**: Verify that no new errors are introduced.

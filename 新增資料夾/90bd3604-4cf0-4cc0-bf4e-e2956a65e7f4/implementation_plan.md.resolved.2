@@ -1,0 +1,52 @@
+# 綠色遮罩模板匹配實作計畫
+
+## 目標
+讓模板匹配可以忽略綠色背景區域，只比對怪物本體，提高辨識準確度。
+
+## 預計變更
+
+### 1. MainForm.cs - 修改模板載入
+#### [MODIFY] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- 新增 `currentMonsterMatMasks` 列表存放對應的遮罩
+- 在載入模板時同時產生綠色遮罩
+
+---
+
+### 2. GameVisionCore.cs - 新增遮罩產生與匹配函數
+#### [MODIFY] [GameVisionCore.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs)
+- 新增 `CreateGreenMask(Mat template)` 靜態方法
+  - 將綠色像素 (0, 255, 0) 識別為背景
+  - 建立二值遮罩：怪物本體 = 白色 (255)，背景 = 黑色 (0)
+- 修改 [FindMonsters](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#413-489) 方法簽章，接受遮罩列表參數
+- 使用帶有 mask 參數的 `Cv2.MatchTemplate` 重載
+
+---
+
+### 3. MainForm.cs - 呼叫 FindMonsters 時傳入遮罩
+#### [MODIFY] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- 修改 [ProcessMonsters](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#904-1004) 方法，將遮罩列表傳給 [FindMonsters](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#413-489)
+
+## 關鍵程式碼
+
+```csharp
+// 產生綠色遮罩
+public static Mat CreateGreenMask(Mat template)
+{
+    // 定義綠色範圍 (BGR)
+    var lowerGreen = new Scalar(0, 250, 0);
+    var upperGreen = new Scalar(10, 255, 10);
+    
+    using var mask = new Mat();
+    Cv2.InRange(template, lowerGreen, upperGreen, mask);
+    
+    // 反轉遮罩：綠色變 0，其他變 255
+    var result = new Mat();
+    Cv2.BitwiseNot(mask, result);
+    return result;
+}
+```
+
+## 驗證計畫
+1. 編譯成功
+2. 重新下載怪物模板（綠色背景）
+3. 測試怪物偵測是否正常運作

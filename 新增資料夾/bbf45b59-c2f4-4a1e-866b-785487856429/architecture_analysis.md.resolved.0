@@ -1,0 +1,328 @@
+# 🔬 ArtaleAI 專案 — Clean Architecture 深度分析報告
+
+> 分析範圍：整個專案 (~8000+ 行核心程式碼，26+ 檔案)
+
+---
+
+## 一、專案現況概覽
+
+```mermaid
+graph TD
+    subgraph "UI 層（2965 行的怪物）"
+        MF["MainForm.cs<br/>2965 行 / 64 個方法"]
+        ME["MapEditor.cs<br/>1266 行"]
+        MV["MinimapViewer.cs<br/>37KB"]
+    end
+    subgraph "Core 層"
+        GVC["GameVisionCore.cs<br/>1347 行"]
+        PPT["PathPlanningTracker.cs<br/>651 行"]
+        SGS["SharedGameState.cs<br/>156 行 ✅"]
+    end
+    subgraph "Services 層"
+        CMC["CharacterMovementController.cs<br/>1031 行"]
+        PPM["PathPlanningManager.cs<br/>217 行"]
+        MFM["MapFileManager.cs<br/>391 行"]
+        LMM["LegacyMapMigrator.cs<br/>241 行"]
+        RAC["RopeAlignmentController.cs<br/>195 行"]
+    end
+    subgraph "Domain 層"
+        NAV["Navigation/<br/>7 個檔案 ✅"]
+    end
+
+    MF -->|"直接呼叫<br/>SendKeyInput"| CMC
+    MF -->|"直接操作"| GVC
+    MF -->|"內嵌 400 行<br/>移動控制邏輯"| PPT
+    MF -->|"持有 UI 控件引用"| MFM
+    ME -->|"混合繪圖+編輯邏輯"| GVC
+
+    style MF fill:#ff4444,color:#fff
+    style CMC fill:#ff8800,color:#fff
+    style LMM fill:#ffaa00,color:#000
+```
+
+> [!CAUTION]
+> [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) 一個檔案就佔了整個專案 **~37%** 的程式碼量，且包含大量不該屬於 UI 的業務邏輯。
+
+---
+
+## 二、職責混淆點分析 🚨
+
+### 2.1 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) — 最嚴重的「神類別 (God Class)」
+
+| 被混入 MainForm 的職責 | 行數範圍 | 應該在的位置 |
+|---|---|---|
+| 怪物偵測協調 + NMS 去重 + 閾值決策 | [ProcessMonsters](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1012-1126) L1015-1125 | `MonsterDetectionService` |
+| 自動攻擊條件判斷 + 執行排程 | [CheckAutoAttackCondition](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1145-1190) + [PerformAutoAttackAsync](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1191-1226) L1145-1225 | `AutoCombatService` |
+| **完整的角色移動控制流程**：方向判定、方向切換、繩索座標解析、跳躍按鍵序列、傳送門操作、落地等待 | [OnPathTrackingUpdated](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2003-2401) L2003-2400 (**400 行！**) | `NavigationExecutor` / `ActionExecutor` |
+| 血條偵測排程 + 結果快取 | [OnFrameAvailable](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#809-1010) L925-953 | `DetectionPipeline` |
+| 路徑可視化資料建構 | [BuildPathVisualizationData](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1320-1416) L1320-1415 | `PathVisualizationBuilder` |
+| 繩索座標從 InputSequence 解析 | L2169-2184 | Domain 層的 Edge 模型方法 |
+| 小地圖玩家位置追蹤 + 座標轉換 | L838-878 | 已存在的 [GameVisionCore](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#23-1346) |
+| 等待角色落地（Y 座標穩定監控） | [WaitForLanding](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2822-2900) L2822-2899 | [CharacterMovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#18-1029)（**已有重複**） |
+| 畫面渲染疊加層 | [RenderAndDisplayOverlays](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1227-1319) L1227-1318 | `OverlayRenderer` |
+
+> [!WARNING]
+> **最致命的混淆**：[OnPathTrackingUpdated](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2003-2401) 方法內 L2143-2333 的 `Task.Run(async () => { ... })` 區塊。
+> 這 190 行程式碼是**硬編碼的按鍵序列**（VK_LEFT=0x25、VK_DOWN=0x28、Alt=0xA4...），直接在 UI Form 裡面寫死了「怎麼跳、怎麼爬繩、怎麼進傳送門」。
+> 這是典型的 **UI 層汙染了 Application 層甚至 Domain 層的邏輯**。
+
+### 2.2 [MapFileManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs) — UI 依賴倒置
+
+```csharp
+// 建構函式直接接收 UI 控件 😱
+public MapFileManager(ComboBox mapFilesComboBox, MapEditor mapEditor, MainForm mainForm)
+```
+
+- 一個「檔案管理器」不應該知道 [ComboBox](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1513-1520) 或 [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#33-2965) 的存在
+- 應該透過介面 (Interface) 或事件機制通知 UI，而非直接操作 UI 控件
+
+### 2.3 [GameVisionCore.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs) — 職責過度集中
+
+一個類別同時負責：
+- 血條偵測 ([DetectBloodBar](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#81-130), [FindBestRedBar](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#823-891))
+- 小地圖定位 ([FindMinimapOnScreen](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#199-228), [FindMinimapByColor](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#229-344))
+- 小地圖追蹤 ([GetMinimapTracking](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#345-354))
+- 怪物偵測 ([FindMonsters](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#561-711))
+- 模板管理 ([LoadMapTemplates](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#916-971), [LoadMonsterTemplatesAsync](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#732-818))
+- 座標轉換 ([MinimapToScreenF](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#1072-1085), [ScreenToMinimapF](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#1086-1099))
+- NMS 去重演算法 ([ApplyNMS](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#1100-1142), [CalculateIoU](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#1143-1161))
+- 顏色解析 ([ParseColor](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#1040-1071))
+- 螢幕截圖 ([GetSnapshotAsync](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#1162-1229))
+
+> 1347 行，至少應拆為 5 個獨立類別。
+
+### 2.4 [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs) — Win32 API + 業務邏輯混合
+
+- [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#691-972) (L691-971) = **280 行**的巨型方法，混合了：
+  - Win32 按鍵模擬（底層 I/O）
+  - 繩索爬行策略判定（業務邏輯）
+  - 對齊控制（已有 [RopeAlignmentController](file:///d:/Full_end/C%23/ArtaleAI/Services/RopeAlignmentController.cs#29-33) 但部分重複）
+  - 落地等待（與 MainForm 的 [WaitForLanding](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2822-2900) 重複）
+
+---
+
+## 三、死碼與向下相容清單 💀
+
+### 3.1 明確的死碼 / 註解殘骸
+
+| 位置 | 內容 | 類型 |
+|---|---|---|
+| [MainForm.cs:531](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#L531) | `//GameConfig.Instance.MonsterDetection.OcclusionHandling = ...` | 註解掉的舊 API |
+| [MainForm.cs:625](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#L625) | `_minimapViewer?.Show();` 連續呼叫兩次 | 重複呼叫 |
+| [MainForm.cs:1008](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#L1008) | `// 修復：移除重複的 ProcessPathPlanning 呼叫（已在上面第 706-709 行處理）` | 殘留的舊行號註解 |
+| [MainForm.cs:2064-2065](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#L2064-L2065) | `// 🎯 取得當前目標的 PathNode（已廢棄）` + 註解掉的 `currentPathNode` | 舊版 PathNode 系統殘骸 |
+| [MainForm.cs:2088](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#L2088) | `// [Edge-Driven] 不再需要 Node fallback，所有動作都由 Edge 提供` | 過渡期註解 |
+| [MainForm.cs:2154](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#L2154) | `// 🔧 已移除卡住偵測邏輯（路徑檔已有正確的路線規劃）` | 死碼標記 |
+| [MainForm.cs:1034](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#L1034) | `//MsgLog.ShowStatus(textBox1, $"未選擇怪物模板...")` | 註解掉的日誌 |
+| [MainForm.cs:2338](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#L2338) | `// Logger.Debug($"[移動控制] 到達目標...")` | 註解掉的除錯日誌 |
+
+### 3.2 雙軌並行的地圖格式（向下相容代價巨大）
+
+> [!IMPORTANT]
+> 這是專案中最嚴重的技術債。新舊兩套地圖格式同時存在，導致所有讀寫地圖的程式碼都必須處理兩種可能性。
+
+**舊格式** (`WaypointPaths` + `Connections`)：
+```json
+{
+  "WaypointPaths": [[100, 50, 1], [120, 50, 9], ...],  // [x, y, actionCode]
+  "Connections": [[0, 1, 1], [1, 2, 0], ...]            // [from, to, isTwoWay]
+}
+```
+
+**新格式** ([Nodes](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#460-502) + `Edges`)：
+```json
+{
+  "Nodes": [{"Id": "n0", "X": 100, "Y": 50, "Type": "Platform"}, ...],
+  "Edges": [{"FromNodeId": "n0", "ToNodeId": "n1", "ActionType": "Walk", "Cost": 20.0}, ...]
+}
+```
+
+**向下相容造成的程式碼膨脹：**
+
+| 檔案 | 行數 | 職責 |
+|---|---|---|
+| [LegacyMapMigrator.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/LegacyMapMigrator.cs) | 241 行 | 舊→新 ([Migrate](file:///d:/Full_end/C%23/ArtaleAI/Services/LegacyMapMigrator.cs#13-156)) 和 新→舊 ([ToEditorFormat](file:///d:/Full_end/C%23/ArtaleAI/Services/LegacyMapMigrator.cs#177-223)) 雙向轉換 |
+| [MapData.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Map/MapData.cs) L11-13, L24-26 | — | `WaypointPaths` 和 `Connections` 欄位標註「向下相容」 |
+| [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs) [GetCurrentMapData](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#113-396) L113-395 | **280 行** | 編輯器內部仍用舊格式操作，匯出時轉新格式 |
+| [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) [LoadMap](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#166-220) L166-219 | 53 行 | 載入時呼叫 [Migrate](file:///d:/Full_end/C%23/ArtaleAI/Services/LegacyMapMigrator.cs#13-156) 後再建圖 |
+
+### 3.3 重複的動作碼映射（Action Code 散佈多處）
+
+同一套「動作碼 → 動作類型」的映射至少出現在 **4 個地方**：
+
+1. `LegacyMapMigrator.ConvertActionCode` — 數字 → `NavigationActionType`
+2. `LegacyMapMigrator.RevertActionCode` — `NavigationActionType` → 數字
+3. `MainForm.OnPathTrackingUpdated` L2074-2085 — `NavigationActionType` → `PathActionType`
+4. `MapEditor.GetActionName` — 數字 → 顯示名稱
+
+### 3.4 `PathActionType` vs `NavigationActionType` 重複枚舉
+
+```
+// NavigationEdge.cs (Domain 層 - 新)
+NavigationActionType { Walk, Jump, JumpLeft, JumpRight, JumpDown, Climb, ClimbUp, ClimbDown, Teleport, FlashJump }
+
+// PathPlanningState.cs 使用的 (隱含在程式碼中 - 舊)
+PathActionType { Idle, MoveLeft, MoveRight, Jump, LeftJump, RightJump, JumpDown, ClimbUp, ClimbDown }
+```
+
+兩套幾乎相同的枚舉，只因命名不同就需要一個 switch 做轉換 (L2074-2085)。
+
+### 3.5 重複的 [WaitForLanding](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2822-2900) 與 [CalculateDistance](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#586-599)
+
+| 方法 | 位置 1 | 位置 2 |
+|---|---|---|
+| [WaitForLanding](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2822-2900) | [MainForm.cs:2822-2899](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#L2822-L2899) | [CharacterMovementController.cs:983-1016](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#L983-L1016) |
+| [CalculateDistance](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#586-599) | [PathPlanningTracker.cs:586-598](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#L586-L598) | [CharacterMovementController.cs:973-981](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#L973-L981) |
+
+### 3.6 疑似未使用的功能
+
+| 項目 | 位置 | 狀態 |
+|---|---|---|
+| `OcclusionHandling` 枚舉 | [Enums.cs:41-62](file:///d:/Full_end/C%23/ArtaleAI/Data/Enums.cs#L41-L62) | 已註解掉使用處 (MainForm L531) |
+| `NavigationActionType.Climb` | NavigationEdge.cs L16 | 從未被使用，只有 `ClimbUp` / `ClimbDown` |
+| `NavigationActionType.FlashJump` | NavigationEdge.cs L20 | 從未被使用 |
+| `NavigationEdge.Conditions` | NavigationEdge.cs L51 | 宣告但從未被寫入或讀取 |
+| `MonsterDetectionMode.Basic` / `ContourOnly` / `TemplateFree` | Enums.cs | 需確認是否有對應的實作 |
+| [SharedGameState](file:///d:/Full_end/C%23/ArtaleAI/Core/SharedGameState.cs#14-141) | SharedGameState.cs | 存在但在主要流程中未被充分使用 |
+| [ProcessMinimapPlayer](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#722-767) | MainForm.cs L722-766 | 已被 [OnFrameAvailable](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#809-1010) 內的相同邏輯取代 |
+
+---
+
+## 四、Clean Architecture 重構藍圖 🏗️
+
+### 4.1 目標分層架構
+
+```mermaid
+graph TB
+    subgraph "④ UI / Presentation"
+        MF2["MainForm<br/>(純 UI 事件 + 綁定)"]
+        ME2["MapEditorView<br/>(純繪圖)"]
+        MV2["MinimapViewer<br/>(純顯示)"]
+        OV["OverlayRenderer"]
+    end
+
+    subgraph "③ Application / Use Cases"
+        GP["GamePipeline<br/>(每幀協調器)"]
+        NE["NavigationExecutor<br/>(動作執行器)"]
+        ACS["AutoCombatService"]
+        MDS["MonsterDetectionService"]
+        PVB["PathVisualizationBuilder"]
+    end
+
+    subgraph "② Domain / Entities"
+        NG["NavigationGraph"]
+        NNode["NavigationNode"]
+        NEdge["NavigationEdge"]
+        SPP["ShortestPathPlanner"]
+        ActType["NavigationActionType<br/>(統一枚舉)"]
+        MapEnt["MapData<br/>(僅新格式)"]
+    end
+
+    subgraph "① Infrastructure"
+        KI["KeyboardInputService<br/>(Win32 封裝)"]
+        SC["ScreenCaptureService"]
+        VD["VisionDetector<br/>(血條/小地圖/怪物)"]
+        TM["TemplateManager"]
+        FM["FileManager<br/>(地圖讀寫)"]
+        CFG["AppConfig"]
+    end
+
+    MF2 --> GP
+    GP --> NE
+    GP --> ACS
+    GP --> MDS
+    NE --> KI
+    NE --> NG
+    ACS --> KI
+    MDS --> VD
+    VD --> TM
+    FM --> MapEnt
+
+    style MF2 fill:#4488ff,color:#fff
+    style GP fill:#44cc44,color:#fff
+    style NG fill:#ff8844,color:#fff
+    style KI fill:#888,color:#fff
+```
+
+### 4.2 各層職責定義
+
+---
+
+#### ① Infrastructure 層（最底層，無業務邏輯）
+
+| 類別 | 職責 | 來源 |
+|---|---|---|
+| `KeyboardInputService` | 封裝 Win32 `SendInput`，只暴露 `PressKey` / `ReleaseKey` / [TapKey](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#487-513) | 從 [CharacterMovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#18-1029) 拆出 |
+| `ScreenCaptureService` | 螢幕擷取 + Graphics Capture API | 現有 [ScreenCapture.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/ScreenCapture.cs) |
+| `VisionDetectors/BloodBarDetector` | 血條 HSV 偵測 | 從 [GameVisionCore](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#23-1346) 拆出 |
+| `VisionDetectors/MinimapDetector` | 小地圖定位 + 玩家追蹤 | 從 [GameVisionCore](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#23-1346) 拆出 |
+| `VisionDetectors/MonsterDetector` | 模板匹配 + NMS | 從 [GameVisionCore](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#23-1346) 拆出 |
+| `TemplateManager` | 模板載入/快取/閾值估算 | 從 [GameVisionCore](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#23-1346) 拆出 |
+| [FileManager](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs#54-69) | 地圖 JSON 讀寫（**僅新格式**） | 從 [AppConfig](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs#18-524) + [MapFileManager](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs#54-69) 拆出 |
+| [AppConfig](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs#18-524) | YAML 設定讀寫 | 保留，移除地圖讀寫職責 |
+
+---
+
+#### ② Domain 層（純業務規則，零外部依賴）
+
+| 類別 | 職責 |
+|---|---|
+| `NavigationGraph` | 圖結構（節點 + 邊）✅ 已存在，保留 |
+| `NavigationNode` | 節點實體 ✅ 已存在 |
+| [NavigationEdge](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationEdge.cs#53-60) | 邊實體 + `GetRopeX()` 等便利方法 |
+| `NavigationActionType` | **唯一的動作枚舉**，刪除 `PathActionType` |
+| `ShortestPathPlanner` | A* 尋路 ✅ 已存在 |
+| [MapData](file:///d:/Full_end/C%23/ArtaleAI/Models/Map/MapData.cs#9-34) | 只保留 [Nodes](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#460-502) + `Edges` + [Ropes](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs#237-278) + `SafeZones` + `BoundaryMarkers`，**移除 `WaypointPaths` 和 `Connections`** |
+| `CoordinateHelper` | 座標轉換工具（minimap ↔ screen） |
+
+---
+
+#### ③ Application 層（Use Cases，協調各元件）
+
+| 類別 | 職責 | 取代的現有邏輯 |
+|---|---|---|
+| `GamePipeline` | 每幀的處理流程協調器（偵測→追蹤→決策→執行→渲染） | `MainForm.OnFrameAvailable` 的 200 行 |
+| `NavigationExecutor` | 將 [NavigationEdge](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationEdge.cs#53-60) 的動作轉為按鍵操作 | `MainForm.OnPathTrackingUpdated` 的 400 行 switch-case |
+| `ActionStrategies/WalkStrategy` | 平地行走邏輯 | 從 MoveToTargetAsync 分離 |
+| `ActionStrategies/JumpStrategy` | 跳躍按鍵序列 | MainForm L2251-2293 |
+| `ActionStrategies/ClimbStrategy` | 繩索攀爬策略 | [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#691-972) 的 280 行 |
+| `ActionStrategies/TeleportStrategy` | 傳送門進入 | MainForm L2298-2309 |
+| `AutoCombatService` | 攻擊條件判斷 + 排程 | [CheckAutoAttackCondition](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1145-1190) + [PerformAutoAttackAsync](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1191-1226) |
+| `MonsterDetectionService` | 偵測排程 + 結果管理 | [ProcessMonsters](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1012-1126) 的 110 行 |
+| `PathVisualizationBuilder` | 路徑可視化資料建構 | [BuildPathVisualizationData](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1320-1416) |
+
+---
+
+#### ④ UI / Presentation 層（只負責顯示和使用者輸入）
+
+| 類別 | 職責 |
+|---|---|
+| [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#33-2965) | Tab 切換、按鈕事件、狀態列更新、呼叫 `GamePipeline` |
+| `MapEditorView` | 小地圖繪圖 + 滑鼠座標轉換 |
+| `MapEditorController` | 編輯邏輯（新增/刪除/連接節點）從 [MapEditor](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#16-1265) 拆出 |
+| `MinimapViewer` | 獨立視窗小地圖顯示 |
+| `OverlayRenderer` | 繪製所有偵測框、怪物框、玩家標記 |
+
+---
+
+### 4.3 重構優先順序建議
+
+```
+優先級 1 (高投報率，風險低)
+├── 統一枚舉：刪除 PathActionType，全部改用 NavigationActionType
+├── 提取 NavigationExecutor：把 OnPathTrackingUpdated 的 400 行移出 MainForm
+└── 移除死碼：清除所有註解掉的程式碼和重複方法
+
+優先級 2 (中等投報率)
+├── 拆分 GameVisionCore → 3~4 個偵測器
+├── 建立 GamePipeline：把 OnFrameAvailable 的協調邏輯移出
+└── MapFileManager 去除 UI 依賴（用事件/介面取代直接 ComboBox 引用）
+
+優先級 3 (高投報率，但風險較高)
+├── 統一地圖格式：全面遷移到新格式，移除 WaypointPaths/Connections
+├── 刪除 LegacyMapMigrator（或僅保留為一次性遷移工具）
+└── 刪除 MapEditor 中的 ToEditorFormat 雙向轉換
+```
+
+> [!TIP]
+> **建議的第一刀**：先做「優先級 1」的三件事。這三件事都不需要改變任何外部行為，只是內部重組，風險最低但可讀性提升最大。

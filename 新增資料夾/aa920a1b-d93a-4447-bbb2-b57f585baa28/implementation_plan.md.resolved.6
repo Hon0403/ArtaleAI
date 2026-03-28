@@ -1,0 +1,25 @@
+# 繩索抓取精準度優化計畫 (對抗慣性過衝)
+
+## 目的
+解決角色在高速移動中因「碰撞感應區」觸發延遲與慣性滑行導致的繩索過衝 (Overshot) 問題。
+
+## 執行方案
+
+### 1. [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs)
+- **[MODIFY]** 在 `ExecuteClimbAsync` 中實作「二次對位校正」。
+- **[LOGIC]**：
+    1. 呼叫 `MoveToTargetWithCorrectionAsync` 進行初步位移。
+    2. 等待角色完全停止 (Stability Check)。
+    3. 計算最終 X 軸偏差。若 `dx > 1.5px`，呼叫 `CharacterMovementController.TapKeyAsync` 進行微小步進補償。
+    4. 循環直至進入 1.5px 精準導流區。
+
+### 2. [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **[OPTIMIZE]** 調整 `ClimbRopeAsync` 的 `dx` 判定門檻，與導航執行器同步。
+
+## 預期效果
+- 角色在繩索下方將表現出精確的「對齊 -> 微步回正 -> 起跳」行為。
+- 徹底消除因 X 軸位移偏差 5px+ 導致的「抓繩揮空」。
+
+## 驗證計畫
+- 觀察日誌：確認 `ClimbUp` 啟動時的玩家 X 座標與目標繩索 X 座標之差是否恆定 < 2.0px。
+- 密集平台測試：連續爬繩路徑驗證。

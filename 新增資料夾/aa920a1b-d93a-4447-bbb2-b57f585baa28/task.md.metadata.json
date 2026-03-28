@@ -1,0 +1,6 @@
+{
+  "artifactType": "ARTIFACT_TYPE_TASK",
+  "summary": "執行配置模組遷移至 Models\\Config 任務清單。包含搬遷檔案、更新命名空間、清理舊目錄與最終建置驗證。",
+  "updatedAt": "2026-03-27T12:27:47.637178500Z",
+  "version": "12"
+}

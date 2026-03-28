@@ -1,0 +1,34 @@
+# 導航系統舊碼殲滅與硬性區域判定重構
+
+## 核心動機
+「唯一真理 (Single Source of Truth)」原則：既然已導入 AABB 區域觸發，就不應容忍模糊的像素距離判定。
+本階段將徹底拆除向下相容的「回退邏輯 (Fallback)」，落實強硬的錯誤處理。
+
+## 擬定變更
+
+### 1. 決策層徹底清理 (Application Layer Cleanup)
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- **移除舊常數**：刪除 `ReachDistancePercent` 等不再使用的微調參數。
+- **重構 [UpdatePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#338-448)**：
+    - 移除 `float checkDistance` 及其相關引用。
+    - 刪除 `if (targetNode?.Hitbox != null)` 的 `else` 區塊。
+    - **強硬報錯**：若 `targetNode?.Hitbox` 為 null，發出 `Logger.Error` 並鎖定 `_isWaitingForAcknowledge = true`（防止繼續發送通知），同時可考慮重置路徑或觸發救援。
+
+#### [MODIFY] [NavigationStateMachine.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs)
+- **重構 [TryStartNavigation](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#36-105)**：
+    - 移除 `if (targetHitbox.HasValue)` 的 `else` 區塊。
+    - **強硬拒絕**：若傳入的 `targetHitbox` 為 null，直接 `Logger.Error` 並回傳 `false` (拒絕啟動導航)。
+
+### 2. 環境設定精簡 (Configuration Cleanup)
+
+#### [MODIFY] [AppConfig.cs](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs)
+- 標記或移除 `GlobalArrivalTolerance` (若其他非導航模組仍需使用則保留，但導航核心將不再引用)。
+
+## 驗證計畫
+
+### 自動測試
+- 運行 `dotnet build` 確保無語法錯誤。
+
+### 手動驗證
+- 故意破壞地圖載入邏輯（使 Hitbox 為 null），確認系統能正確噴出 Error 並停止動作，而非回退到舊的像素判定。

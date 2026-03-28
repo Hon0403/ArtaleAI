@@ -1,0 +1,56 @@
+# 導航系統 FSM 重構實裝紀錄 (FSM Navigation Integration Walkthrough)
+
+我們已成功將導航系統從原本充滿技術債的 `_isMoving` 模式，完整遷移到具備高度執行緒安全性、解耦且可預測的 **FSM (有限狀態機)** 架構。
+
+## 核心變更內容 (Major Changes)
+
+### 1. 建立防彈級狀態機引擎
+- **[NEW]** [NavigationState.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationState.cs): 定義了從 `Idle` 到 `Moving_Horizontal`、`Jumping` 等明確的導航生命週期。
+- **[NEW]** [NavigationStateMachine.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs):
+    - **同步鎖機制**：引入 `TryStartNavigation` 作為唯一的、同步鎖定的進入點，徹底根除 UI 高頻呼叫產生的「機關槍效應」。
+    - **職責分離**：將 `CancellationToken` 限定於「例外流」(中斷)，並新增 `_isTargetReached` 處理「常規流」(抵達目標)，解決了以往 FSM 狀態卡死的漏洞。
+    - **依賴注入**：完整整合 `NavigationExecutor`，將「決策」與「執行」完美解耦。
+
+### 2. MainForm 換心手術 (Ruthless Refactoring)
+- **[DELETE]** 徹底刪除了 `_isMoving`、`_lastMovementTarget`、`_lastMovementDirection` 等區域變數。
+- **[DELETE]** 移除了舊有的 `_isMoving` 防禦性判斷與直接使用 `Task.Run` 包裝的移動指令。
+- **[REWIRE]** 將移動控制邏輯重構為簡潔的 FSM 指令呼叫：
+    - 到達目標：`_fsm.NotifyTargetReached()`
+    - 啟動移動：`_fsm.TryStartNavigation(...)`
+
+### 3. 基礎設施增強
+- **[MODIFY]** [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs): 擴充 `ExecutionResult` 列舉，包含 `Failed` 與 `Error` 狀態，使狀態機能夠更精準地反應執行層的狀況。
+
+## 驗證結果 (Verification Results)
+
+- **編譯測試**：成功通過 `dotnet build`，確認 **0 錯誤**。
+- **架構完整性**：
+    - `MainForm` 的職責現在僅剩下：「獲取數據 -> 更新 UI -> 發送指令給 FSM」。
+    - 所有的併發控制、超時處理、狀態轉移邏輯，現在都封裝在 `NavigationStateMachine` 內部，符合 Clean Architecture 的核心精神。
+
+## 接下來的行動 (Next Step)
+所有重構任務已圓滿完成且通過初步驗證。建議下一次上機時，實際進行地圖跑測，觀察「爬繩吸附」或「跳躍落地」時狀態切換的靈敏度。
+
+### [Phase 6] 排查導航日誌與 FSM 容差修正
+- **問題**：使用者回報拔除 Y 軸 `+5.0f` offset 後，角色在爬繩時發生了 `Dx=13.4px` 的水平偏移中斷及長走到底的異常。
+- **根本原因**：
+  1. **FSM 單次觸發衝突**：`MoveToTargetAsync` 原本依賴 `MainForm` 10Hz 不斷呼叫，但在 FSM 中被改為只呼叫一次（Fire-and-forget），導致只按下一次鍵後就結束，讓角色不斷往前走。（此部分已修正為 `while` 輪詢長期任務）
+  2. **容差衝突**：`MoveToTargetAsync` 的靠攏容差設為 `10.0f`（距離目標 < 10px 即煞車），但 `ClimbRopeAsync` 卻嚴格要求 `Dx > 5.0f` 即視為撞怪終止，導致角色剛煞車就因為距離 10px 大於其容差 5px 而自我腰斬。
+- **修正**：
+  - [x] 將 `NavigationExecutor` 呼叫靠攏時的 `reachDistance` 壓縮至 `3.0f`。
+  - [x] 將 `CharacterMovementController` 第一階段爬繩判定防怪撞飛的容差從 `5.0f` 放寬至 `10.0f`。
+
+### [Phase 7] 修復 FSM 死鎖：自律任務完結判斷
+- **問題**：使用者回報新日誌 `artale-20260307-142945.log` 中，角色成功走到第一個路徑點 (n48=104) 煞車停止後，對下一段路徑完全沒有反應。
+- **根本原因**：我們在 Phase 6 把 `MoveToTargetAsync` 改成了自律迴圈任務 (成功走完才會返回)。但是，`NavigationStateMachine` 還殘留著舊版邏輯——傻傻地等待 `MainForm` 來呼叫 `NotifyTargetReached()`。
+  - 因為 `PathPlanningTracker` 在角色抵達目標時，於背景切換到下一個點。
+  - `MainForm` 看見的是下一個新點，於是判定還沒到，並瘋狂嘗試呼叫新 Edge。
+  - 但 FSM 由於沒收到舊 Edge 的完成通知，一直卡在 `Moving_Horizontal` 狀態，拒絕執行新指令，引發死鎖。
+- **修正**：
+  - [x] 更改 `NavigationStateMachine`：因為現在是自律完結任務，只要 Executor 正常返回且未被中斷，FSM 內部即判定為 `Reached_Waypoint`，切斷對 UI 外部通知的過度依賴，完美重置回 `Idle` 接住下一刀！
+
+### [Phase 8] 修復 ClimbUp 側向跳躍誤判
+- **問題**：使用者回報新日誌 `artale-20260307-145718.log` 中，角色在到達繩索底部時，印出了 `[爬繩] 側向繩索 (dx=14.1)，使用 →+Alt+↑`，觸發了非預期的跳躍動作，儘管實際上角色已經在距離繩索 2.6px 的正下方。
+- **根本原因**：`NavigationExecutor.ExecuteClimbAsync` 方法在 Phase 1 (迴圈輪詢走到繩索下方) 成功後，準備進入 Phase 2 (開始爬) 時，傳遞給 `ClimbRopeAsync` 的是方法宣告時的區域變數 `currentPos`。這個變數代表的是「開始走之前的舊位置 (距離 14.1px)」，導致第二階段拿著舊地圖找新路，誤以為自己離繩索還很遠，從而觸發側向跳繩邏輯。
+- **修正**：
+  - [x] 在 `ExecuteClimbAsync` 進入階段 2 前，呼叫 `_positionProvider.GetCurrentPosition()` 重新抽取角色的最新實時座標，確保 `ClimbRopeAsync` 使用真實的 2.6px 距離。

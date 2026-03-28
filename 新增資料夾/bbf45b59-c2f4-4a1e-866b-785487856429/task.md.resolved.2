@@ -1,0 +1,23 @@
+# 優先級 2 重構：GamePipeline + MapFileManager 解耦
+
+## Phase 1：前置研究
+- [ ] 閱讀 `MainForm.OnFrameAvailable` 完整邏輯
+- [ ] 確認 MapFileManager 所有 UI 引用點
+
+## Phase 2：建立 GamePipeline
+- [ ] 定義 GamePipeline 事件介面
+- [ ] 建立 `Services/GamePipeline.cs`
+- [ ] 從 MainForm 遷移偵測/追蹤/攻擊協調邏輯
+
+## Phase 3：重構 MapFileManager
+- [ ] 移除建構子的 ComboBox/MainForm 引用
+- [ ] 改為公開事件通知
+- [ ] 內部方法不再直接操作 UI
+
+## Phase 4：修改 MainForm
+- [ ] 初始化 GamePipeline 並訂閱事件
+- [ ] MainForm 訂閱 MapFileManager 事件更新 UI
+- [ ] 刪除 OnFrameAvailable 中已遷移的邏輯
+
+## Phase 5：驗證
+- [ ] 確認專案可編譯

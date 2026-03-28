@@ -1,0 +1,25 @@
+# 修正向左跳躍循環（落地超時）實作計畫
+
+我們分析了 [artale-20260308-011942.log](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/Logs/artale-20260308-011942.log)，發現角色陷入「跳躍 -> 判定未落地 -> 超時 -> 重試」的死循環，主因是落地判定過於嚴格。
+
+## 擬更動檔案
+
+### [MODIFY] [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs)
+- 在 [WaitForLandingAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#275-341) 中，將 `YTolerance` 從 `3f` 放寬至 `5f`。
+- **原因**：日誌顯示角色觀測坐標為 `147.6`，地圖目標為 `150.8`，差距 `3.2px` 剛好超過了舊的 `3.0px` 門檻，導致系統以為角色還在空中。
+
+## 建議調整 (User Action Required)
+
+### 1. 恢復按鍵脈衝寬度 (CharacterMovementController.cs)
+- 你之前將 `await Task.Delay(15, ...)` 改得太短了。15ms 有可能導致遊戲引擎來不及響應位移，或是位移極小。
+- **建議**：改回 `30ms` 或 `25ms`。
+
+### 2. 縮小到達容差 (config.yaml)
+- 目前 `arrivalTolerance: 2.5` 過大，角色在距離目標 2.5px 時就判定到達並開始下一個「跳躍」動作。
+- 如果起跳點偏移過大，容易導致落地點不佳。
+- **建議**：改回 `1.0` 或 `1.5`。
+
+## 驗證計畫
+### 自動測試
+- 觀察日誌，確保 `dx=3.2` 時能觸發 `[NavigationExecutor] 落地確認`。
+- 觀察跳躍後是否能正確進入下一個 Edge，而非重啟 JumpLeft。

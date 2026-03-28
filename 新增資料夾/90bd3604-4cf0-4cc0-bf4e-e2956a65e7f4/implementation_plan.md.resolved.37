@@ -1,0 +1,38 @@
+# 實作計畫 - 優化日誌與修正繩索邏輯
+
+## 問題 1: 日誌檔案覆蓋
+使用者希望每次開啟程式都產生新的日誌檔，避免與舊日誌混淆。
+目前設定：`rollingInterval: RollingInterval.Day` (同一天 append 到同一檔)。
+修正：改用 `artale-{yyyyMMdd-HHmmss}.log` 格式。
+
+## 問題 2: 繩索對齊卡死
+腳色停在繩索入口，反覆顯示：
+`[移動] 水平已對齊 (dx=1.0)，垂直差異 (dy=-2.0) 需要繩索處理`
+**原因**：
+1. 垂直差異 `2.0` 大於一般的到達判定距離 (預設可能為 1.0 或 1.5)。
+2. 但 `2.0` 又太小，不足以觸發掉落保護。
+3. 結果程式判定「水平到了，但垂直沒到，且無法走路到達」，於是停下來請求繩索處理。
+4. 但因為這就是繩索入口，下一步才是爬繩。這導致了死鎖。
+
+## 解決方案 2
+在 [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#200-331) 中放寬到達判定。
+如果 **水平已對齊** 且 **垂直差異很小 (<= 3.0px)**：
+直接視為 **已到達** 並停止移動。
+這會讓 [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm_MinimapControl.cs#5-42) 的迴圈認為「走到位了」，然後繼續執行下一個指令（例如：按下）。
+
+## 預計變更
+
+### Utils/Logger.cs
+- 修改檔名生成邏輯，加入 `HHmmss` 時間戳。
+- 移除 `RollingInterval`。
+
+### Services/CharacterMovementController.cs
+- 修改 [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#200-331)：
+  - 在判斷「需要繩索處理」之前，增加檢查：
+    ```csharp
+    if (Math.Abs(dy) <= 3.0f) { StopMovement(); return; }
+    ```
+
+## 驗證
+- **日誌**：確認生成了帶有時間戳的新檔案。
+- **移動**：確認腳色在繩索入口 (dy=2.0) 時，會顯示「視為已到達」並繼續後續動作，不再卡住。

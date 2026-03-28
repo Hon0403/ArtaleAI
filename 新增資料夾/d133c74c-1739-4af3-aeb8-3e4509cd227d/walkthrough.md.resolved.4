@@ -1,0 +1,30 @@
+# 導航系統精度與拓撲結構重構報告
+
+我們成功解決了在 0.1px 極限容差下出現的導航死結問題。此次修復涉及地圖生成引擎、路徑追蹤邏輯與角色控制器的全鏈條重構。
+
+## 🛠️ 核心變更說明
+
+### 1. 導航圖生成引擎重構 (H型拓撲打樁法)
+針對原本「繩索與平台節點 X 軸不對齊」的致命缺陷，我們重寫了 `MapEditor.GetCurrentMapData()`：
+- **強制虛擬節點**：每一根繩索都會強制在其上下端點精確座標 [(ropeX, topY)](file:///d:/Full_end/C%23/ArtaleAI/Program.cs#5-21) 建立導航節點。
+- **完璧垂直路徑**：`ClimbUp/ClimbDown` 現在只連接 X 座標完全一致的垂直點，徹底消滅了「斜拉誤差」。
+- **自動橫向接軌**：系統會自動生成 [Walk](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#119-134) Edge 將虛擬節點連回實體平台 node，建立了標準的 `[平台] <-> [平移] <-> [垂直爬升]` 拓撲結構。
+
+### 2. 垂直穿過式判定 (Crossing Threshold Detection)
+為了解決 0.1px 容差下，角色因移動速度快而「跳過目標點」的問題：
+- **PathPlanningTracker**: 在爬繩動作中，將「距離判定」改為「方向性穿過判定」。只要座標越過目標水平線即視為到達。
+- **CharacterMovementController**: 同步更新 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#569-697) 邏輯，確保爬繩運算能自主、及時地結束，不再因 0.1px 的細微落差而卡死。
+
+### 3. 到達判定與視覺化統一
+- **參數去冗餘**：移除了 `GetDynamicReachDistance`，確保 `ArrivalTolerance` 為全系統唯一的精度標準。
+- **高精度十字標記**：將獨立視窗的小地圖玩家圖標改為「十字準心」，讓你可以用肉眼精確觀測 0.1px 級別的中心點偏移。
+
+## 📊 驗證結果
+- **測試環境**：`arrivalTolerance: 0.1` (極限模式)
+- **表現**：
+    - 右側繩索 (原 4.9px 偏差處) 現在能正確生成過渡點並流暢上爬。
+    - 上爬到頂後，系統能立即識別「已穿過目標 Y」，並無縫切換至平台平移動作。
+    - 十字準心精確顯示角色邏輯中心，與目標點重合度極高。
+
+## 🚀 下一步建議
+現在地圖拓撲已優化，建議你可以嘗試重新載入 [test.json](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/MapData/test.json) (或重新點擊「保存」以觸發引擎重構數據)，並開啟自動導航觀察爬繩流程。

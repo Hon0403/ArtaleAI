@@ -1,0 +1,100 @@
+# MinimapViewer 功能實現完成
+
+實現了一個獨立的小地圖放大視窗，可在即時顯示模式下自動跟隨主視窗移動。
+
+## 變更摘要
+
+### 新增檔案
+
+#### [MinimapViewer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs)
+
+獨立的小地圖放大視窗類，功能包括：
+- 8 倍放大顯示小地圖（可配置）
+- 自動跟隨主視窗移動
+- 智能邊界檢測（超出螢幕時自動切換到左側）
+- 標準 `IDisposable` 模式
+
+---
+
+### 修改檔案
+
+#### [GameVisionCore.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs)
+
+新增 `LastMinimapMat` 屬性，在 [GetMinimapTracking](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#224-354) 時保存小地圖 Mat。
+
+```diff
++public Mat? LastMinimapMat { get; private set; }
++private readonly object _minimapMatLock = new object();
+
+ // 在 GetMinimapTracking 中：
++lock (_minimapMatLock)
++{
++    LastMinimapMat?.Dispose();
++    LastMinimapMat = minimapMat.Clone();
++}
+```
+
+---
+
+#### [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+
+- 新增 `_minimapViewer` 欄位
+- 在 [InitializeServices](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#129-192) 中初始化
+- 在 [OnFrameAvailable](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#693-831) 中更新
+- 在 [OnFormClosed](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1384-1456) 中釋放資源
+
+---
+
+#### [AppConfig.cs](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs)
+
+新增 6 個配置屬性：
+
+| 屬性 | 預設值 | 說明 |
+|------|--------|------|
+| `MinimapViewerEnabled` | `true` | 啟用/停用 |
+| `MinimapViewerZoomFactor` | `8` | 放大倍率 |
+| `MinimapViewerOffsetX` | `10` | 右側偏移量 |
+| `MinimapViewerOffsetY` | `0` | 頂部偏移量 |
+| `MinimapViewerWidth` | `640` | 初始寬度 |
+| `MinimapViewerHeight` | `400` | 初始高度 |
+
+---
+
+#### [config.yaml](file:///d:/Full_end/C%23/ArtaleAI/Data/config.yaml)
+
+新增配置區塊：
+
+```yaml
+# 小地圖放大視窗設定
+minimapViewerEnabled: true
+minimapViewerZoomFactor: 8
+minimapViewerOffsetX: 10
+minimapViewerOffsetY: 0
+minimapViewerWidth: 640
+minimapViewerHeight: 400
+```
+
+---
+
+## 驗證結果
+
+✅ **Build 成功**（Exit code: 0）
+
+```
+ArtaleAI 成功但有 82 個警告 → bin\Debug\net6.0-windows10.0.19041.0\ArtaleAI.dll
+```
+
+## 使用方式
+
+1. 啟動應用程式
+2. 切換到「即時顯示」分頁
+3. MinimapViewer 視窗會自動出現在主視窗右側
+4. 拖動主視窗時，MinimapViewer 會自動跟隨
+
+## 配置調整
+
+在 [Data/config.yaml](file:///d:/Full_end/C%23/ArtaleAI/Data/config.yaml) 中可調整：
+
+- `minimapViewerEnabled: false` → 停用功能
+- `minimapViewerZoomFactor: 4` → 減少放大倍率
+- `minimapViewerWidth/Height` → 調整視窗大小

@@ -1,0 +1,23 @@
+# Walkthrough: 混合式動態導航實作
+
+## 主要變更
+- 新增 `_visitedNodes` HashSet 追蹤已訪問節點。
+- 新增 `_intermediateQueue` Queue 用於動態中間點。
+- 實作 [SelectNextTarget_PositionBased()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1435-1467)：在 50~200px 範圍內加權隨機選點。
+- 實作 [CalculateNodeWeight()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1468-1490)：未訪問 ×2、動作點 ×1.5、距離加權。
+- 實作 [WeightedRandomSelect()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1491-1512)：加權隨機抽取。
+- 改寫 [GenerateIntermediatePoints()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1513-1555)：依距離生成 1~3 個隨期中間點，加入佇列。
+- 更新 [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1046-1389)：
+  - 先處理 `_intermediateQueue` 中的中間點。
+  - 位置驅動選點與隨機分岔結合。
+  - 動態生成中間點後使用 `goto PathSelectionFinished`，並以 `intermediateGenerated` 標記。
+  - 在 `PathSelectionFinished` 處根據 `intermediateGenerated` 決定是否更新索引。
+- 重新整理 `PathSelectionFinished` 內的 UI 同步邏輯，支援臨時節點與繩索 override。
+
+## 編譯結果
+- 使用 `dotnet build` 成功（0 錯誤，76 警告），所有新方法均編譯通過。
+
+## 後續驗證建議
+- 觀察 Log 中 `[路徑規劃] 📍 位置選點`、`[路徑規劃] 🎲 動態生成中間點`、`[路徑規劃] 🔀 隨機分岔觸發` 等訊息，確認非線性路徑行為。
+- 在僅有起點/終點的地圖（如 [HGFHF.json](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/MapData/HGFHF.json)）上測試，應看到自動生成的中間點與隨機選點。
+- 若有需要可調整 `AppConfig.Instance.BranchingVerticalSearchRange` 或距離門檻，以符合不同地圖特性。

@@ -1,0 +1,164 @@
+# ============================================
+# 一般設定
+# ============================================
+general:
+  gameWindowTitle: "MapleStory Worlds-Artale (繁體中文版)"
+  lastSelectedWindowName: "MapleStory Worlds-Artale (繁體中文版)"
+  lastSelectedProcessName: "msw"
+  lastSelectedProcessId: 25336
+  zoomFactor: 15
+  magnifierSize: 150
+  magnifierOffset: 20
+  crosshairSize: 2
+
+# ============================================
+# 視覺偵測設定
+# ============================================
+vision:
+  defaultThreshold: 0.7
+  maxDetectionResults: 1
+  detectionMode: Color
+  playerMarker: "templates/minimap/player_marker.png"
+  otherPlayers: "templates/minimap/other_players.png"
+  playerThreshold: 0.7
+  lowerRedHsv: [0, 100, 100]
+  upperRedHsv: [10, 255, 255]
+  minBarHeight: 4
+  maxBarHeight: 8
+  minBarWidth: 1
+  maxBarWidth: 60
+  minBarArea: 8
+  uiHeightFromBottom: 200
+  dotOffsetY: 50
+  detectionBoxWidth: 550
+  detectionBoxHeight: 300
+  bloodBarDetectIntervalMs: 150
+  monsterDetectIntervalMs: 200
+  captureFrameRate: 15
+  defaultMode: "Color"
+  displayOrder: ["Basic", "ContourOnly", "Grayscale", "Color", "TemplateFree"]
+  detectionModes:
+    Basic:
+      displayName: "Basic - 基本匹配 (最快)"
+      occlusion: "None"
+    ContourOnly:
+      displayName: "ContourOnly - 輪廓匹配 (抗形變)"
+      occlusion: "None"
+    Grayscale:
+      displayName: "Grayscale - 灰階匹配 (抗色差)"
+      occlusion: "None"
+    Color:
+      displayName: "Color - 彩色匹配 (預設)"
+      occlusion: "None"
+    TemplateFree:
+      displayName: "TemplateFree - 自由尋找 (無需模板)"
+      occlusion: "MorphologyRepair"
+
+# ============================================
+# 導航與路徑規劃設定
+# ============================================
+navigation:
+  continuousDetectionIntervalMs: 200
+  playerPositionThreshold: 0.7
+  enableOtherPlayersDetection: true
+  waypointReachDistance: 2
+  # 側跳著陸 X 容許下限（px）；實測曾 landDx≈6.2 且 Y 正確
+  jumpLandingTolerancePx: 7
+  # 起跳前方向鍵按住毫秒（再起跳）；落底層時可試 120～150
+  directionalJumpDirectionHoldBeforeAltMs: 110
+  # 跳躍鍵按住毫秒（側跳）；過短易小跳落層
+  directionalJumpAltHoldMs: 85
+  # WaitForLanding：|Y−targetY| 視為「接近目標層」的上限（px）；曾用 2.5 導致 153 vs 150.4 無法觸發
+  directionalJumpLandingYProximityPx: 3.2
+  directionalJumpLandingWaitTimeoutMs: 2500
+  # WaitForLanding：連續幀 Y 抖動上限；過小會 150.4↔151.1 永遠無法累積穩定幀
+  directionalJumpLandingStableYDeltaPx: 0.85
+  # 執行層白名單：著陸穩定、滯空最短時間、過衝反向微調（不需恢復舊版 Proximity 大腦）
+  postLandingSettleMs: 100
+  minAirborneMsBeforeLanding: 450
+  overshootCorrectionMaxTaps: 6
+  # 已進 Hitbox 仍朝 waypoint X 短按對齊（≤0 關閉）；解決「判到達但起跳點偏」
+  walkGeometricAlignTolerancePx: 1.2
+  walkGeometricTrimMaxTaps: 10
+  maxTrackingHistory: 100
+  enableAutoMovement: true
+  platformBounds:
+    bufferZone: 5.0
+    emergencyZone: 2.0
+    cooldownMs: 300
+
+# ============================================
+# 地圖編輯器設定
+# ============================================
+editor:
+  deletionRadius: 10.0
+
+# ============================================
+# 視覺化樣式設定
+# ============================================
+appearance:
+  monster:
+    frameColor: "255,255,0"
+    textColor: "255,0,0"
+    frameThickness: 2
+    textScale: 1.2
+    textThickness: 2
+    showConfidence: true
+    textFormat: "{0} ({1:F2})"
+
+  minimap:
+    frameColor: "0,255,255"
+    textColor: "255,255,255"
+    frameThickness: 2
+    textScale: 1.2
+    textThickness: 2
+    minimapDisplayName: "Minimap"
+
+  minimapPlayer:
+    frameColor: "0,255,0"
+    textColor: "255,255,255"
+    frameThickness: 2
+    textScale: 1.0
+    textThickness: 2
+    playerDisplayName: "PLAYER"
+    playerColorBgr: "255,255,0"
+    offsetY: 3.5
+    colorTolerance: 30
+    minPixelCount: 4
+
+  partyRedBar:
+    frameColor: "0,255,0"
+    textColor: "255,255,255"
+    frameThickness: 2
+    textScale: 1.0
+    textThickness: 2
+    redBarDisplayName: "HP"
+
+  detectionBox:
+    frameColor: "0,191,255"
+    textColor: "255,255,255"
+    frameThickness: 2
+    textScale: 1.0
+    textThickness: 2
+    boxDisplayName: "MOB DETECT"
+
+  attackRange:
+    width: 400
+    height: 150
+    offsetX: 0
+    offsetY: 50
+    frameColor: "255,0,0"
+    textColor: "255,255,255"
+    frameThickness: 2
+    textScale: 1.0
+    textThickness: 2
+    rangeDisplayName: "ATTACK RANGE"
+
+  minimapViewer:
+    enabled: true
+    zoomFactor: 10
+    offsetX: 0
+    offsetY: 0
+    width: 600
+    height: 400
+    baseSize: 20

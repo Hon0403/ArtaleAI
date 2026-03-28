@@ -1,0 +1,25 @@
+# Fix Initial Target Selection Logic
+
+## Goal Description
+Ensure the path planning system correctly selects the closest target point when the character's position is first detected, rather than defaulting to the first point (Index 0). This prevents the character from being forced to walk back to the start point upon initialization.
+
+## User Review Required
+> [!NOTE]
+> This change introduces a "First Sync" mechanism. When you start the bot, it will now immediately target the closest node instead of Node 0.
+
+## Proposed Changes
+
+### Core
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- Add `private bool _hasInitializedTarget` field.
+- In [InitializePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#452-476), reset `_hasInitializedTarget = false`.
+- In [ProcessTrackingResult](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#477-501) or [UpdatePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#521-595), check `if (!_hasInitializedTarget && result.PlayerPosition.HasValue)`.
+  - Call [FindClosestPathNodeIndex](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1075-1098) and [SelectNextTarget(true)](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#845-990).
+  - Set `_hasInitializedTarget = true`.
+
+## Verification Plan
+### Manual Verification
+1. Load a path file.
+2. Move character to the middle of the map (far from start point).
+3. Start the bot.
+4. Verify that the character moves towards the *closest* point, not the start point.

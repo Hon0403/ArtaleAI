@@ -1,0 +1,26 @@
+# Cross-Platform Routing & Visualization Update
+
+## 實作完成項目
+
+### 1. 跨平台跳躍路由 (Cross-Platform Jump Routing)
+- **檔案**: [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- **新增方法**: [FindNearestJumpNode()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1833-1880)
+- **邏輯**: 當隨機目標在不同平台時，自動搜尋同方向最近的跳躍點，引導角色先執行跳躍。
+
+### 2. 可視化增強 (MinimapViewer)
+- **檔案**: [MinimapViewer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs)
+
+| 元素 | 顏色 | 樣式 |
+|------|------|------|
+| 臨時目標 | Cyan | 圓點 + 光圈 + 十字準心 |
+| 動態插值點 | Lime | 小圓點 + 連線 |
+| 目標繩索 | Lime | 白色光圈 |
+| 正在爬繩索 | Cyan | 青色光圈 |
+
+### 3. 資料模型
+- [PathVisualizationData](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs#822-848) 新增:
+  - `TemporaryTarget` (SdPointF?)
+  - [IntermediatePoints](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1778-1820) (List<SdPointF>?)
+
+## 驗證結果
+- ✅ Build 成功 (76 warnings, 0 errors)

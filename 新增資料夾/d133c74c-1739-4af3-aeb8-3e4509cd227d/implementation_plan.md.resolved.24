@@ -1,0 +1,34 @@
+# 修復地圖編輯器「儲存」與「新建」功能計畫
+
+## 核心問題分析
+1. **儲存無反應**：[MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) 中雖然訂閱了 `_mapFileManager.MapSaved` 事件，但指定的實作方法 [OnMapSaved](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#453-465) 在之前的代碼清理中被誤刪，導致點擊儲存後沒有任何 UI 回饋（標題未更新、Log 未提示）。
+2. **新建地圖後標題未重置**：[OnMapFileLoaded](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#941-954) 方法雖然存在，但 `MapFileManager.CreateNewMap` 發出的標題訊息 [(新地圖)](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs#245-258) 未能透過 UI 連動機制清晰傳達。
+3. **編輯器狀態未重置**：`MapEditor.LoadMapData` 僅替換了數據結構，未重置 `_waypointAnchorIndex` 等執行狀態，可能導致新建後操作行為異常。
+
+## 提出變更
+
+### [UI] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+
+#### 1. 重建 [OnMapSaved](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#453-465) 方法
+- 實作 [OnMapSaved(string fileName, bool isNewFile)](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#453-465) 方法：
+    - 更新視窗標題為 `地圖編輯器 - {fileName}`。
+    - 如果是新檔案，觸發 [PopulateMapFilesComboBox()](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#916-938) 以刷新下拉選單。
+    - 顯示顯示成功 Log。
+
+#### 2. 優化 [OnMapFileLoaded](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#941-954)
+- 確保在 `fileName` 為 [(新地圖)](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs#245-258) 時，清空 ComboBox 的選取狀態，避免停留在舊檔案名稱。
+
+### [Logic] [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)
+
+#### 3. 徹底重置內部狀態
+- 在 [LoadMapData](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#104-112) 中加入：
+    - `_selectedNodeIndex = -1;`
+    - `_waypointAnchorIndex = -1;`
+    - `_startPoint = null;`
+    - `_previewPoint = null;`
+
+## 驗證計畫
+### 手動驗證流程
+1. **新建驗證**：點擊「新建」，觀察標題是否變更為 [(新地圖)](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs#245-258) 且連線預覽被重置。
+2. **儲存驗證**：在錄製完路徑後點擊「儲存」，確認彈出保存成功 Log。
+3. **下拉選單同步**：新增地圖後儲存，確認 [cbo_MapFiles](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1892-1898) 下拉選單立即出現新檔案。

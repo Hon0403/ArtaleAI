@@ -1,0 +1,31 @@
+# 平台邊界處理系統實作
+
+## 目標
+實作從 RestrictedZones 讀取平台邊界，並在移動控制中進行邊界檢查和處理。
+
+## 任務清單
+
+### 1. 資料結構 (DataModels.cs)
+- [/] 新增 `PlatformBounds` 類別（MinX, MaxX, MinY, MaxY）
+
+### 2. 配置設定 (config.yaml)
+- [ ] 新增 `platformBounds` 配置區塊（bufferZone, cooldownMs）
+
+### 3. 路徑規劃管理器 (PathPlanningManager.cs)
+- [ ] 新增 `SetPlatformBounds` 方法
+- [ ] 在 [LoadPlannedPath](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs#140-164) 時解析 RestrictedZones 並計算邊界  
+- [ ] 新增邊界事件（`OnBoundaryHit`）的轉發
+
+### 4. 移動控制器 (CharacterMovementController.cs)
+- [ ] 新增 `BoundaryHit` 事件
+- [ ] 新增 `SetPlatformBounds` 方法
+- [ ] 在 [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#158-356) 中加入三重防護邊界檢查
+- [ ] 實作防抖動機制（cooldown）
+
+### 5. 路徑追蹤器 (PathPlanningTracker.cs)
+- [ ] 新增 `OnBoundaryHit` 處理方法
+- [ ] 實作接近邊界時重新選擇目標的邏輯
+
+### 6. 整合與測試
+- [ ] 在 MainForm 中整合事件訂閱
+- [ ] 手動測試邊界處理

@@ -1,0 +1,10 @@
+# 強制參數統一任務
+
+## 階段 1：邏輯重寫
+- [ ] 修改 [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs)：
+    - [ ] 將 [WaitForLandingAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#275-341) 內的 `YTolerance` 改為直接取值自 `AppConfig.Instance.ArrivalTolerance`。
+    - [ ] 移除任何內部偏移量 (Offset)。
+
+## 階段 2：驗證
+- [ ] 確認 `arrivalTolerance` 的變動會即時反映到跳躍落地判定上。
+- [ ] 觀察是否會因為容差過窄導致跳躍死循環。

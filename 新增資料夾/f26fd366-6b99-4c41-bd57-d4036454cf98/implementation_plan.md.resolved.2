@@ -1,0 +1,41 @@
+# 路徑規劃參數統一化計畫
+
+## 目標
+消除 **PathPlanningTracker** (大腦) 與 **CharacterMovementController** (雙腳) 之間的邏輯「干擾」與「死鎖」。透過將「到達判定」與「容許誤差」的邏輯集中化管理，確保兩者標準一致。
+
+## 問題現狀
+目前有兩套不同的系統各自決定角色是否「到達」：
+1. **PathPlanningTracker (追蹤器)**：使用複雜的動態邏輯（[Min(設定值, 寬度/5)](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#380-390)）。
+2. **MovementController (移動控制器)**：使用單純從 [config.yaml](file:///d:/Full_end/C%23/ArtaleAI/Data/config.yaml) 讀取的固定值。
+
+當這兩個計算出不同結果（如最近發生的情況），系統就會崩潰或死鎖。
+
+## 建議變更
+
+### 1. 集中管理到達邏輯
+在 [PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#59-68)（或 `PathPlanningManager`）中建立一個公開方法，作為唯一的真理來源。
+
+```csharp
+// 在 PathPlanningTracker.cs 中
+public float GetCurrentDynamicReachDistance() {
+    // 回傳基於當前平台寬度計算出的安全判定距離
+}
+```
+
+### 2. 同步移動控制器
+更新 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)，在發送移動指令前，先取得這個動態數值。
+
+```csharp
+// 在 MainForm.ProcessPathPlanning 中
+float dynamicReach = _pathPlanningTracker.GetCurrentDynamicReachDistance();
+_movementController.MoveToTargetAsync(..., reachDistance: dynamicReach);
+```
+
+### 3. 簡化設定檔邏輯
+- [config.yaml](file:///d:/Full_end/C%23/ArtaleAI/Data/config.yaml) 中的 `waypointReachDistance` 參數將重新定義為 **「最大允許判定距離」**。
+- 系統會自動根據平台大小往下調整，但絕不會超過這個設定值。
+
+## 驗證計畫
+- **測試 1**：在寬平台上測試。結果：應使用設定值（例如 3.0）。
+- **測試 2**：在窄平台（19px）上測試。結果：應使用自動縮小的值（例如 3.0 或更小），且移動控制器會嚴格遵守。
+- **死鎖檢查**：確認 [MovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#16-527) 絕對不會在 [PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#59-68) 滿意之前就提早停止。

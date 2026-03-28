@@ -1,0 +1,37 @@
+# 編譯錯誤修復與整合計畫
+
+本計畫旨在解決專案恢復後因檔案衝突、缺失與命名空間不一致導致的高達數百個編譯錯誤。
+
+## 待修復核心問題
+
+1.  **檔案重複定義**：[Config/](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs#19-120) 與 `Models/Config/` 內容衝突。
+2.  **NuGet 套件缺失**：缺少 `Newtonsoft.Json` 與 Windows SDK (WinRT)。
+3.  **設計器檔案缺失**：`MainForm.Designer.cs` 遺失導致 UI 控制項無法識別。
+4.  **API 層缺失**：`ArtaleAI.API` 命名空間下的多個 DTO 與靜態類別遺失。
+
+## 擬定變更內容
+
+### 1. 結構整頓
+- **[DELETE]** 刪除 `d:\Full_end\C#\ArtaleAI\Config\` 資料夾下的所有檔案，統一使用 `Models\Config\`。
+- **[MODIFY]** `d:\Full_end\C#\ArtaleAI\ArtaleAI.csproj`：
+    - 新增 `Newtonsoft.Json` 參考。
+    - 新增 Windows SDK 參考以支援 `Windows.Graphics.Capture`。
+
+### 2. 重建缺失介面與 DTO
+- **[NEW]** `Services\INavigationStateMachine.cs`：定義 FSM 介面。
+- **[NEW]** `Services\IKeyboardService.cs`：定義鍵盤輸入介面。
+- **[NEW]** `Core\Vision\IPlayerPositionProvider.cs`：定義位置提供者介面。
+- **[NEW]** `API\MsgLog.cs`：重建狀態列與訊息顯示工具。
+- **[NEW]** `API\Config\ApiConfig.cs` 與 `API\Models\*`：重建 API 相關設定模型。
+
+### 3. 重建 UI 設計器 (關鍵)
+- **[NEW]** `UI\MainForm.Designer.cs`：手動定義 `textBox1`、`pictureBoxMinimap`、`ckB_Start` 等控制項，恢復 `InitializeComponent` 連結。
+
+## 驗證計畫
+
+### 自動測試
+- 執行 `dotnet build` 確保最終編譯錯誤數量歸零。
+
+### 手動驗證
+1. 啟動 `MainForm`，確認 UI 控制項正確顯示且無執行時異常。
+2. 檢查日誌系統是否能正確輸出訊息至 `textBox1`。

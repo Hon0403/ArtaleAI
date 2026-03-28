@@ -1,0 +1,37 @@
+# 🛡️ 導航穩定性實作審核報告
+
+經檢查目前專案 (`ArtaleAI`) 的核心代碼，我確認所有的「導航穩定性」設計模式均完整實作，且維持我們討論後的最終結論。
+
+## 🔍 核對結果彙整
+
+### 1. 導航原始主義 (Navigation Originalism)
+*   **檔案**：[NavigationGraph.cs](file:///d:/Full_end/C#/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs)
+*   **狀態**：**確認無誤**。
+*   **細節**：[FindPath](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs#123-206) 方法由 A* 演算法產出完整節點，沒有任何 `SimplifyPath` (減少節點) 的邏輯，這確保了 1px 的位移都能被執行器感知。
+
+### 2. 預測性煞車 (Predictive Braking)
+*   **檔案**：[CharacterMovementController.cs](file:///d:/Full_end/C#/ArtaleAI/Services/CharacterMovementController.cs)
+*   **狀態**：**已實作** (第 201-218 行)。
+*   **邏輯**：系統會計算 `brakeLeadDist = Math.Abs(currentVx) * 0.08f`。當剩餘距離小於「目標距離 + 補償距離」時，會提前放開按鍵，有效解決了物理慣性造成的過衝。
+
+### 3. 繩索高精度對準 (Rope Alignment)
+*   **檔案**：[NavigationExecutor.cs](file:///d:/Full_end/C#/ArtaleAI/Services/NavigationExecutor.cs)
+*   **狀態**：**極度精準** (第 186 行)。
+*   **邏輯**：在進入爬繩動作前，強制要求 `ROPE_ALIGN_TOLERANCE = 2.0f` (2像素內)。若未對準，會先呼叫微調移動。
+
+### 4. 最終位移補丁 (Final Micro-Taps)
+*   **檔案**：[NavigationExecutor.cs:L159-178](file:///d:/Full_end/C#/ArtaleAI/Services/NavigationExecutor.cs#L159-178)
+*   **狀態**：**保留生效**。
+*   **邏輯**：在移動結束後若仍有微量差距，會進入 `retryCount < 3` 的循環，執行 45ms 的短點按微調。
+
+---
+
+## 💡 架構觀察
+目前的代碼結構非常符合 **Clean Architecture**：
+- **決策層 ([NavigationGraph](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs#13-244))**：考慮 Z/Y 高低差權重 (Y 軸 10 倍懲罰)，產出精確原始路徑。
+- **執行層 ([NavigationExecutor](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#16-313) / [MovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#19-533))**：負責物理補償與預測煞車，不干涉導航邏輯。
+
+目前系統狀態非常穩定，沒有被隨意的 "Patch" 破壞原始設計。
+
+> [!TIP]
+> 如果你在特定極端地形（例如極窄的跳躍平台）仍有不穩定的情況，我們可以考慮調整 [CharacterMovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#19-533) 中的 `0.08f` 延遲係數，或是在 `AppConfig` 中將 `WaypointReachDistance` 再收緊。

@@ -1,0 +1,33 @@
+# 架構清理完成報告
+
+## 完成項目
+
+### ✅ Phase 1: 修正存檔邏輯
+#### [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)
+- 建立連結時同步更新節點 Action Code
+- 現在 JSON 會正確顯示跳躍點的動作
+
+### ✅ Phase 2: 移除動態插值
+#### [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+刪除項目：
+- [GenerateIntermediatePoints()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#2173-2211) 方法
+- `_intermediateQueue` 欄位
+- [GetIntermediateQueueSnapshot()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#2165-2172) 方法
+- [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1247-1579) 中 60+ 行插值邏輯
+
+#### [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- 移除對已刪除方法的呼叫
+
+### ✅ Phase 3: A* 路徑搜尋
+#### [NavigationGraph.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs)
+新增方法：
+- [FindPath(startNodeId, goalNodeId)](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs#126-218) - A* 演算法
+- [Heuristic()](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs#219-234) - 歐幾里得距離啟發式
+- [ReconstructPath()](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/ShortestPathPlanner.cs#103-115) - 回溯建構路徑
+
+---
+
+## 下一步
+1. 在 MapEditor 建立跳躍連結
+2. 檢查 JSON 確認 Action 正確
+3. 測試導航執行

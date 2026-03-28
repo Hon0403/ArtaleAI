@@ -1,0 +1,34 @@
+# MinimapViewer Implementation
+
+## Goal
+Create an independent window that displays an enlarged minimap and automatically follows the main window.
+
+## Tasks
+
+### Planning
+- [x] Explore existing codebase structure
+- [x] Review [FloatingMagnifier.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/FloatingMagnifier.cs) as reference pattern
+- [x] Review `GameVisionCore.GetMinimapTracking` for minimap Mat handling
+- [x] Review [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) initialization and cleanup patterns
+- [/] Create implementation plan
+
+### Implementation
+- [ ] Create `MinimapViewer.cs` in UI folder
+  - [ ] Independent Form window with PictureBox
+  - [ ] Auto-follow main window (LocationChanged, SizeChanged events)
+  - [ ] Smart edge detection (switch sides if overflow)
+  - [ ] Zoom factor configurable
+- [ ] Modify [GameVisionCore.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs)
+  - [ ] Add `LastMinimapMat` property to store minimap Mat
+  - [ ] Update [GetMinimapTracking](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#224-354) to save minimap Mat
+- [ ] Integrate into [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+  - [ ] Initialize MinimapViewer in [InitializeServices](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#129-192)
+  - [ ] Update minimap viewer in [OnFrameAvailable](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#691-826)
+  - [ ] Dispose in [OnFormClosed](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1384-1456)
+- [ ] Add config options to [config.yaml](file:///d:/Full_end/C%23/ArtaleAI/Data/config.yaml)
+  - [ ] MinimapViewer section (Enabled, ZoomFactor, OffsetX, OffsetY)
+
+### Verification
+- [ ] Build project successfully
+- [ ] Manual test: Main window move → MinimapViewer follows
+- [ ] Manual test: MinimapViewer displays enlarged minimap

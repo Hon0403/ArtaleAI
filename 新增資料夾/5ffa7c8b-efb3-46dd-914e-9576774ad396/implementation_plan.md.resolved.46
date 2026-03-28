@@ -1,0 +1,32 @@
+# Static Rope Node Injection Implementation Plan
+
+## Goal Description
+Implement automatic injection of rope climbing nodes into the path data. The system should detect vertical gaps in the recorded path and bridge them using static rope data defined in the map, inserting [ClimbUp](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#2118-2142) and `Walk` (exit) nodes.
+
+## Proposed Changes
+
+### Core Logic
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C#/ArtaleAI/Core/PathPlanningTracker.cs)
+- [x] Create [InjectRopeNodes()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#554-642) method.
+    - Scans `_pathNodes` for vertical gaps > 50px.
+    - Finds matching rope from `_ropes`.
+    - Inserts [ClimbUp](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#2118-2142) node (Keys=["up"]) at rope bottom.
+    - Inserts exit node (Keys=[]) at rope top.
+- [x] Call [InjectRopeNodes()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#554-642) in [InitializePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#492-534).
+- [x] Remove dynamic rope lookahead logic to enforce strict sequential navigation.
+
+#### [MODIFY] [PathNode.cs](file:///d:/Full_end/C#/ArtaleAI/Core/PathNode.cs)
+- [x] Verified [Action](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#108-125) property is read-only and derived from [Keys](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#481-506).
+
+## Verification Plan
+
+### Automated Tests
+- [x] `dotnet build` - Success (76 warnings, 0 errors).
+
+### Manual Verification
+- [ ] Playback [test.json](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/MapData/test.json).
+- [ ] Observe character at rope:
+    - Arrives at bottom.
+    - Presses UP.
+    - Arrives at top.
+    - Continues path.

@@ -1,0 +1,21 @@
+# Task: 混合式動態導航 (Hybrid Dynamic Navigation)
+
+- [ ] **位置驅動選點**
+    - [ ] 新增 `_visitedNodes` HashSet
+    - [ ] 實作 `FindCandidateNodes()` (50-200px 範圍)
+    - [ ] 實作 `CalculateNodeWeight()` (未訪問×2, 動作點×1.5)
+    - [ ] 實作 `WeightedRandomSelect()`
+
+- [ ] **動態中間點佇列**
+    - [ ] 新增 `_intermediateQueue` Queue
+    - [ ] 強化 `GenerateIntermediatePoints()` (生成 1-3 個點)
+    - [ ] 修改目標選擇邏輯：先消耗佇列，再選新目標
+
+- [ ] **整合與安全**
+    - [ ] 動作點保持精準導航
+    - [ ] 繩索導航邏輯不變
+    - [ ] 每輪循環重置 `_visitedNodes`
+
+- [ ] **驗證**
+    - [ ] Build 成功
+    - [ ] Log 顯示非線性選點 + 動態中間點

@@ -1,0 +1,44 @@
+# Fix Rope Climbing Logic
+
+## Summary
+- **Fixed Rope X-Alignment**: Increased engaging distance to 10px to allow precise `RopeAlignmentController` to take over earlier.
+- **Fixed Climb Down**: Now correctly identifies when to press "Down" (instead of "Up") when engaging a rope from the top.
+- **Improved Completion Detection**: Implemented an active "Wiggle Test" to verify when the character has successfully reached the platform.
+
+## Changes
+
+### 1. Active Rope Exit Check (Wiggle Test)
+**File**: [Services/CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+
+Added logic to actively verify if the character has left the rope when near the target height.
+- **Trigger**: Character is within 15px of target Y, and passive check hasn't triggered yet.
+- **Action**: Pause climbing, press **Right** key for 100ms.
+- **Check**: Measure X movement (`deltaX`).
+- **Result**:
+  - `deltaX > 2.0f`: Character moved horizontally -> Confirmed **Off Rope** (Success). Loop breaks.
+  - `deltaX <= 2.0f`: Character stuck horizontally -> Confirmed **On Rope** (or blocked). Climbing continues.
+
+```csharp
+if (Math.Abs(currentPos.Y - targetY) < 15.0f && attempts % 10 == 0)
+{
+    // ... Wiggle Test Implementation ...
+    if (deltaX > 2.0f) break; // Success
+}
+```
+
+### 2. Rope X-Alignment Fix
+**File**: [UI/MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- Increased threshold from 2.0f to 10.0f to engage precise alignment earlier.
+
+### 3. Climb Down Fix
+**File**: [Core/PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- Dynamically selects "Up" or "Down" key based on entry position relative to rope top.
+
+## Verification
+- **Scenario**: Character climbs to top of rope.
+- **Observation**:
+  1. Character gets close to top (Y within 15px).
+  2. Character might pause briefly and twitch right.
+  3. Once on platform, the twitch causes X movement.
+  4. Program logs "Confirm off rope" and immediately stops pressing Up.
+  5. Character proceeds to next waypoint.

@@ -1,0 +1,116 @@
+# 智慧跳躍邏輯 (Smart Jump Logic) 實作計畫
+
+## 目標
+讓系統能根據目標點的相對位置，自動判斷是否需要執行「跳躍」動作。
+特別是當目標點位於上方平台 (Y 較小)，且沒有繩索連接時，自動執行助跑跳躍。
+
+## 核心邏輯
+
+在 [PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#18-1504) 選擇下一個目標後，進行以下檢查：
+
+1. **高度檢查**：目標是否明顯高於玩家？(`TargetY < PlayerY - 20px`)
+2. **水平距離檢查**：是否有足夠的助跑距離？(`DistanceX > 30px`)
+3. **類型檢查**：該點原本是否已經有特定動作？(若已有指定動作則不覆蓋)
+4. **繩索檢查**：確認不是去爬繩索的路徑。
+
+若滿足上述條件，自動將該次移動的動作改為 `LeftJump` (←+Alt) 或 `RightJump` (→+Alt)。
+
+---
+
+## 實作步驟
+
+### 1. 修改 SelectNextTarget 邏輯
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+
+在 [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1036-1197) 方法的末尾，加入 `ApplySmartJumpLogic` 呼叫。
+
+```csharp
+private void SelectNextTarget()
+{
+    // ... 原有的選點邏輯 ...
+    
+    // 設定 _currentTarget
+    _currentTarget = new PathNode
+    {
+        Position = new SdPointF(nextWaypoint.X, nextWaypoint.Y),
+        Keys = targetNode.Keys,
+        Index = nextIndex,
+        Action = targetNode.Action
+    };
+    
+    // 🔧 應用智慧跳躍判斷
+    ApplySmartJumpLogic(_lastKnownPosition, _currentTarget);
+}
+```
+
+### 2. 新增 ApplySmartJumpLogic 方法
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+
+```csharp
+/// <summary>
+/// 應用智慧跳躍邏輯
+/// 當目標在高處且無繩索時，自動轉換為跳躍動作
+/// </summary>
+private void ApplySmartJumpLogic(SdPointF playerPos, PathNode target)
+{
+    // 1. 如果已經有指定動作，就不干涉
+    if (target.Keys.Count > 0 && target.Action != PathActionType.None) return;
+    
+    // 2. 計算相對位置
+    float dy = target.Position.Y - playerPos.Y; // 負值代表目標在上方
+    float dx = target.Position.X - playerPos.X;
+    
+    // 3. 跳躍條件判斷
+    // 高度差：目標比玩家高 25px 以上 (數值可調)
+    // 水平距：距離 40px 以上 (確保有助跑空間)
+    bool isHigher = dy < -25.0f;
+    bool isFarEnough = Math.Abs(dx) > 40.0f;
+    
+    if (isHigher && isFarEnough)
+    {
+        // 4. 確認沒有繩索 (若該區域有繩索，優先用繩索邏輯，不自動跳)
+        var nearbyRope = FindNearbyRope(playerPos, new SdPoint((int)target.Position.X, (int)target.Position.Y));
+        if (nearbyRope != null) return;
+
+        // 5. 自動設定跳躍動作
+        if (dx > 0)
+        {
+            Logger.Info($"[智慧跳躍] 目標在高處 (dy={dy:F1})，自動切換為 [右跳]");
+            target.Keys = new List<string> { "right", "alt" };
+            target.Action = PathActionType.RightJump;
+        }
+        else
+        {
+            Logger.Info($"[智慧跳躍] 目標在高處 (dy={dy:F1})，自動切換為 [左跳]");
+            target.Keys = new List<string> { "left", "alt" };
+            target.Action = PathActionType.LeftJump;
+        }
+    }
+}
+```
+
+---
+
+## 預期效果
+
+1. **分歧路徑處理**：
+   - 當系統選到下層點 (Y≈185) → `dy` 很小 → 保持走路動作 → 走去下層。
+   - 當系統選到上層點 (Y≈167) → `dy < -25` → 自動轉為跳躍 → 跳去上層。
+
+2. **無需手動設定**：
+   - 您不需要在 JSON 裡手動把 `0.00` 改成跳躍代碼。
+   - 只要點的位置是對的，程式會自己決定怎麼去。
+
+---
+
+## 注意事項
+
+> [!TIP]
+> **落地判定**
+> 跳躍後的「到達判定」可能需要寬鬆一點，因為跳躍落點可能會有誤差。我們之前修正的動態邊界和段落判定應該能幫上忙。
+
+> [!WARNING]
+> **牆壁阻擋**
+> 如果中間有牆壁擋住（例如需要二段跳或攀岩），單純的助跑跳可能會失敗。這個邏輯適用於「一般階梯式平台」。

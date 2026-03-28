@@ -1,0 +1,367 @@
+{
+  "WaypointPaths": [
+    [
+      53.1,
+      171.9,
+      0.0
+    ],
+    [
+      158.0,
+      171.9,
+      0.0
+    ],
+    [
+      -1.0,
+      -1.0,
+      -1.0
+    ],
+    [
+      -1.0,
+      -1.0,
+      -1.0
+    ],
+    [
+      -1.0,
+      -1.0,
+      -1.0
+    ],
+    [
+      -1.0,
+      -1.0,
+      -1.0
+    ],
+    [
+      215.1,
+      150.4,
+      0.0
+    ],
+    [
+      143.5,
+      150.8,
+      9.0
+    ],
+    [
+      -1.0,
+      -1.0,
+      -1.0
+    ],
+    [
+      132.5,
+      150.4,
+      10.0
+    ],
+    [
+      114.3,
+      150.4,
+      9.0
+    ],
+    [
+      -1.0,
+      -1.0,
+      -1.0
+    ],
+    [
+      103.7,
+      150.8,
+      10.0
+    ],
+    [
+      23.1,
+      150.8,
+      0.0
+    ],
+    [
+      -1.0,
+      -1.0,
+      -1.0
+    ]
+  ],
+  "Ropes": [
+    [
+      146.7,
+      150.8,
+      171.9
+    ],
+    [
+      58.8,
+      150.8,
+      171.9
+    ]
+  ],
+  "Connections": [
+    [
+      0,
+      1,
+      1,
+      0
+    ],
+    [
+      7,
+      8,
+      1,
+      0
+    ],
+    [
+      10,
+      11,
+      1,
+      0
+    ],
+    [
+      13,
+      14,
+      1,
+      0
+    ],
+    [
+      8,
+      10,
+      1,
+      9
+    ],
+    [
+      10,
+      8,
+      1,
+      10
+    ],
+    [
+      11,
+      13,
+      1,
+      9
+    ],
+    [
+      13,
+      11,
+      1,
+      10
+    ]
+  ],
+  "Nodes": [
+    {
+      "Id": "n0",
+      "X": 53.1,
+      "Y": 171.9,
+      "Type": "Platform"
+    },
+    {
+      "Id": "n1",
+      "X": 158.0,
+      "Y": 171.9,
+      "Type": "Platform"
+    },
+    {
+      "Id": "n7",
+      "X": 215.1,
+      "Y": 150.4,
+      "Type": "Platform"
+    },
+    {
+      "Id": "n8",
+      "X": 143.5,
+      "Y": 150.8,
+      "Type": "Platform"
+    },
+    {
+      "Id": "n10",
+      "X": 132.5,
+      "Y": 150.4,
+      "Type": "Platform"
+    },
+    {
+      "Id": "n11",
+      "X": 114.3,
+      "Y": 150.4,
+      "Type": "Platform"
+    },
+    {
+      "Id": "n13",
+      "X": 103.7,
+      "Y": 150.8,
+      "Type": "Platform"
+    },
+    {
+      "Id": "n14",
+      "X": 23.1,
+      "Y": 150.8,
+      "Type": "Platform"
+    },
+    {
+      "Id": "n_v_top_1467_1508",
+      "X": 146.7,
+      "Y": 150.8,
+      "Type": "Platform"
+    },
+    {
+      "Id": "n_v_bot_1467_1719",
+      "X": 146.7,
+      "Y": 171.9,
+      "Type": "Platform"
+    },
+    {
+      "Id": "n_v_top_588_1508",
+      "X": 58.8,
+      "Y": 150.8,
+      "Type": "Platform"
+    },
+    {
+      "Id": "n_v_bot_588_1719",
+      "X": 58.8,
+      "Y": 171.9,
+      "Type": "Platform"
+    }
+  ],
+  "Edges": [
+    {
+      "FromNodeId": "n0",
+      "ToNodeId": "n1",
+      "ActionType": 1,
+      "Cost": 104.9,
+      "InputSequence": []
+    },
+    {
+      "FromNodeId": "n7",
+      "ToNodeId": "n8",
+      "ActionType": 1,
+      "Cost": 72.90111,
+      "InputSequence": []
+    },
+    {
+      "FromNodeId": "n10",
+      "ToNodeId": "n11",
+      "ActionType": 1,
+      "Cost": 18.199997,
+      "InputSequence": []
+    },
+    {
+      "FromNodeId": "n13",
+      "ToNodeId": "n14",
+      "ActionType": 1,
+      "Cost": 80.6,
+      "InputSequence": []
+    },
+    {
+      "FromNodeId": "n8",
+      "ToNodeId": "n10",
+      "ActionType": 3,
+      "Cost": 8.0,
+      "InputSequence": []
+    },
+    {
+      "FromNodeId": "n10",
+      "ToNodeId": "n8",
+      "ActionType": 4,
+      "Cost": 8.0,
+      "InputSequence": []
+    },
+    {
+      "FromNodeId": "n11",
+      "ToNodeId": "n13",
+      "ActionType": 3,
+      "Cost": 8.0,
+      "InputSequence": []
+    },
+    {
+      "FromNodeId": "n13",
+      "ToNodeId": "n11",
+      "ActionType": 4,
+      "Cost": 8.0,
+      "InputSequence": []
+    },
+    {
+      "FromNodeId": "n_v_bot_1467_1719",
+      "ToNodeId": "n_v_top_1467_1508",
+      "ActionType": 6,
+      "Cost": 5.0,
+      "InputSequence": [
+        "ropeX:146.7"
+      ]
+    },
+    {
+      "FromNodeId": "n_v_top_1467_1508",
+      "ToNodeId": "n_v_bot_1467_1719",
+      "ActionType": 7,
+      "Cost": 3.0,
+      "InputSequence": [
+        "ropeX:146.7"
+      ]
+    },
+    {
+      "FromNodeId": "n_v_top_1467_1508",
+      "ToNodeId": "n8",
+      "ActionType": 1,
+      "Cost": 4.5,
+      "InputSequence": []
+    },
+    {
+      "FromNodeId": "n8",
+      "ToNodeId": "n_v_top_1467_1508",
+      "ActionType": 1,
+      "Cost": 4.5,
+      "InputSequence": []
+    },
+    {
+      "FromNodeId": "n_v_bot_1467_1719",
+      "ToNodeId": "n1",
+      "ActionType": 1,
+      "Cost": 11.300003,
+      "InputSequence": []
+    },
+    {
+      "FromNodeId": "n1",
+      "ToNodeId": "n_v_bot_1467_1719",
+      "ActionType": 1,
+      "Cost": 11.300003,
+      "InputSequence": []
+    },
+    {
+      "FromNodeId": "n_v_bot_588_1719",
+      "ToNodeId": "n_v_top_588_1508",
+      "ActionType": 6,
+      "Cost": 5.0,
+      "InputSequence": [
+        "ropeX:58.8"
+      ]
+    },
+    {
+      "FromNodeId": "n_v_top_588_1508",
+      "ToNodeId": "n_v_bot_588_1719",
+      "ActionType": 7,
+      "Cost": 3.0,
+      "InputSequence": [
+        "ropeX:58.8"
+      ]
+    },
+    {
+      "FromNodeId": "n_v_top_588_1508",
+      "ToNodeId": "n14",
+      "ActionType": 1,
+      "Cost": 35.699997,
+      "InputSequence": []
+    },
+    {
+      "FromNodeId": "n14",
+      "ToNodeId": "n_v_top_588_1508",
+      "ActionType": 1,
+      "Cost": 35.699997,
+      "InputSequence": []
+    },
+    {
+      "FromNodeId": "n_v_bot_588_1719",
+      "ToNodeId": "n0",
+      "ActionType": 1,
+      "Cost": 5.700001,
+      "InputSequence": []
+    },
+    {
+      "FromNodeId": "n0",
+      "ToNodeId": "n_v_bot_588_1719",
+      "ActionType": 1,
+      "Cost": 5.700001,
+      "InputSequence": []
+    }
+  ],
+  "SafeZones": [],
+  "RestrictedZones": []
+}

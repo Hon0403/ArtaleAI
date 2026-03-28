@@ -1,0 +1,11 @@
+- [x] **建立新目錄與搬遷檔案 (Phase 1)**
+    - [x] 在 Models\Config 建立並更新命名空間的屬性類別 [x]
+    - [x] 遷移 Data\Enums.cs 並更新命名空間 [x]
+- [x] **全域命名空間連動更新 (Phase 2)**
+    - [x] 更新 UI\ 檔案的 using [x]
+    - [x] 更新 Services\ 檔案的 using [x]
+    - [x] 更新 Core\ 檔案的 using [x]
+    - [x] 更新 API\ 檔案的 using [x]
+- [x] **清理舊遺產與驗證 (Phase 3)**
+    - [x] 刪除原根目錄 Config\ [x]
+    - [x] 全專案 dotnet build 驗證 [x]

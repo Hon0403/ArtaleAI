@@ -1,0 +1,7 @@
+{
+  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary": "優化 RTSP 連接速度與渲染延遲。\n1. 設定 FFmpeg 參數（probesize, analyzeduration）以縮短連線協商時間。\n2. 強制指定 RTSP 傳輸協定（TCP/UDP）避免自動偵測的耗時。\n3. 調整 VideoCapture 緩衝區大小。\n4. 提供連接狀態提示以改善 UX。",
+  "updatedAt": "2026-03-27T13:22:14.829037800Z",
+  "version": "1",
+  "requestFeedback": true
+}

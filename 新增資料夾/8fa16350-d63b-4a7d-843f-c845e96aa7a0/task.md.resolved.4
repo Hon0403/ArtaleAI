@@ -1,0 +1,15 @@
+# Jump Action Fix Task
+
+- [x] Implement jump action preservation in `PathPlanningTracker.SelectNextTarget`
+- [ ] Analyze log for jump successes and failures
+    [x] Verify threshold conflicts (1.5 vs 5.0)
+    [x] Identify jump preservation blocking rope navigation
+- [x] Refine Jump Logic
+    [x] Unify precision thresholds in movement controller
+    [x] Add platform-check to jump preservation logic
+    [x] Improve post-jump stability (pause/buffer)
+- [ ] Verify Fixes
+    [/] Build and test with [jump.json](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/MapData/jump.json)
+    [ ] Monitor logs for "Fall Recovery" frequency
+- [x] Verify logic and fix build (Completed with logic verification)
+- [x] Create walkthrough documenting the fix

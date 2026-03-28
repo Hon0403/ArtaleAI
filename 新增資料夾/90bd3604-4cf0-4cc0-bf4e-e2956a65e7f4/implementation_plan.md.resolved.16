@@ -1,0 +1,43 @@
+# 實作計畫 - 增加爬繩卡住/到達檢測
+
+## 問題描述
+使用者反映程式有時不知道爬繩動作已經完成，即使角色已經停止移動（例如站上頂端平台），程式仍持續按著爬繩鍵不放。
+這通常是因為終止條件 `currentPos.Y <= targetY`（往上爬時）未能滿足，可能是因為角色「站立」時的 Y 座標比預期的「目標」Y 座標稍微大一點點（例如差 0.5 像素），導致程式誤以為還沒到，陷入無限迴圈直到逾時。
+
+## 解決方案
+在 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#631-834) 內部實作「卡住/到達檢測」啟發式邏輯：
+1. 追蹤每次迴圈的位置變化。
+2. 如果 Y 座標在 **連續 20 幀**（約 1 秒）內的變化量小於 **0.1 像素**（表示停止移動）。
+3. **並且** 角色距離目標高度已經很近（例如 **5.0 像素** 以內）。
+4. 則假設已經到達或被地形阻擋，視為完成並優雅地退出迴圈。
+
+## 預計變更
+
+### Services/CharacterMovementController.cs
+
+#### [修改] ClimbRopeAsync (約第 768-819 行)
+- 在迴圈前新增 `int stuckFrames = 0;`。
+- 在迴圈內比較 `currentPos.Y` 與 `lastPos.Y`：
+  ```csharp
+  // 檢測是否停止移動
+  if (Math.Abs(currentPos.Y - lastPos.Y) < 0.1f)
+  {
+      stuckFrames++;
+      // 如果停止超過 1 秒，且距離目標很近 (< 5px)，視為完成
+      if (stuckFrames > 20 && Math.Abs(currentPos.Y - targetY) < 5.0f)
+      {
+          Logger.Info($"[爬繩] 偵測到停止移動且接近目標 (Y={currentPos.Y:F1}, Dist={Math.Abs(currentPos.Y - targetY):F1})，視為完成");
+          break;
+      }
+  }
+  else
+  {
+      stuckFrames = 0;
+  }
+  ```
+
+## 驗證計畫
+- **手動驗證**：
+  - 觀察爬繩行為。
+  - 當角色到達頂端時，若精確座標檢查未通過，日誌應顯示 `[爬繩] 偵測到停止移動...`，並立即結束爬繩動作。
+  - 角色應隨即前往下一個路徑點。

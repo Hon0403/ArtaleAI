@@ -1,0 +1,28 @@
+# Implementation Plan - Fix Movement Oscillation
+
+## Problem
+The character oscillates left and right around the target X coordinate.
+**Cause**: The horizontal tolerance is set to `1.0px`. However, the minimum movement distance (due to the new 120ms tap) is approximately **4.0px - 6.0px**.
+When the character is 2px away, it attempts to "Tap" and moves 4px, ending up 2px on the other side. This repeats indefinitely.
+
+## Solution
+Increase the **Horizontal Alignment Tolerance**.
+Change the threshold from `1.0px` to **5.0px**.
+This ensures that if the character is within the minimum step size of the target, it stops moving instead of overshooting.
+
+## Proposed Changes
+
+### Services/CharacterMovementController.cs
+
+#### [MODIFY] MoveToTargetAsync (Line ~287)
+- Change condition:
+  ```csharp
+  // Increase tolerance from 1.0 to 5.0 to prevent oscillation
+  if (Math.Abs(dx) > 5.0) 
+  ```
+- Update the "Aligned" log logic to match.
+
+## Verification Plan
+- **Scenario**: Character approaches target at [(59, 150)](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs#244-257) from [(63, 152)](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs#244-257).
+- **Pre-fix**: Moves Left -> [(57, 152)](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs#244-257) -> Moves Right -> [(61, 152)](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs#244-257) -> Loop.
+- **Post-fix**: Moves Left -> [(57, 152)](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs#244-257). `dx` is 2.0. `2.0 < 5.0`. **Stops**. Correctly identifies "Aligned".

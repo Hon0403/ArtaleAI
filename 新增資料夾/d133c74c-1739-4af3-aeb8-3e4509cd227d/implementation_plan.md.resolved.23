@@ -1,0 +1,36 @@
+# 路徑編輯器截斷與斷點功能優化計畫
+
+## 核心問題分析
+目前 [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs) 在路徑標記模式中存在兩個主要問題：
+1. **狀態不同步**：新增節點後，`_waypointAnchorIndex` 雖然更新了，但 `_startPoint` 可能未被正確賦值或重置，導致 [UpdateMousePosition](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#309-326) 無法產生預覽線。
+2. **斷點邏輯不直覺**：右鍵點擊雖然插入了 `[-1,-1,-1]` 分隔標記，但並未清空 `_waypointAnchorIndex`。這導致下一次點擊新位置時，[FindPreviousValidNodeIndex](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#1016-1051) 雖然會跳過分隔標記回溯找到前一個點，但邏輯上使用者期望的是「完全重新開始一條新路徑」。
+
+## 提出變更
+
+### [UI] [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)
+
+#### 1. 強化右鍵斷點功能
+- 當在 [Waypoint](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2016-2028) 模式下點擊右鍵：
+    - 除了插入 `[-1,-1,-1]` 分隔符號外，**必須重置 `_waypointAnchorIndex = -1`**。
+    - 同時重置 `_startPoint = null`，確保預覽線消失。
+
+#### 2. 優化左鍵點擊連線邏輯
+- 當新增完一個節點 (Index: `newIndex`)：
+    - 將 `_waypointAnchorIndex` 設為 `newIndex`。
+    - **主動將 `_startPoint` 更新為該節點的座標**。這樣滑鼠移動時，[UpdateMousePosition](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#309-326) 就能立刻畫出從新節點出發的預覽線。
+
+#### 3. 預覽線繪製邏輯修正
+- [UpdateMousePosition](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#309-326) 應該優先參考 `_waypointAnchorIndex`對應的顯示座標，而非僅依賴 `_startPoint`。
+
+## 驗證計畫
+### 自動測試
+- 建立 path 測試：點擊 A -> 點擊 B (產生 A-B 連線)。
+- 右鍵點擊：確認預覽線消失。
+- 點擊 C：確認 C 是孤立點，不與 B 連接。
+
+### 手動驗證
+1. 切換至「路徑標記」模式。
+2. 在平台 1 點擊兩個點 (產生連線)。
+3. 在地圖空白處按「右鍵」。
+4. 移動滑鼠，確認沒有連向滑鼠的預覽線。
+5. 在平台 2 點擊一個點，確認它不會連回平台 1。

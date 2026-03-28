@@ -1,0 +1,18 @@
+# ArtaleAI Improvements
+
+## Active Tasks
+- [ ] Investigate Vertical Path Planning (In Progress)
+    - [ ] Check [PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#85-94) rope selection logic
+    - [ ] Determine if multi-level jumps are supported
+
+## Completed Tasks
+- [x] Fix Rope Key Stuck Issue
+    - [x] Release UP/DOWN keys in `finally` block of [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#641-875)
+- [x] Fix Movement Oscillation
+    - [x] Correct [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#200-331) distance calculation (Euclidean -> Horizontal)
+    - [x] Add coordinates to movement logs
+- [x] Implement Active Rope Exit Check (Wiggle Test)
+- [x] Adjust Movement Parameters (Increased Tap Duration/Interval)
+- [x] Fix Rope Climbing Log Spam
+- [x] Fix Climb Down Logic (Auto-select Down key)
+- [x] Fix Rope X-Alignment Precision

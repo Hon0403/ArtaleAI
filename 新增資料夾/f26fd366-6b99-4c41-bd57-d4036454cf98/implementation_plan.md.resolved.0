@@ -1,0 +1,29 @@
+# Implementation Plan - Minimum Distance Constraint
+
+## Goal
+Avoid inefficient short-distance movements by filtering out target waypoints that are too close to the current character position.
+
+## Proposed Changes
+
+### [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+
+**Method:** [SelectSafeRandomTarget()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#277-348)
+
+**Logic:**
+1.  Calculate **Platform Width**: `platformWidth = _platformBounds.MaxX - _platformBounds.MinX`
+2.  Define **Minimum Distance Ratio**: `0.2` (20% of platform width).
+3.  Calculate **Minimum Distance**: `minDist = platformWidth * 0.2`.
+4.  Filter `candidateIndices`:
+    - Iterate through safe candidates.
+    - Calculate distance from `currentPos` (or `currentWaypoint`) to `candidateWaypoint`.
+    - Explore only candidates where `distance >= minDist`.
+    - If no candidates satisfy this (e.g., all points are close), fall back to the original safe candidates list (to avoid getting stuck).
+
+## Verification Plan
+
+### Manual Verification
+1.  **Build** the project.
+2.  **Run** the application.
+3.  **Load** a path file.
+4.  **Observe** the randomly selected targets in the log or UI.
+5.  **Verify** that the character moves substantial distances (e.g., across at least 20% of the platform) and doesn't just oscillate between two adjacent points.

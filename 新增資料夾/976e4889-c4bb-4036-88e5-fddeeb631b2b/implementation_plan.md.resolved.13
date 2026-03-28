@@ -1,0 +1,21 @@
+# 修復跳躍過早執行問題 (Fix Premature Jumps)
+
+## 目標描述
+解決角色在尚未完全到達起跳點（例如距離還有 3px）時就執行跳躍，導致跳躍失敗或掉落的問題。使用者希望角色能更精準地走到起跳點再跳。
+
+## 需要使用者審閱
+> [!NOTE]
+> 將起跳前的「到位判定距離」從 `3.0px` 縮小到 `1.5px`。這意味著角色會走得更靠近目標點才會起跳。
+
+## 建議變更
+
+### UI
+#### [修改] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- 在 [ProcessPathPlanning](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2334-2369) 的 `PathActionType.Jump`/`LeftJump`/`RightJump` 區塊：
+- 將判斷距離 `distanceToJumpPoint > 3.0f` 修改為 `> 1.5f`。
+- [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#166-341) 的參數也同步改為 `1.5f`。
+
+## 驗證計畫
+### 手動驗證
+1. 觀察角色在執行跳躍前的行為。
+2. 確認角色是否會走到幾乎重疊（誤差 < 1.5px）才起跳。

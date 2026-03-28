@@ -1,0 +1,173 @@
+<current_dom_explanation>
+This is a temporary snapshot of the current page's DOM structure. The DOM will change if you navigate to or interact with another page. Use a tool like browser_get_dom to capture and preserve the DOM in your trajectory if needed for later reference.
+</current_dom_explanation>
+<current_dom>
+Skip to content
+Navigation Menu
+[0] (42,35)<button aria-label='Toggle navigation' class='js-details-target js-nav-padding-recalculate js-header-menu-toggle Button--link Button--medium Button d-lg-none color-fg-inherit p-1' />
+	[1] (42,35)<span  />
+		[2] (42,35)<span  />
+			[3] (42,28)<div  />
+			[4] (42,35)<div  />
+			[5] (42,41)<div  />
+[6] (500,36)<a aria-label='Homepage' class='tmp-mr-lg-3 color-fg-inherit flex-order-2 js-prevent-focus-on-mobile-nav' href='/' />
+[7] (894,36)<a class='HeaderMenu-link HeaderMenu-button d-inline-flex f5 no-underline border color-border-default rounded-2 px-2 py-1 color-fg-inherit js-prevent-focus-on-mobile-nav' href='/login?return_to=https%3A%2F%2Fgithub.com%2FKenYu910645%2FMapleStoryAutoLevelUp%2Fcommits%2Fmain%2Fsrc%2Futils%2Fcommon.py'>Sign in />
+[8] (957,36)<button class='Button Button--iconOnly Button--invisible Button--medium AppHeader-button HeaderMenu-link border' id='icon-button-74f78425-d4eb-4faa-af65-dae5fa417792' />
+[9] (108,105)<a class='url fn' href='/KenYu910645'>KenYu910645 />
+/
+[10] (308,105)<a href='/KenYu910645/MapleStoryAutoLevelUp'>MapleStoryAutoLevelUp />
+Public
+[11] (658,105)<a aria-label='You must be signed in to change notification settings' class='btn-sm btn' href='/login?return_to=%2FKenYu910645%2FMapleStoryAutoLevelUp' id='repository-details-watch-button'>Notifications />
+[12] (792,105)<a class='btn-sm btn' href='/login?return_to=%2FKenYu910645%2FMapleStoryAutoLevelUp' id='fork-button'>Fork />
+	[13] (820,105)<span >124 />
+[14] (921,105)<a aria-label='You must be signed in to star a repository' class='tooltipped tooltipped-sw btn-sm btn' href='/login?return_to=%2FKenYu910645%2FMapleStoryAutoLevelUp' />
+	[15] (915,105)<span >Star />
+	[16] (950,105)<span >265 />
+[17] (65,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp' id='code-tab' />
+	[18] (78,166)<span >Code />
+[19] (174,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/issues' id='issues-tab' />
+	[20] (168,166)<span >Issues />
+	[21] (212,166)<span >43 />
+[22] (324,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/pulls' id='pull-requests-tab' />
+	[23] (322,166)<span >Pull requests />
+	[24] (385,166)<span >3 />
+[25] (474,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/discussions' id='discussions-tab' />
+	[26] (487,166)<span >Discussions />
+[27] (591,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/actions' id='actions-tab' />
+	[28] (603,166)<span >Actions />
+[29] (695,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/projects' id='projects-tab' />
+	[30] (708,166)<span >Projects />
+[31] (801,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/security' id='security-tab' />
+	[32] (814,166)<span >Security />
+[33] (957,166)<button class='Button Button--iconOnly Button--secondary Button--medium UnderlineNav-item' id='action-menu-278c7572-ea9f-4874-a87b-da4972682817-button' />
+Commits
+Breadcrumbs
+History for
+[34] (172,292)<a class='Breadcrumbs__StyledBreadcrumbsItem-sc-1qj8pw-1 prc-Breadcrumbs-Item-jcraJ' href='/KenYu910645/MapleStoryAutoLevelUp/commits'>MapleStoryAutoLevelUp />
+[35] (278,292)<a class='Breadcrumbs__StyledBreadcrumbsItem-sc-1qj8pw-1 ListHeader-module__breadcrumbItem__j7KrS prc-Breadcrumbs-Item-jcraJ' href='/KenYu910645/MapleStoryAutoLevelUp/commits/main/src'>src />
+[36] (317,292)<a class='Breadcrumbs__StyledBreadcrumbsItem-sc-1qj8pw-1 ListHeader-module__breadcrumbItem__j7KrS prc-Breadcrumbs-Item-jcraJ' href='/KenYu910645/MapleStoryAutoLevelUp/commits/main/src/utils'>utils />
+[37] (387,292)<a class='Breadcrumbs__StyledBreadcrumbsItem-sc-1qj8pw-1 lkjubr ListHeader-module__breadcrumbItem__j7KrS prc-Breadcrumbs-Item-jcraJ selected' href='/KenYu910645/MapleStoryAutoLevelUp/commits/main/src/utils/common.py'>common.py />
+on
+[38] (483,294)<a class='prc-BranchName-BranchName-CMTaU' href='/KenYu910645/MapleStoryAutoLevelUp/tree/main'>main />
+User selector
+[39] (775,293)<button class='prc-Button-ButtonBase-9n-Xk' id='_R_7jl9b_' />
+	[40] (764,293)<span  />
+		[41] (764,293)<span  />
+			[42] (764,293)<div  />
+				[43] (731,293)<div  />
+				[44] (777,293)<div  />
+					[45] (777,293)<span >All users />
+Datepicker
+[46] (917,293)<button class='prc-Button-ButtonBase-9n-Xk' />
+	[47] (917,293)<span  />
+		[48] (917,293)<span >All time />
+Commit History
+Commits on Jul 31, 2025
+[49] (374,404)<span  />
+	[50] (374,404)<a class='color-fg-default' href='/KenYu910645/MapleStoryAutoLevelUp/commit/ec05f996fba79276d8c63114cb071c63ee7f595e' title='[Refactor] Replace resize_game_window with resize_window for consistency and clarity'>[Refactor] Replace resize_game_window with resize_window for consistency and clarity />
+[51] (93,445)<a class='Link__StyledLink-sc-1syctfj-0 prc-Link-Link-9ZwDx' href='/RookieEnginee' />
+	[52] (89,447)<img  />
+[53] (149,445)<a aria-label='commits by RookieEnginee' class='Link__StyledLink-sc-1syctfj-0 gwQJTg AuthorAvatar-module__authorHoverableLink__MHTT8 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/commits?author=RookieEnginee'>RookieEnginee />
+committed
+[54] (820,418)<a class='prc-Button-ButtonBase-9n-Xk' href='/KenYu910645/MapleStoryAutoLevelUp/commit/ec05f996fba79276d8c63114cb071c63ee7f595e' />
+	[55] (820,418)<span  />
+		[56] (820,418)<span >ec05f99 />
+[57] (868,418)<div  />
+	[58] (868,418)<button class='prc-Button-ButtonBase-9n-Xk prc-Button-IconButton-fyge7' />
+[59] (906,418)<a class='Button Button--iconOnly Button--invisible Button--small' href='/KenYu910645/MapleStoryAutoLevelUp/blob/ec05f996fba79276d8c63114cb071c63ee7f595e/src/utils/common.py' />
+[60] (945,418)<a class='Button Button--iconOnly Button--invisible Button--small' href='/KenYu910645/MapleStoryAutoLevelUp/tree/ec05f996fba79276d8c63114cb071c63ee7f595e' />
+Commits on Jul 25, 2025
+[61] (249,543)<span  />
+	[62] (96,543)<a class='color-fg-default' href='/KenYu910645/MapleStoryAutoLevelUp/commit/6560f3d67654b83b82f213c2fe1aef53be5b7ef4' title='[Fix] #180 resolution mismatch during login
+
+1. Add resize function during login screen
+
+Signed-off-by: Ken Yu <luckyyu910645@gmail.com>'>[Fix] />
+	[63] (136,543)<a class='issue-link js-issue-link' href='https://github.com/KenYu910645/MapleStoryAutoLevelUp/issues/180'>#180 />
+	[64] (289,543)<a class='color-fg-default' href='/KenYu910645/MapleStoryAutoLevelUp/commit/6560f3d67654b83b82f213c2fe1aef53be5b7ef4' title='[Fix] #180 resolution mismatch during login
+
+1. Add resize function during login screen
+
+Signed-off-by: Ken Yu <luckyyu910645@gmail.com>'>resolution mismatch during login />
+[65] (438,541)<button class='prc-Button-ButtonBase-9n-Xk Button Button--iconOnly Button--invisible Button--small ml-1 prc-Button-IconButton-fyge7' />
+[66] (93,571)<a class='Link__StyledLink-sc-1syctfj-0 prc-Link-Link-9ZwDx' href='/KenYu910645' />
+	[67] (89,573)<img  />
+[68] (145,571)<a aria-label='commits by KenYu910645' class='Link__StyledLink-sc-1syctfj-0 gwQJTg AuthorAvatar-module__authorHoverableLink__MHTT8 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/commits?author=KenYu910645'>KenYu910645 />
+committed
+·
+[69] (374,571)<button aria-label='Status checks: success' class='prc-Button-ButtonBase-9n-Xk Button__StyledButtonComponent-sc-vqy3e4-0 eA-Dkmd ChecksStatusBadge-module__ChecksStatusBadgeButton__vTwYt AsyncChecksStatusBadge-module__ChecksStatusBadge__wbwBt' />
+	[70] (374,571)<span  />
+		[71] (385,571)<span >1 / 1 />
+[72] (819,555)<a class='prc-Button-ButtonBase-9n-Xk' href='/KenYu910645/MapleStoryAutoLevelUp/commit/6560f3d67654b83b82f213c2fe1aef53be5b7ef4' />
+	[73] (819,555)<span  />
+		[74] (819,555)<span >6560f3d />
+[75] (868,555)<div  />
+	[76] (868,555)<button class='prc-Button-ButtonBase-9n-Xk prc-Button-IconButton-fyge7' />
+[77] (906,555)<a class='Button Button--iconOnly Button--invisible Button--small' href='/KenYu910645/MapleStoryAutoLevelUp/blob/6560f3d67654b83b82f213c2fe1aef53be5b7ef4/src/utils/common.py' />
+[78] (945,555)<a class='Button Button--iconOnly Button--invisible Button--small' href='/KenYu910645/MapleStoryAutoLevelUp/tree/6560f3d67654b83b82f213c2fe1aef53be5b7ef4' />
+Commits on Jul 22, 2025
+[79] (181,665)<span  />
+	[80] (181,665)<a class='color-fg-default' href='/KenYu910645/MapleStoryAutoLevelUp/commit/9a9c9f217efc4097b33f3463d0d9f9f9db88fb2c' title='Fix minimap border check'>Fix minimap border check />
+[81] (93,693)<a class='Link__StyledLink-sc-1syctfj-0 prc-Link-Link-9ZwDx' href='/KenYu910645' />
+	[82] (89,694)<img  />
+[83] (145,693)<a aria-label='commits by KenYu910645' class='Link__StyledLink-sc-1syctfj-0 gwQJTg AuthorAvatar-module__authorHoverableLink__MHTT8 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/commits?author=KenYu910645'>KenYu910645 />
+committed
+[84] (820,679)<a class='prc-Button-ButtonBase-9n-Xk' href='/KenYu910645/MapleStoryAutoLevelUp/commit/9a9c9f217efc4097b33f3463d0d9f9f9db88fb2c' />
+	[85] (820,679)<span  />
+		[86] (820,679)<span >9a9c9f2 />
+[87] (868,679)<div  />
+	[88] (868,679)<button class='prc-Button-ButtonBase-9n-Xk prc-Button-IconButton-fyge7' />
+[89] (906,679)<a class='Button Button--iconOnly Button--invisible Button--small' href='/KenYu910645/MapleStoryAutoLevelUp/blob/9a9c9f217efc4097b33f3463d0d9f9f9db88fb2c/src/utils/common.py' />
+[90] (945,679)<a class='Button Button--iconOnly Button--invisible Button--small' href='/KenYu910645/MapleStoryAutoLevelUp/tree/9a9c9f217efc4097b33f3463d0d9f9f9db88fb2c' />
+Commits on Jul 20, 2025
+[91] (208,791)<span  />
+	[92] (208,791)<a class='color-fg-default' href='/KenYu910645/MapleStoryAutoLevelUp/commit/d41ca9725eb89f35d731a35d1e4978a8af1f113e' title='[Dev] Normalize pixel coordinate
+
+1. Normalize pixel coordinate in config.py
+2. Crop out title bar before resize
+3. New config to adjust title bar height
+4. Offset all y coordinates
+5. Fix macOS color for rune detection
+
+Signed-off-by: Ken Yu <luckyyu910645@gmail.com>'>[Dev] Normalize pixel coordinate />
+[93] (356,789)<button class='prc-Button-ButtonBase-9n-Xk Button Button--iconOnly Button--invisible Button--small ml-1 prc-Button-IconButton-fyge7' />
+[94] (93,819)<a class='Link__StyledLink-sc-1syctfj-0 prc-Link-Link-9ZwDx' href='/KenYu910645' />
+	[95] (89,820)<img  />
+[96] (145,819)<a aria-label='commits by KenYu910645' class='Link__StyledLink-sc-1syctfj-0 gwQJTg AuthorAvatar-module__authorHoverableLink__MHTT8 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/commits?author=KenYu910645'>KenYu910645 />
+committed
+[97] (819,802)<a class='prc-Button-ButtonBase-9n-Xk' href='/KenYu910645/MapleStoryAutoLevelUp/commit/d41ca9725eb89f35d731a35d1e4978a8af1f113e' />
+	[98] (819,802)<span  />
+		[99] (819,802)<span >d41ca97 />
+[100] (868,802)<div  />
+	[101] (868,802)<button class='prc-Button-ButtonBase-9n-Xk prc-Button-IconButton-fyge7' />
+[102] (906,802)<a class='Button Button--iconOnly Button--invisible Button--small' href='/KenYu910645/MapleStoryAutoLevelUp/blob/d41ca9725eb89f35d731a35d1e4978a8af1f113e/src/utils/common.py' />
+[103] (945,802)<a class='Button Button--iconOnly Button--invisible Button--small' href='/KenYu910645/MapleStoryAutoLevelUp/tree/d41ca9725eb89f35d731a35d1e4978a8af1f113e' />
+Commits on Jul 17, 2025
+[104] (251,917)<span  />
+	[105] (251,917)<a class='color-fg-default' href='/KenYu910645/MapleStoryAutoLevelUp/commit/75b591a4e43e085e738c1da442f80568c0609327' title='[Dev] Finite State Machine for state manage
+
+1. Use Finite State Machine(FSM) to manage robot states
+2. Upgrade rune finding/detect/solving algorithm, rune solving is more
+   reliable than before
+3. Support english version rune and party button
+4. Move helper function in KeyBoardcontroller to global function
+5. Use pyinstaller to build .exe for Windows user
+6. Upgrade first barrack map
+7. Modulized some code into functions
+
+Signed-off-by: Ken Yu <luckyyu910645@gmail.com>'>[Dev] Finite State Machine for state manage />
+[106] (442,915)<button class='prc-Button-ButtonBase-9n-Xk Button Button--iconOnly Button--invisible Button--small ml-1 prc-Button-IconButton-fyge7' />
+[107] (93,945)<a class='Link__StyledLink-sc-1syctfj-0 prc-Link-Link-9ZwDx' href='/KenYu910645' />
+	[108] (89,946)<img  />
+[109] (145,945)<a aria-label='commits by KenYu910645' class='Link__StyledLink-sc-1syctfj-0 gwQJTg AuthorAvatar-module__authorHoverableLink__MHTT8 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/commits?author=KenYu910645'>KenYu910645 />
+committed
+[110] (819,928)<a class='prc-Button-ButtonBase-9n-Xk' href='/KenYu910645/MapleStoryAutoLevelUp/commit/75b591a4e43e085e738c1da442f80568c0609327' />
+	[111] (819,928)<span  />
+		[112] (819,928)<span >75b591a />
+[113] (868,928)<div  />
+	[114] (868,928)<button class='prc-Button-ButtonBase-9n-Xk prc-Button-IconButton-fyge7' />
+[115] (906,928)<a class='Button Button--iconOnly Button--invisible Button--small' href='/KenYu910645/MapleStoryAutoLevelUp/blob/75b591a4e43e085e738c1da442f80568c0609327/src/utils/common.py' />
+[116] (945,928)<a class='Button Button--iconOnly Button--invisible Button--small' href='/KenYu910645/MapleStoryAutoLevelUp/tree/75b591a4e43e085e738c1da442f80568c0609327' />
+Commits on Jul 10, 2025
+
+</current_dom>

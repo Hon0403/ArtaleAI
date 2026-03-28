@@ -1,0 +1,45 @@
+# 自動攻擊邏輯整合說明
+
+我們已成功將自動攻擊邏輯整合到 ArtaleAI 路徑規劃系統中。
+
+## 實作變更
+
+### 1. 攻擊機制 ([CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs))
+- 新增 [PerformAttackAsync(int cooldownMs)](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#605-626) 方法。
+- 發送 `Ctrl` 按鍵進行攻擊。
+- 實作可設定的冷卻時間（目前設定為 1000ms）。
+- 確保在攻擊前完全停止移動。
+
+### 2. 偵測與觸發邏輯 ([MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs))
+- **條件檢查**：[CheckAutoAttackCondition()](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1000-1054) 驗證：
+    - [Start](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2687-2751) 核取方塊已勾選。
+    - 路徑、偵測模式和怪物模板已選擇。
+    - 在定義的 **攻擊範圍** 內偵測到怪物。
+- **執行流程**：
+    - 當怪物進入攻擊範圍時，觸發 [PerformAutoAttackAsync()](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1055-1090)。
+    - 路徑規劃移動立即暫停 ([StopMovement()](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#345-365))。
+    - 按下攻擊鍵 (`Ctrl`)。
+    - 系統等待 1 秒（冷卻）。
+    - 移動將在下一個畫面週期自動恢復。
+
+## 驗證
+
+### 自動化驗證
+- **建置狀態**：專案編譯成功，無錯誤。
+
+### 手動驗證步驟
+1.  **設定**：
+    - 選擇有效的路徑檔案。
+    - 選擇偵測模式（例如 Color）。
+    - 選擇怪物模板。
+    - 勾選 [Start](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2687-2751) 核取方塊。
+2.  **測試**：
+    - 觀察角色沿著路徑移動。
+    - 當怪物出現在 **攻擊範圍框**（藍/綠框）內時：
+    - **觀察**：角色應停止移動。
+    - **觀察**：角色應執行攻擊動作（Ctrl 鍵）。
+    - **觀察**：日誌應顯示 `[自動攻擊] 發現怪物...` 和 `[自動攻擊] 攻擊完成...`。
+    - **觀察**：角色在約 1 秒後恢復跟隨路徑。
+
+> [!NOTE]
+> 攻擊邏輯設計為優先於移動。如果多隻怪物持續出現，角色可能會停留在原地戰鬥，直到清除威脅後才繼續移動。

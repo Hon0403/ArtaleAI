@@ -1,0 +1,13 @@
+## Navigation FSM Refactoring & Live View Rendering Fixes
+- [x] Phase 1: Core Navigation FSM Implementation
+- [x] Phase 2: Action Nodes Extraction and Pipeline Integration
+- [x] Phase 3: Total Replacement (Remove _isMoving)
+- [x] Phase 4: PathGraph Optimization
+- [x] Phase 4.5: Cleanup Minimap Tracking Dead Code & Race Conditions
+- [x] Phase 5: Identify and address Minimap Player Style Discrepancies (Unified to AppConfig)
+- [/] Phase 6: Analyze Navigation Log Anomalies (Post-Offset Removal)
+  - [ ] Read artale-20260307-122140.log
+  - [ ] Cross-reference with MapData test.json
+  - [ ] Identify root cause of potential navigation failureeMachine.cs` 並注入 Executor
+- [x] 修改 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) 移除 `_isMoving` 與舊有 Task.Run
+- [x] 確認編譯成功與功能驗證

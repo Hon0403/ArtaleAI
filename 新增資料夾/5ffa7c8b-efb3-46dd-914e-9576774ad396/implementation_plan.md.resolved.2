@@ -1,0 +1,29 @@
+# 隨機路徑分支 (Human-like Path Diversification)
+
+為了讓角色行為更像真人並規避反外掛偵測，我們將引入「隨機分支」機制。這利用了路徑中重複經過的「樞紐點」，隨機選擇不同的後續路徑。
+
+## 需要您注意的事項
+> [!NOTE]
+> 這個功能只有在您的錄製路徑中有「重複經過同一地點」時才會生效。如果您只錄製了一個簡單的單向圓圈 (A->B->C->A)，則效果不明顯。建議錄製像「8字形」或多圈交錯的路徑以獲得最佳效果。
+
+## 預計修改內容
+
+### 核心邏輯修正
+#### [修改] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- 新增 `SelectRandomNextTarget` 方法：
+    - 取得目前所在位置附近的「候選節點」。
+    - 候選條件：
+        1. 距離當前位置 < 10px (視為同一地點)。
+        2. 擁有有效的「下一個節點」。
+    - 如果找到多個候選節點 (例如 Index 5 和 Index 50 都在這裡)，隨機選擇一個作為新的路徑起點。
+- 修改 [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1147-1352)：
+    - 優先呼叫 `SelectRandomNextTarget` 嘗試進行分支切換。
+    - 如果沒有分支可選，則維持原本的 [(current + 1)](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#962-983) 線性邏輯。
+
+## 驗證計畫
+### 自動化測試
+- `dotnet build`
+
+### 手動驗證
+- 錄製一個 "8" 字形路徑 (中間交叉點即為樞紐)。
+- 觀察角色是否會在交叉點隨機選擇左圈或右圈，而不是每次都固定順序。

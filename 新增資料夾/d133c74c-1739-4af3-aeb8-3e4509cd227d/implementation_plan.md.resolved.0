@@ -1,0 +1,21 @@
+# 修復角色越過繩索 (Overshoot) 實作計畫
+
+目前的過衝問題源於程式碼中存在多處硬寫的容差值 (Hardcoded Tolerances)，導致全域設定 `waypointReachDistance` 在攀爬行為中失效。
+
+## 待解決問題
+- [ ] **設定檔路徑混淆**：使用者修改了 [Data\config.yaml](file:///d:/Full_end/C%23/ArtaleAI/Data/config.yaml)，但編譯後的執行檔通常讀取 `bin\Debug\...\Data\config.yaml`。
+- [ ] **導航執行器硬寫值**：`NavigationExecutor.ExecuteClimbAsync` 固定使用 `1.5f` 作為到點判定。
+- [ ] **動作控制器判定區間**：如果到點判定 (10.0) 大於跳躍判定 (3.5)，會導致角色停在原地決定「側跳」而非「直跳」。
+
+## 建議變更
+
+### [Component] Navigation
+#### [MODIFY] [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs)
+- 將 [ExecuteClimbAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#133-188) 中呼叫 [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#193-288) 的 `reachDistance` 從 `1.5f` 改為引用 `AppConfig.Instance.WaypointReachDistance`。
+
+#### [MODIFY] [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- 將 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#569-697) 中的垂直吸附判定 (`3.5f`) 改為動態值：`Math.Max(3.5f, AppConfig.Instance.WaypointReachDistance + 1.0f)`。這能確保只要角色「宣佈到達」，就一定位在可以垂直上跳的範圍內。
+
+## 驗證計畫
+1. **日誌驗證**：檢查日誌中 `[移動] 已釋放按鍵` 的瞬間坐標，與目標繩索坐標的差值是否約等於 10.0。
+2. **行為驗證**：確認角色在 10px 處停下後，能正確執行「垂直上爬」而非「側向跳躍」。

@@ -1,0 +1,44 @@
+# 第一階段：核心邏輯層深度清理 (重啟完成)
+
+## 核心變更摘要
+
+### [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- **去冗餘化**：移除了所有非正式的「導航原始主義」論述及開發者私語。
+- **架構修補**：修復了在重構過程中因誤刪而遺失的關鍵私有欄位（如 `_navGraph`, `_gameVision`, `_randomLock` 等），確保系統狀態完整。
+- **XML 專業化**：將 XML 註解縮減至僅描述功能與行為，移除物理緩衝等實現細節的冗談。
+
+### [GameVisionCore.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs)
+- **無情標籤殲滅**：移除了全檔案共 10+ 處 `#region` / `#endregion` 標籤，達成代碼扁平化並解決「未預期前置處理器指示詞」編譯錯誤。
+- **邏輯恢復**：修復了 [DetectBloodBar](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#62-105) 與 [CalculateBloodBarRelatedBoxes](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#124-158) 的實作空洞，現已恢復完整的視覺感知運算流。
+- **掃除殭屍代碼**：清除了所有被註解掉的 `Logger.Info` 與重複的 HSV 推導邏輯。
+
+### [PathPlanningManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs)
+- **細節精簡**：移除了關於 Lambda 引用儲存的過度解釋，保持代碼自解釋性。
+
+## 驗證狀態
+- [x] **編譯檢查**：核心邏輯層所有檔案皆無 Lint 錯誤。
+- [x] **功能完整性**：血條與小地圖檢測邏輯已回歸 SSOT（單一真理來源）標準。
+- [x] **一致性**：所有註解語法統一，無 Emoji 與非專業詞彙。
+
+---
+> [!IMPORTANT]
+> 第一階段清理已達成。請檢核 [Core](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#23-1204) 目錄下的專業化成果。若無誤，我們將轉入## 第一階段：核心邏輯層「極致淨化」已完成
+
+### ⚡ 核心修補與清理成果
+1.  **[PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)**：
+    *   移除所有關於「物理比喻」（如導航原始主義、物理緩衝）的非正規註解。
+    *   殲滅所有 `#region` 指令，使代碼結構扁平化、專業化。
+    *   精簡 XML 註釈，僅保留對外接口的必要功能說明。
+2.  **[GameVisionCore.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs)**：
+    *   **邏輯修復**：修正了 [FindMinimapByColor](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#192-283) 與 [LoadMonsterTemplatesAsync](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#626-695) 在清理過程中遺失的關鍵變數（如色彩解析、邊框驗證邏輯、模板快取檢查）。
+    *   **極致淨化**：移除所有關於 OpenCV 操作步驟的顯而易見說明（如「執行顏色匹配」、「BGR 轉換」等）。
+    *   **XML 扁平化**：將冗長的算法描述簡化為專業的核心功能標題。
+3.  **[PathPlanningManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs)**：
+    *   移除事件訂閱、lambda 儲存以及自動救援程序的開發筆記。
+    *   保持純粹的 Manager 職責分離，無任何冗餘實現細節說明。
+
+### 🛠️ 驗證狀態
+*   **字串掃描**：已通過 `grep` 掃描，確認 [Core](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#23-1204) 目錄下的 `#region` 已全數掃除。
+*   **變數檢查**：確認 [GameVisionCore.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs) 中所有 lint 報錯的變數已正確宣告並恢復功能。
+
+---

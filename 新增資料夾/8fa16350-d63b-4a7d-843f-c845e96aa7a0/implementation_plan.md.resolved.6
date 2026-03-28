@@ -1,0 +1,38 @@
+# 跳躍動作一致性優化方案 (Phase 2 & 3)
+
+解決因「分段標記」(Break Node) 被忽略及路徑檔順序混亂導致的動作遺失問題。
+
+## 根本原因分析
+
+1.  **Break Node 被忽略**：`PathPlanningTracker.ForceAdvanceTarget` 在推進目標時，會無條件跳過所有 `IsBreak` (座標 -1,-1) 的節點。
+2.  **動作遺失 (Phase 2)**：路徑中存在 `Index=6` 的 Break Node 被跳過，導致跳躍動作遺失。
+3.  **路徑順序錯亂 (Phase 3)**：[jump.json](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/MapData/jump.json) 中的路徑點順序與物理順序不一致（例如：目的地 Index 7 排在跳躍點 Index 20 之前）。導致系統按順序導航時忽略了中間必須經過的跳躍點。
+4.  **目標來回跳動 (Ping-Pong)**：全域掃描機制 ([CheckNearbyActionNodes](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#852-910)) 雖然能偵測到錯亂的點，但因為缺乏「已訪問」記憶，導致角色在兩個鄰近點之間不斷切換目標。
+
+## 已完成變更 (Phase 2)
+
+### [核心] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- [x] 修改 [ForceAdvanceTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1451-1544) 以支援帶動作的 Break Node。
+- [x] 實現 [CheckNearbyActionNodes](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#852-910) (初步版本)，掃描前方節點。
+
+## 提議的變更 (Phase 3 - 當前)
+
+### [核心] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+
+#### 1. 全域掃描與防震盪 (Global Scan & Anti-Oscillation)
+- [x] **全域掃描**：將 [CheckNearbyActionNodes](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#852-910) 的掃描範圍擴大到整個 `_pathNodes` 列表 (0 -> Count)，以捕捉任何位置的遺漏點。
+- [NEW] **防止來回跳動 (Ping-Pong Prevention)**：
+    - 新增 `HashSet<int> _executedActionNodeIndices` 記錄本次導航中已觸發過的「鄰近動作點」。
+    - 在 [CheckNearbyActionNodes](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#852-910) 中，若節點已存在於此集合，則忽略之。
+    - 在 [HasReachedWaypoint](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1634-1659) 或動作執行完畢時，將該節點加入集合。
+    - **重置時機**：在 [StartTracking](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#105-118) 或路徑重置時清空集合。
+
+## 驗證計劃
+
+### 手動驗證
+- 使用 [jump.json](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/MapData/jump.json) 測試。
+- **目標**：角色應順暢通過繩索後的跳躍區段 (146 -> 141 -> 133 -> ...)，不會在點與點之間抽搐或卡住。
+- **日誌確認**：
+    - `[鄰近觸發] 自動修正目標：5 -> 20` (成功跳轉)
+    - `[鄰近觸發] 自動修正目標：20 -> 18` (成功推進)
+    - **不應出現**：`20 -> 18` 後緊接著 `18 -> 20` 的循環。

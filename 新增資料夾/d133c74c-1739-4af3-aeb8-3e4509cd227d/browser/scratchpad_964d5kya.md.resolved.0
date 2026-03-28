@@ -1,0 +1,13 @@
+# MapleStoryAutoLevelUp Player Localization Search
+
+## Checklist
+- [x] Navigate to KenYu910645/MapleStoryAutoLevelUp repo
+- [x] Identify player localization function: `get_player_location_on_minimap`
+- [x] Locate file: `src/utils/common.py`
+- [ ] Extract logic of `get_player_location_on_minimap`
+- [ ] Check for `matchTemplate` or `InRange` usage
+
+## Findings
+- `src/engine/MapleStoryAutoLevelUp.py` imports `get_player_location_on_minimap` from `src.utils.common`.
+- `src/utils/common.py` contains the implementation.
+- `src/legacy/mapScanner_legacy.py` uses ORB and BFMatcher, but this might be for different purpose.

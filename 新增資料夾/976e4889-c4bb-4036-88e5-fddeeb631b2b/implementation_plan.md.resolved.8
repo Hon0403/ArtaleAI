@@ -1,0 +1,65 @@
+# Add Capture Timestamp to Vision Pipeline
+
+## Goal
+統一時間基準：在畫面**擷取時刻**記錄時間戳，並傳遞到整個處理鏈，消除因處理延遲造成的時序偏差。
+
+## Proposed Changes
+
+### 1. LiveViewManager.cs
+#### 新增 `TimestampedFrame` record
+```csharp
+public record TimestampedFrame(Mat Frame, DateTime CaptureTime);
+```
+
+#### 修改 [OnCaptureTimer](file:///d:/Full_end/C%23/ArtaleAI/UI/LiveViewManager.cs#136-161)
+在擷取成功時記錄時間戳：
+```csharp
+var captureTime = DateTime.UtcNow;
+frameQueue.Enqueue(new TimestampedFrame(frameMat.Clone(), captureTime));
+```
+
+#### 修改 `OnFrameReady` 事件
+```csharp
+public event Action<Mat, DateTime>? OnFrameReady;
+```
+
+#### 修改 [OnDetectionTimer](file:///d:/Full_end/C%23/ArtaleAI/UI/LiveViewManager.cs#162-222)
+傳遞 [CaptureTime](file:///d:/Full_end/C%23/ArtaleAI/UI/LiveViewManager.cs#136-161) 給訂閱者：
+```csharp
+OnFrameReady?.Invoke(latestFrame.Frame, latestFrame.CaptureTime);
+```
+
+---
+
+### 2. MainForm.cs
+#### 修改 `OnFrameReadyHandler`
+接收 `captureTime` 並傳遞給 [GameVisionCore](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#69-77)：
+```csharp
+private void OnFrameReadyHandler(Mat frame, DateTime captureTime)
+{
+    // ...
+    var result = _visionCore.GetMinimapTracking(frame, captureTime);
+    // ...
+}
+```
+
+---
+
+### 3. GameVisionCore.cs
+#### 修改 [GetMinimapTracking](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#259-396) 簽名
+```csharp
+public MinimapTrackingResult? GetMinimapTracking(Mat fullFrameMat, DateTime captureTime)
+```
+
+使用傳入的 `captureTime` 而非 `DateTime.UtcNow`。
+
+---
+
+### 4. RouteRecorderService.cs
+不需修改。它已經從 `MinimapTrackingResult.Timestamp` 讀取時間。
+
+---
+
+## Verification
+1. 建置成功
+2. 錄製跳躍時，Hook 時間與 Vision 時間直接對齊，無需延遲補償

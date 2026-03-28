@@ -1,0 +1,41 @@
+# 導航抵達判定與設定持久化修復計畫
+
+## 目的
+解決腳色在終點「來回觸碰」且不更新目標的問題，並修復設定旗標在重啟後被還原的架構漏洞。
+
+## 核心問題分析
+1. **抵達判定衝突 (Critical)**：
+   - 目前 [CharacterMovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#19-534) 仍依賴傳入的 `reachDistance`（容差）判定 Success。
+   - [NavigationExecutor](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#42-51) 卻使用 `isReached()`（即 [PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#120-125) 的 **3x3 Hitbox**）進行最終驗收。
+   - **結果**：當容差設為 10px 時，控制器在 8px 處就回傳 Success，但執行器因未進入 3px Hitbox 而拒絕結束並重啟迴圈，產生「來回觸碰」。
+   - **歷史結論還原**：根據 3/21 10:55 PM 的 SSOT 指令，應**廢棄所有動態容差判定**，統一回歸「物理 Hitbox 判定」。
+
+2. **設定持久化缺失**：
+   - [AppConfig](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs#18-114) 修改後未自動 [Save()](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs#78-100)，且 [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#33-1973) 關閉時未儲存，導致精調值重啟後被還原。
+
+3. **ID 隨機化債務**：
+   - 虛擬節點使用 `Guid.NewGuid()`，導致 ID 具備非決定性。
+
+## 擬定變動
+
+### 1. 落實 SSOT 導航原始主義 (SoC)
+#### [MODIFY] [CharacterMovementController.cs](file:///d:/Full_end/C#/ArtaleAI/Services/CharacterMovementController.cs)
+- **廢除 `reachDistance` 成功判定**：移除 [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#105-259) 中基於 `reachDistance` 的返回邏輯。
+- **僅信任 `isReachedExternally`**：成功抵達的唯一條件改為 `isReachedExternally?.Invoke() == true`。
+- **按鍵釋放邏輯保留**：原本的 `reachDistance` (及預測煞車) 僅作「釋放按鍵」的參考，但不代表移動「成功」。
+
+### 2. 修復執行器與追蹤器 ID
+#### [MODIFY] [NavigationExecutor.cs](file:///d:/Full_end/C#/ArtaleAI/Services/NavigationExecutor.cs)
+- 在微調對齊 (Micro-Taps) 邏輯中，將寫死的 `2.0f` 替換為對 [IsPlayerAtTarget()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#56-74) 的呼叫。
+#### [MODIFY] [MapGenerationService.cs](file:///d:/Full_end/C#/ArtaleAI/Core/Domain/Navigation/MapGenerationService.cs)
+- 移除 `Guid.NewGuid()`，改為基於節點 X/Y 座標的決定性 ID 生成規則。
+
+### 3. 持久化補丁
+#### [MODIFY] [UI/MainForm.cs](file:///d:/Full_end/C#/ArtaleAI/UI/MainForm.cs)
+- 在 `OnFormClosing` 增加 `AppConfig.Instance.Save()`。
+
+
+## 驗證計畫
+### 自動測試
+- 模擬偵測：設定容差為 10px，手動將玩家座標設在目標旁 5px 處，確認 FSM 能立即跳轉到 `Reached_Waypoint` 並推進 Index。
+- 持久化測試：在 UI 修改數值，關閉程式，檢查 `config.yaml` 是否已更新。

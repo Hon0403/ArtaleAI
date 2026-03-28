@@ -1,0 +1,57 @@
+# Fix Rope Climbing Logic & Movement Oscillation
+
+## Summary
+- **Fixed Rope X-Alignment**: Increased engaging distance to 10px.
+- **Fixed Climb Down**: Correctly selects "Down" key at rope top.
+- **Improved Completion Detection**: Implemented "Wiggle Test" to confirm platform arrival.
+- **Fixed Movement Oscillation**: Corrected distance calculation in horizontal movement logic.
+
+## Changes
+
+### 1. Fix Movement Oscillation & Add Logs
+**File**: [Services/CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+
+**Problem**: User reported character constantly moving Left/Right (oscillating) when trying to align X.
+**Cause**: The function [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#200-329) was passing **Total Distance** (Euclidean) to the movement controller. If the character was vertically far from the target (e.g. `dy=20`), the Total Distance was large (>20). The controller saw "Distance > 10" and engaged **Long Press Mode** (Running), even if the horizontal distance (`dx`) was only 1px. This caused massive overshooting.
+**Fix**: Changed the distance parameter to `Math.Abs(dx)` (Horizontal Distance Only). Now, if `dx` is small, it correctly uses **Tap Mode**, preventing oscillation.
+
+**Log Enhancement**: Added `Pos=(x,y) Target=(x,y)` to movement logs as requested.
+
+```csharp
+// Before
+await PerformGradualMoveAsync(..., (float)distance, ..., "移動");
+
+// After
+await PerformGradualMoveAsync(..., (float)Math.Abs(dx), ..., "移動", currentPos, targetPos);
+```
+
+### 2. Active Rope Exit Check (Wiggle Test)
+**File**: [Services/CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+
+Added logic to actively verify if the character has left the rope when near the target height.
+- **Trigger**: Character is within 8px (updated by user) of target Y.
+- **Action**: Pause climbing, press **Right** key for 100ms.
+- **Check**: Measure X movement (`deltaX`).
+- **Result**:
+  - `deltaX > 2.0f`: Character moved horizontally -> Confirmed **Off Rope** (Success). Loop breaks.
+  - `deltaX <= 2.0f`: Character stuck horizontally -> Confirmed **On Rope** (or blocked). Climbing continues.
+
+```csharp
+if (Math.Abs(currentPos.Y - targetY) < 8.0f && attempts % 10 == 0) // Updated by User
+{
+    // ... Wiggle Test Implementation ...
+    if (deltaX > 2.0f) break; // Success
+}
+```
+
+### 3. Rope X-Alignment Fix
+**File**: [UI/MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- Increased threshold from 2.0f to 10.0f to engage precise alignment earlier.
+
+### 4. Climb Down Fix
+**File**: [Core/PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- Dynamically selects "Up" or "Down" key based on entry position relative to rope top.
+
+## Verification
+- **Oscillation**: Character should now smoothly align X without jittering left/right, even when vertically distant from the target.
+- **Logging**: Logs will show: `[移動] 點按: →, 距離=1.2 Pos=(60,175) Target=(61,172)`.

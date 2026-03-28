@@ -1,0 +1,13 @@
+# 地圖編輯器 (MapEditor.cs) 稽核與重構
+
+## 🕵️‍♂️ 階段 1：現況稽核 (Code Audit)
+- [ ] 檢視 `SelectionRadius` 的數值。
+- [ ] 檢視 切換編輯模式的實作 ([SetEditMode](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#329-345) 等)，是否清空狀態。
+- [ ] 檢視 [AddNode](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs#34-46) (新增節點)，是否防止重疊。
+- [ ] 檢視 [AddEdge](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs#47-62) / `Connect` (新增連線)，是否具備物理防呆。
+
+## 🛠️ 階段 2：診斷與無情重構
+- [ ] 視稽核結果，將 `SelectionRadius` 放大 (e.g. 10.0f)。
+- [ ] 切換模式時強制清除 `_selectedNodeIndex = -1` 與 `_startPoint = null`。
+- [ ] 在新增節點時阻擋 5px 內的重疊，並自動吸附。
+- [ ] 在新增連線時加入攀爬 (X落差>15) 與走路 (Y落差>30) 的嚴格防呆與警告。

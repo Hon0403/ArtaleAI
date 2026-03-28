@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary": "Fix the color parsing bug and optimize performance in GameVisionCore. ParseColor was incorrectly throwing exceptions due to a typo in the range check. This plan also introduces a static color cache.",
+  "updatedAt": "2026-03-21T11:07:18.047975500Z"
+}

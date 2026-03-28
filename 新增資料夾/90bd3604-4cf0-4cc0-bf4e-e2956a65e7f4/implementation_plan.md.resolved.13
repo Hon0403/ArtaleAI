@@ -1,0 +1,30 @@
+# Implementation Plan - Fix Climb Down Logic
+
+## Problem
+The user reports that the character cannot climb down ropes/ladders.
+Analysis of [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) reveals a critical bug where the engagement action for ropes is **hardcoded to "up"** regardless of whether the character is at the top or bottom of the rope.
+If the character approaches a rope from the top (intending to climb down), the system currently commands it to press "Up" (Action=ClimbUp), which typically results in a jump or no action, failing to initiate the climb-down sequence.
+
+## Solution
+Modify [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) to correctly determine the key to press based on the engagement point.
+- If `entryY` matches `TopY`: Set key to `"down"` (Action=ClimbDown).
+- If `entryY` matches `BottomY`: Set key to `"up"` (Action=ClimbUp).
+
+## Proposed Changes
+
+### Core/PathPlanningTracker.cs
+
+#### [MODIFY] SelectNextTarget (Lines ~978)
+- Replace the hardcoded `new List<string> { "up" }` with logic:
+  ```csharp
+  string grabKey = (Math.Abs(entryY - neededRope.TopY) < 1.0f) ? "down" : "up";
+  _currentTarget.Keys = new List<string> { grabKey };
+  ```
+- Update the log message to reflect the chosen action (Up/Down).
+
+## Verification Plan
+- **Manual Verification**:
+  - Position character at the top of a rope.
+  - Start pathfinding to a point below.
+  - Verify logs show `Action=ClimbDown` (or Key=down) upon reaching the rope.
+  - Verify character successfully grabs the rope and climbs down.

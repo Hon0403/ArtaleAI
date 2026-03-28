@@ -1,0 +1,9 @@
+# Fixing Jump Recording And Execution Consistency
+The user's main objective is to ensure the character's jump actions are accurately recorded and correctly executed within the path planning system.
+
+- [x] Fix Jump Execution Logic (Jump skipping issue) <!-- id: 0 -->
+- [x] Add Mouse Coordinate Label to UI <!-- id: 1 -->
+- [x] Fix Jump Recording (Retroactive Marking) <!-- id: 2 -->
+- [x] Fix Jump Recording Timing (Forced Insertion / Deferred Marking) <!-- id: 3 -->
+- [ ] Fix Jump Recording Timestamp Synchronization <!-- id: 4 -->
+- [ ] Verify Fixes <!-- id: 5 -->

@@ -1,0 +1,6 @@
+# 平台跳躍執行功能
+
+## 實作進度
+- [/] 1. 在 MainForm 加入跳躍動作處理
+- [ ] 2. 在 CharacterMovementController 加入 JumpAsync 方法
+- [ ] 3. 建置測試

@@ -1,0 +1,6 @@
+# 平台跳躍執行功能 ✅
+
+## 實作進度
+- [x] 1. 在 MainForm 加入跳躍動作處理 (LeftJump/RightJump/Jump)
+- [x] 2. 新增 WaitForLanding 方法用於落地等待
+- [x] 3. 建置成功

@@ -1,0 +1,6 @@
+{
+  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary": "此計畫旨在修復專案恢復後的大量編譯錯誤。重點在於解決重複定義、補全缺失的介面與 API DTO、更新 `.csproj` 套件依賴，並重建 `MainForm.Designer.cs` 的基本結構。",
+  "updatedAt": "2026-03-21T14:52:29.775821700Z",
+  "version": "1"
+}

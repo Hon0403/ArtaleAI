@@ -1,0 +1,44 @@
+# 地圖編輯器 (MapEditor.cs) 稽核與重構
+
+## 🕵️‍♂️ 階段 1：現況稽核 (Code Audit)
+- [ ] 檢視 `SelectionRadius` 的數值。
+- [ ] 檢視 切換編輯模式的實作 ([SetEditMode](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#329-355) 等)，是否清空狀態。
+- [ ] 檢視 [AddNode](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs#34-46) (新增節點)，是否防止重疊。
+- [ ] 檢視 [AddEdge](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs#47-62) / `Connect` (新增連線)，是否具備物理防呆。
+
+## 🛠️ 階段 2：診斷與無情重構
+- [x] 視稽核結果，將 `SelectionRadius` 放大 (e.g. 10.0f)。
+- [x] 切換模式時強制清除 `_selectedNodeIndex = -1` 與 `_startPoint = null`。
+- [x] 在新增節點時阻擋 5px 內的重疊，並自動吸附。
+- [x] 在新增連線時加入攀爬 (X落差>15) 與走路 (Y落差>30) 的嚴格防呆與警告。
+
+## 🚦 階段 3：路徑追蹤器到達判定與穿越承認
+- [x] 在 [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) 實作分離軸線容差 (X/Y 給予不同容差)。
+- [x] 在 [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) 提供 `ForceAcknowledgeArrival()` 穿越承認介面。
+- [x] 在 [NavigationStateMachine.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs) 於觸發 Completed 時，呼叫追蹤器的承認介面。
+
+## 🎯 階段 4：微調機制 (Micro-Correction Mechanism)
+- [x] 執行層 CharacterMovementController 新增 MovementResult 列舉。
+- [x] 觸發穿越防呆且誤差過大時，回報 NeedsCorrection。
+- [x] 決策層 NavigationExecutor 收到 NeedsCorrection 後，實作靜止觀察期與反向點按 (Tap) 修正。
+
+## 🧠 階段 5：事件驅動進度 (Event-Driven Progression)
+- [x] 剝奪 PathPlanningTracker 單方面推進進度的權利。
+- [x] 實作 `_isWaitingForAcknowledge` 旗標防止高頻干擾。
+- [x] 建立 Tracker 與 FSM 的連動綁定 (BindStateMachine)。
+- [x] 透過訂閱 FSM 的 `OnStateChanged` 事件來核發路徑進度 (Index++)。
+- [x] **[石化防禦]**：在 FSM 失敗或中斷時，強制解鎖旗標並觸發 [SelectRandomPhysicalTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#432-466) 自癒。
+- [x] **[洩漏防護]**：在 [Dispose()](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#728-738) 中完全解除事件訂閱，確保資源回收。
+
+## 🚦 階段 7：修復路徑跳躍與冗餘通知 (Redundant Signal Fix)
+- [x] 殲滅 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) 中的 UI 層冗餘到達判定。
+- [x] 強化 [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) 在規劃新路徑時的狀態重置。
+
+## 🏎️ 階段 12：消滅路徑跳轉時序漏洞 (Race Condition Elimination)
+- [x] **[防止信號溢出]**：在 FSM 任務結束後強制清空 `_isTargetReached`，確保下一段路徑不被汙染。
+- [x] **[修正通知時序]**：導正 Tracker 的旗標賦值順序，防止同步回調導致的狀態覆蓋。
+
+## 🎯 階段 13：升級 AABB 區域觸發與 Hitbox 注入 (Trigger Zone Upgrade)
+- [ ] **[領域層]**：實作 `BoundingBox` 數值物件與 `Contains` 判定邏輯。
+- [ ] **[注入層]**：在 [LoadMap](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#216-267) 時根據節點屬性動態注入不同規格的 Hitbox。
+- [ ] **[決策層]**：重構 Tracker 與 FSM，將到達判定徹底語意化，移除所有距離魔法數字。

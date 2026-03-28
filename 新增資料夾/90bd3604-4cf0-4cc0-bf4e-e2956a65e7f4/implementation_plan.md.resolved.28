@@ -1,0 +1,35 @@
+# 實作計畫 - 調整脫離檢查秒數解決漂移問題
+
+## 問題分析
+使用者建議拉長檢查秒數。
+目前的 100ms 按鍵時間太短，導致位移量常在臨界值邊緣 (約 2.0px)，造成判定失敗並重複檢查，最終累積漂移到隔壁繩索。
+
+## 解決方案
+接受使用者建議，**增加按鍵持續時間**。
+將向右按鍵時間從 100ms 增加到 **200ms**。
+這樣每次檢查會產生顯著的位移（例如 4-5px），能確保在第一次檢查時就成功判定「已脫離繩索」，避免重複執行。
+
+同時保留「漂移防護」作為安全網。
+
+## 預計變更
+
+### Services/CharacterMovementController.cs
+
+#### [修改] ClimbRopeAsync
+- **按鍵時間**：
+  ```csharp
+  SendKeyInput(VK_RIGHT, false);
+  await Task.Delay(200, ct); // 100ms -> 200ms
+  SendKeyInput(VK_RIGHT, true);
+  ```
+- **漂移防護**：
+  ```csharp
+  if (Math.Abs(currentPos.X - startPos.X) > 5.0f)
+  {
+      Logger.Warning("X 軸偏差過大，強制中止");
+      break;
+  }
+  ```
+
+## 驗證計畫
+- **預期結果**：腳色在到達頂端後，只會進行**一次**脫離檢查（200ms），隨即判斷成功並停止爬繩。

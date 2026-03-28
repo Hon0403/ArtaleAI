@@ -1,0 +1,28 @@
+# Fix Rope Alignment Logic
+
+The current path planning execution logic uses the target waypoint's X coordinate for rope alignment. However, if the recorded waypoint is offset from the actual rope (e.g., at the top of the climb where the player might step off), the extensive "Rope Lookahead" optimization merges the path to the top point, causing the alignment logic to use the top point's X. If this X differs from the rope's actual X (at the bottom), the character fails to align and grab the rope.
+
+## Proposed Changes
+
+### Core
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C#/ArtaleAI/Core/PathPlanningTracker.cs)
+- Add a new public method `GetNearestRopeX(SdPointF position, float maxDistance = 15.0f)`:
+    - Iterates through loaded `_ropes`.
+    - Checks if the given position is within `maxDistance` of a rope's X.
+    - Checks if the given position's Y is within the rope's vertical range (with some buffer).
+    - Returns the rope's `X` if found, otherwise returns `null`.
+
+### UI / Service
+#### [MODIFY] [MainForm.cs](file:///d:/Full_end/C#/ArtaleAI/UI/MainForm.cs)
+- In the `PathActionType.ClimbUp` and `PathActionType.ClimbDown` cases:
+    - Call `_pathPlanningManager.Tracker.GetNearestRopeX(currentPathNode.Position)`.
+    - If a valid rope X is returned, use it as `ropeX` instead of `currentPathNode.Position.X`.
+    - Log the correction for debugging purposes.
+
+## Verification Plan
+
+### Manual Verification
+1.  **Load Test Map**: Load the [test.json](file:///d:/Full_end/C%23/ArtaleAI/MapData/test.json) map containing the offset rope waypoints.
+2.  **Enable Auto-Combat**: Start the bot.
+3.  **Monitor Logs**: Watch for the log message `[修正] 使用繩索資料 X=...`.
+4.  **Observe Behavior**: Verify that the character aligns to `X=73` (the rope) instead of `X=69` (the waypoint) when attempting to climb from 2F to 3F.

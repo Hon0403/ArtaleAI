@@ -1,0 +1,61 @@
+# 架構重構計畫 - 邊驅動動作 (Edge-Based Actions)
+
+## 問題分析
+
+**現有架構的限制**：
+- 動作 (Jump/Walk) 綁定在 **PathNode** (節點) 上
+- MainForm 的執行邏輯：「到達節點 → 執行**該節點**的動作」
+- 這導致：只有當「目標點恰好是跳躍節點」時，角色才會跳躍
+
+**期望行為**：
+- 無論目標點設定什麼動作，只要「從 A 到 B」需要跳躍，角色就應該跳
+- 例如：角色在右平台 (Node 5)，目標在左平台 (Node 8)，中間有間隙 → 應自動跳躍
+
+## 解決方案：邊驅動動作 (Edge-Based Actions)
+
+> [!TIP]
+> **核心思想**：動作不再描述「到達時做什麼」，而是描述「如何到達」。
+> 這更符合物理直覺：跳躍是「移動過程」的一部分，不是「抵達」後的動作。
+
+### 架構變更
+
+```
+舊架構 (Node-Based):
+[Node A] -----> [Node B (Action=Jump)]
+角色必須「到達 B」才會執行 Jump
+
+新架構 (Edge-Based):
+[Node A] --Edge(Action=Jump)--> [Node B]
+角色「前往 B 的途中」就會執行 Jump
+```
+
+## 實作變更
+
+### 1. PathPlanningTracker.cs - 暴露當前導航邊
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- 新增屬性：`CurrentNavigationEdge` (記錄從「玩家位置」到「當前目標」的邊)
+- 在 [SelectNextTarget()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1293-1640) 中，查詢並設定 `CurrentNavigationEdge`
+- 這樣 MainForm 就能讀取邊上的動作，而非節點上的動作
+
+### 2. MainForm.cs - 使用邊的動作執行移動
+
+#### [MODIFY] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- 在 [OnPathTrackingUpdated](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2003-2360) 中，讀取 `Tracker.CurrentNavigationEdge?.InputSequence`
+- 如果邊有定義動作 (例如 `["left", "alt"]`)，優先使用它
+- 否則才回退到節點動作 `_currentTarget.Action`
+
+### 3. 自動間隙偵測 (選用優化)
+
+#### [MODIFY] ResolveSmartAction in [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- 當建構循序連接 (Sequential Walk) 時，加入間隙偵測
+- 如果兩點 X 距離 > 50px 且 Y 差距 < 20px，自動升級為 JumpLeft/JumpRight
+- 這樣即使使用者沒有手動畫連結，跨平台也會自動跳躍
+
+## 驗證標準
+
+| 場景 | 預期結果 |
+|------|----------|
+| 目標是跳躍節點 | ✅ 正確跳躍 (同現有) |
+| 目標是普通節點，但邊標記為 Jump | ✅ 正確跳躍 (新功能) |
+| 跨平台，無手動連結 | ✅ 自動偵測間隙並跳躍 |

@@ -1,0 +1,47 @@
+# 墜落偵測實作方案
+
+## 偵測邏輯
+
+```csharp
+// PathPlanningTracker.UpdatePathState
+if (playerPos.Y > targetPos.Y + FallThreshold)
+{
+    // 玩家 Y 比目標 Y 大很多 → 掉到下層了
+    OnFallDetected?.Invoke(playerPos, targetPos);
+}
+```
+
+常數設定：
+- `FallThreshold = 20f` (Y 差距超過 20px 視為墜落)
+
+---
+
+## 恢復流程
+
+```
+墜落偵測 → 找最近的爬繩點 → 移動到繩索 → 爬回去
+```
+
+```csharp
+// MainForm 處理墜落事件
+void OnFallDetected(PointF playerPos, PointF targetPos)
+{
+    // 1. 找最近的 ClimbUp 節點
+    var climbNode = _pathNodes
+        .Where(n => n.Action == PathActionType.ClimbUp)
+        .OrderBy(n => Distance(playerPos, n.Position))
+        .FirstOrDefault();
+    
+    // 2. 設為新目標
+    _tracker.SetRecoveryTarget(climbNode);
+}
+```
+
+---
+
+## 修改檔案
+
+| 檔案 | 修改 |
+|------|------|
+| [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) | +`OnFallDetected` 事件 +`FallThreshold` 常數 |
+| [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) | 訂閱事件，實作恢復邏輯 |

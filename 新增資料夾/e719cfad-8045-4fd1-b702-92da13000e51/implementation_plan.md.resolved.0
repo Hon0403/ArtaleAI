@@ -1,0 +1,25 @@
+# Phase 1: 更新 MapData DTO (新 JSON 格式)
+
+修改 [MapData](file:///d:/Full_end/C%23/ArtaleAI/Models/Map/MapData.cs#9-35) DTO 以支援直接儲存導航圖（Nodes 與 Edges），並為舊有攔位加上 `JsonIgnore` 以優化新格式的儲存體積。
+
+## Proposed Changes
+
+### [ArtaleAI.Models.Map]
+
+#### [MODIFY] [MapData.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Map/MapData.cs)
+
+- 新增 `NavNodeData` 類別，用於序列化節點。
+- 新增 `NavEdgeData` 類別，用於序列化邊（包含 InputSequence）。
+- 在 [MapData](file:///d:/Full_end/C%23/ArtaleAI/Models/Map/MapData.cs#9-35) 類別中新增以下屬性：
+  - `public List<NavNodeData> Nodes { get; set; } = new();`
+  - `public List<NavEdgeData> Edges { get; set; } = new();`
+- 替現有屬性 `WaypointPaths` 與 `Connections` 加上 `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]`。
+- 修改 `WaypointPaths` 與 `Connections` 的類型為 `List<float[]>?` 與 `List<int[]>?` 並設定預設為 `null`（或在建構子初始化，但計畫中提到新格式存檔時會清空這兩個攔位）。
+
+## Verification Plan
+
+### Automated Tests
+- 執行 `dotnet build` 確保專案編譯成功，沒有命名空間衝突或語法錯誤。
+
+### Manual Verification
+- 無（本階段僅修改 DTO 結構，暫不涉及邏輯執行）。

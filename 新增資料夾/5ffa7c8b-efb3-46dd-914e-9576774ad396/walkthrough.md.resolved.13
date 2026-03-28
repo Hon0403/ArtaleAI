@@ -1,0 +1,51 @@
+# Walkthrough: Edge-Driven 導航架構改造
+
+## 改造目標
+將導航系統從**循序 Node 跟隨**轉為 **A* Edge-Driven 控制迴圈**。
+
+## 架構變更
+
+```mermaid
+graph TB
+    subgraph "新架構 (Edge-Driven)"
+        A[SelectNextTarget] -->|"選巡邏目標"| B[SelectPatrolTarget]
+        B -->|"A* 規劃"| C[PlanPathToTarget]
+        C -->|"設定首條 Edge"| D[SetActiveEdge]
+        D -->|"到達終點"| E[AdvanceToNextEdge]
+        E -->|"還有 Edge"| D
+        E -->|"路徑完成"| A
+        F[ForceAdvanceTarget] -->|"委託"| E
+        G["MainForm (動作分派)"] -->|"讀取動作"| H[CurrentNavigationEdge]
+        G -->|"讀取座標"| I["TemporaryTarget (Edge 終點)"]
+    end
+```
+
+## Phase 1: PathPlanningTracker.cs — 新增方法
+
+| 方法 | 功能 |
+|------|------|
+| [CalculateEdgeCost](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#896-918) | Walk=距離, Jump=8, Climb=5, JumpDown=2 |
+| [PlanPathToTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#923-975) | A* → Edge 列表 → SetActiveEdge |
+| [SetActiveEdge](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#976-1057) | 設定 Edge + 更新 PathState |
+| [AdvanceToNextEdge](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1058-1095) | 推進到下一條 Edge |
+| [SelectPatrolTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1096-1129) | 隨機選最遠 3 節點之一 |
+
+## Phase 1: PathPlanningTracker.cs — 簡化方法
+
+| 方法 | 改造前 | 改造後 | 移除內容 |
+|------|--------|--------|----------|
+| [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1654-1711) | 330 行 | 50 行 | 循序跟隨、繩索偵測、Smart Skip |
+| [ForceAdvanceTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1722-1737) | 225 行 | 15 行 | Break Node、反向跳躍、方向檢查 |
+
+## Phase 2: MainForm.cs — 整合
+
+| 變更 | 說明 |
+|------|------|
+| 移除 Node fallback | 所有動作只從 `CurrentNavigationEdge` 讀取 |
+| 爬繩座標 | 從 `nextWaypoint`（Edge 終點）取得 |
+| 診斷日誌 | 只顯示 Edge 狀態，移除 NodeAction |
+
+## 驗證
+
+- ✅ Build 成功 (0 errors, 75 warnings — 均為既有警告)
+- ⬜ 待測試：A* 路徑規劃 log、跳躍/繩索動作執行、巡邏迴圈

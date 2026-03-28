@@ -1,0 +1,20 @@
+# 恢復邊界保護功能 - 任務清單 ✅
+
+## CharacterMovementController.cs ✅
+- [x] 新增 `using ArtaleAI.Config` 命名空間引用
+- [x] 新增邊界保護相關欄位（`_platformBounds`, `_bufferZone`, etc.）
+- [x] 新增 `OnBoundaryHit` 和 `OnTargetOutOfBounds` 事件
+- [x] 新增 [SetPlatformBounds](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#51-67) 方法
+- [x] 修改 [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#159-299) 加入三重邊界防護
+- [x] 新增 [TriggerBoundaryEvent](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#336-353) 方法
+
+## PathPlanningManager.cs ✅
+- [x] 確認已有 [SetBoundaries](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs#163-176) 方法
+- [x] 新增 [SetPlatformBounds(PlatformBounds bounds)](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#51-67) 重載
+
+## MainForm.cs ✅
+- [x] 確認 [cbo_LoadPathFile_SelectedIndexChanged](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1766-1842) 已設定邊界
+- [x] 新增 `_movementController.SetPlatformBounds` 連接
+
+## config.yaml ✅
+- [x] 確認已有 `platformBounds` 設定區塊

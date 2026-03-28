@@ -1,0 +1,55 @@
+# 自動攻擊整合計畫
+
+目標：將怪物偵測與路徑規劃整合，自動攻擊範圍內的怪物。
+
+## 需要使用者審閱
+> [!IMPORTANT]
+> - 攻擊鍵已依需求寫死為 `Ctrl`。
+> - 冷卻時間已依需求寫死為 `1000ms` (1秒)。
+> - 啟動取決於特定的 UI 控制項是否啟用（[ckB_Start](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2198-2313) 勾選，且路徑/模式/模板已選擇）。
+
+## 預計變更
+
+### [Services] CharacterMovementController.cs
+#### [MODIFY] [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- 新增 [PerformAttackAsync(int cooldownMs)](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#605-626) 方法。
+- 此方法將會：
+    - 記錄攻擊動作。
+    - 發送 `Ctrl` 按鍵。
+    - 等待 `cooldownMs` 毫秒。
+
+### [UI] MainForm.cs
+#### [MODIFY] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- 新增 `volatile bool _isAttacking` 欄位以追蹤攻擊狀態。
+- 實作 [CheckAutoAttackCondition()](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1000-1054) 輔助方法：
+    - 檢查 [ckB_Start](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2198-2313) 是否已勾選。
+    - 檢查下拉選單 ([cbo_LoadPathFile](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2347-2448), `cbo_DetectMode`, `cbo_MonsterTemplates`) 是否有有效選擇。
+    - 檢查 `_currentMonsters` 是否與 `_currentAttackRangeBoxes` 重疊。
+        - 邏輯：遍歷怪物，檢查是否與任何 `AttackRangeBox` 相交 (`Rectangle.IntersectsWith`)。
+- 實作 [PerformAutoAttackAsync()](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1055-1090) 方法：
+    - 設定 `_isAttacking = true`。
+    - 呼叫 `_movementController.StopMovement()` 以暫停路徑規劃移動。
+    - 呼叫 `_movementController.PerformAttackAsync(1000)`。
+    - 設定 `_isAttacking = false`。
+- 修改 [OnFrameAvailable](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#731-894)：
+    - 在呼叫 [ProcessPathPlanning](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2450-2486) 之前，檢查 `!_isAttacking`。
+    - 在 [ProcessMonsters](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#896-996) 之後，呼叫 [CheckAutoAttackCondition](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1000-1054)。
+    - 如果為真，啟動 [PerformAutoAttackAsync](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1055-1090)（使用 `Task.Run` 或類似方式，但由 `_isAttacking` 保護）。
+
+## 驗證計畫
+
+### 手動驗證
+1.  **設定**：
+    - 載入路徑。
+    - 選擇偵測模式。
+    - 選擇怪物模板。
+    - 開始路徑規劃 ([ckB_Start](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2198-2313))。
+2.  **情境**：
+    - 將角色放置在怪物附近（視覺上）。
+    - 確保怪物被偵測到（顯示紅框 / 名稱）。
+    - 確保怪物進入「攻擊範圍」框（藍/綠框）。
+3.  **預期行為**：
+    - 角色立即停止移動。
+    - 角色進行攻擊（按 `Ctrl` 鍵）。
+    - 日誌顯示「攻擊」動作。
+    - 1 秒後，角色恢復移動。

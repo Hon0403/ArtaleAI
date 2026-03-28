@@ -1,0 +1,23 @@
+# 任務清單：解決重複定義與命名空間衝突 (驗證中)
+
+## 核心目標
+消除專案中因重複類別定義與命名空間歧義導致的編譯錯誤，並統一使用 `ArtaleAI.Models` 作為資料模型標準。
+
+## 待辦事項
+- [x] **清理重複檔案 (Consolidation V2)**
+    - [x] [DELETE] `Core/Domain/Navigation/PathPlanningState.cs`
+    - [x] [DELETE] [Core/Domain/Navigation/MapData.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/MapData.cs)
+    - [x] [MODIFY] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) (掃除 200+ 行冗餘重複代碼)
+- [x] **修復型別引用與介面**
+    - [x] [MODIFY] [MinimapStyles.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Minimap/MinimapStyles.cs) (補齊 [MinimapViewerStyle](file:///d:/Full_end/C%23/ArtaleAI/Models/Minimap/MinimapStyles.cs#68-74))
+    - [x] [MODIFY] [PathNode.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs) (遷移至 `NavigationActionType`)
+    - [x] [MODIFY] [MapData.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Map/MapData.cs) (補齊 [RopeData](file:///d:/Full_end/C%23/ArtaleAI/Models/Map/MapData.cs#55-64))
+    - [x] [MODIFY] [NavigationStateMachine.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs) (對齊 [INavigationStateMachine](file:///d:/Full_end/C%23/ArtaleAI/Services/INavigationStateMachine.cs#13-49))
+    - [x] [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) (補齊缺失方法)
+- [x] **修復服務命名空間與轉型**
+    - [x] [MODIFY] [DetectionService.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/DetectionService.cs) (修正 `ArtaleAI.Detection`)
+    - [x] [MODIFY] [PathPlanningService.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningService.cs) (修正轉型與屬性存取)
+    - [x] [MODIFY] [FlexiblePathPlanner.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/FlexiblePathPlanner.cs) (修正 Null 檢查)
+- [/] **最終驗證**
+    - [/] 執行 `dotnet build` 確認錯誤歸零。
+    - [ ] 產出 `walkthrough_v2_final.md`。

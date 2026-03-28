@@ -1,0 +1,36 @@
+# 修復說明 - Node 11 跳躍執行問題
+
+## 因果分析
+1.  **問題現象**：當角色到達 Node 11 (起跳點) 時，系統立刻將目標切換到 Node 13 (落地點)，導致角色嘗試「走」過去而不是跳過去。
+2.  **根本原因**：[PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) 中的 [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1247-1579) 方法有一個邏輯缺陷。
+    -   當從 Node 10 走向 Node 11 時，因為這段路徑被標記為「行走 (Walk)」，系統會強制清空目標點 (Node 11) 的所有按鍵動作。
+    -   雖然我們在啟動時正確地將 Node 11 標記為「左跳 (LeftJump)」，但這個運行時的邏輯把它覆蓋成了「無動作 (Idle)」。
+3.  **結果**：主程式 (MainForm) 認為 Node 11只是一個普通的途經點，所以沒有觸發跳躍邏輯。
+
+## 實作的修復
+
+### 1. 智能動作注入 (圖建構階段)
+修改了 [BuildNavigationGraph](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#602-727) 方法：
+-   現在會更明確地將「智能跳躍動作」(Smart Jump) 注入到 **來源節點 (Source Node)**。
+-   如果從 Node 11 到 Node 13 需要跳躍，Node 11 會被永久標記為 `LeftJump` (左跳)。
+
+### 2. 防止動作被覆蓋 (運行階段)
+修改了 [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1247-1579) 方法：
+-   **舊邏輯**：如果是走路邊 (Walk Edge)，清空目標點按鍵。
+-   **新邏輯**：如果是走路邊，但目標點本身帶有跳躍動作 (Jump/LeftJump)，**保留按鍵不清除**。
+-   這確保了像 Node 11 這種本身帶有跳躍屬性的節點，即使走過去也能保留其跳躍指令。
+
+### 3. 編譯錯誤修復
+-   解決了 [ResolveSmartAction](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#773-822) 方法重複定義的問題。
+-   修正了 [int](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2723-2735) 與 `NavigationActionType` 之間的類型轉換錯誤。
+-   目前專案已成功編譯 (0 錯誤)。
+
+## 驗證步驟
+1.  **編譯成功**：確認專案建置無誤。
+2.  **執行測試**：
+    -   請觀察 Log，當角色到達 Node 11 時，應該會顯示 `[路徑追蹤] 跳躍動作等待執行...`。
+    -   角色應該會在 Node 11 停頓，執行跳躍 (左+Alt)，然後才推進到 Node 13。
+
+## 下一步
+-   請啟動機器人並驗證 Node 11 是否能正確跳躍。
+-   如果動作有執行但跳不過去 (距離不足)，可能需要微調 `WaitMs` 或智能跳躍的判定距離。

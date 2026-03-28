@@ -1,0 +1,25 @@
+# Task: 純圖形導航架構清理
+
+- [x] **Phase 1: 修正存檔邏輯**
+    - [x] MapEditor 建立連結時寫入節點 Action
+
+- [x] **Phase 2: 移除動態插值**
+    - [x] Fix jump execution logic to prioritize lateral jumps
+    - [x] 刪除 [GenerateIntermediatePoints()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#2173-2211)
+    - [x] 刪除 `_intermediateQueue`
+    - [x] 刪除 [GetIntermediateQueueSnapshot()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#2165-2172)
+    - [x] 清理 [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1247-1637) 中的插值邏輯
+    - [x] 清理 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) 中的引用
+
+- [x] **Phase 3: 統一圖遍歷**
+    - [x] 實作 A* 路徑搜尋演算法
+    - [x] `NavigationGraph.FindPath()` 方法
+    - [x] [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1247-1637) 已使用圖邊導航
+
+- [x] **Phase 4: 優化視覺回饋**
+    - [x] 連接線顏色依動作區分 (Jump=Blue, Walk=Magenta)
+    - [x] 解決節點選取同步問題
+
+- [ ] **驗證**
+    - [ ] 測試存檔：JSON 節點 Action 正確
+    - [ ] 測試導航：跳躍動作正確執行

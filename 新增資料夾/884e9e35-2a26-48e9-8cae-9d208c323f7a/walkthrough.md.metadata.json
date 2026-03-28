@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_WALKTHROUGH",
+  "summary": "已修復 CameraMonitor 專案中的影像顯示緩衝區錯誤並優化效能。\n- 修正 WriteableBitmap.WritePixels 參數計算。\n- 移除 CaptureLoop 中冗餘的 BMP 編解碼邏輯。\n- 驗證並確認應用程式可穩定啟動。",
+  "updatedAt": "2026-03-27T13:17:37.489094300Z"
+}

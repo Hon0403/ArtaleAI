@@ -1,0 +1,32 @@
+# Fix Rope Climbing Logic & Smart Navigation
+
+## Summary
+- **Fixed Rope X-Alignment**: Increased engaging distance to 10px.
+- **Fixed Climb Down**: Correctly selects "Down" key at rope top.
+- **Improved Completion Detection**: Implemented "Wiggle Test" to confirm platform arrival.
+- **Fixed Movement Oscillation**: Implemented Dynamic Tap + Increased Tolerance.
+- **Fixed Rope Deadlock**: Allowed small vertical errors (3px) at rope entry.
+- **Refined Logging**: Independent log files per session.
+- **Implemented Smart Navigation**: Added multi-floor BFS pathfinding.
+- **Fixed Wiggle Drift**: Tuned Wiggle Test parameters.
+
+## Changes
+
+### 1. Smart Rope Navigation (Multi-Floor)
+**File**: [Services/SmartRopeNavigator.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/SmartRopeNavigator.cs) (New), [Core/PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) (Modified)
+- Implemented **Graph Search (BFS)** for multi-stage rope paths.
+
+### 2. Rope & Movement Logic Fixes
+**File**: [Services/CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **Dynamic Tap Duration**: 30ms for fine tuning (<5px), 80ms for normal move.
+- **Oscillation Fix**: Increased horizontal tolerance to **5.0px**.
+- **Rope Deadlock Fix**: If horizontally aligned and `dy <= 3.0px`, treat as **Arrived**. (Prevents "Needs Rope" loop at rope entry).
+- **Wiggle Test Fix**: Increased duration (200ms), wait time (300ms), and added Drift Guard (>5px).
+
+### 3. Logging Improvements
+**File**: [Utils/Logger.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs)
+- Changed to timestamped filenames: `artale-{yyyyMMdd-HHmmss}.log`.
+
+## Verification
+- **Log File**: New file created on restart.
+- **Rope Entry**: Character approaches rope. align X. `dy=2.0`. Logic says "Arrived". Proceeds to `ClimbDown` immediately. No jitter.

@@ -1,0 +1,35 @@
+# Fix Rope Climbing Logic & Smart Navigation
+
+## Summary
+- **Fixed Infinite Rope Loop (Critical)**: Cleared `TemporaryTarget` after rope completion to prevent character from returning to the rope.
+- **Fixed Rope X-Alignment**: Increased engaging distance to 10px.
+- **Fixed Climb Down**: Correctly selects "Down" key at rope top.
+- **Improved Completion Detection**: Implemented "Wiggle Test" to confirm platform arrival.
+- **Fixed Movement Oscillation**: Implemented Dynamic Tap + Increased Tolerance.
+- **Fixed Rope Deadlock**: 
+    - Allowed small vertical errors (3px) in Movement Controller.
+    - **Synchronized Tolerance**: Updated [PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#18-1338) to accept **6.0px** error, matching Controller's loose tolerance (`sqrt(5^2+3^2) ≈ 5.8px`).
+- **Refined Logging**: Independent log files per session.
+- **Implemented Smart Navigation**: Added multi-floor BFS pathfinding.
+- **Fixed Wiggle Drift**: Tuned Wiggle Test parameters.
+
+## Changes
+
+### 1. Rope Logic & Deadlock Fixes
+**File**: [Core/PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- **Deadlock Cause 1 (Tolerance)**: Tracker limit was stricter than Controller. Fixed by setting min reach to **6.0px**.
+- **Deadlock Cause 2 (Stale Target)**: [ForceAdvanceTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1042-1078) didn't clear `TemporaryTarget`. Main loop stuck targeting the old rope node.
+- **Fix**: Added `CurrentPathState.TemporaryTarget = null` in [ForceAdvanceTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1042-1078).
+
+### 2. Move Oscillation Fix (Dynamic Tap)
+**File**: [Services/CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **Dynamic Tap**: 30ms (<5px) / 80ms (>5px).
+- **Tolerance**: Horizontal alignment tolerance increased to **5.0px**.
+
+### 3. Logging Improvements
+**File**: [Utils/Logger.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs) & [UI/MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- Changed to timestamped filenames: `artale-{yyyyMMdd-HHmmss}.log`.
+- Added critical debug log in Main Loop to trace [CurrentTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1032-1041) vs `NextWaypoint`.
+
+## Verification
+- **Rope Completion**: Character climbs up -> [ForceAdvanceTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1042-1078) called -> `TemporaryTarget` cleared -> Main Loop sees `Index 1` -> Moves to `Index 1`. Logic verified.

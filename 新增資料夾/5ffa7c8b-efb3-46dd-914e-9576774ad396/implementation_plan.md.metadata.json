@@ -1,0 +1,6 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary":  "Removed the unneeded AppConfig LoadMapFromFile update since MapEditor already safely translates all structures natively.",
+  "updatedAt":  "2026-02-28T07:58:12.343355Z",
+  "version":  "73"
+}

@@ -1,0 +1,6 @@
+### [Component] Precision Upgrade
+- 將 [INavigationStateMachine](file:///d:/Full_end/C%23/ArtaleAI/Services/INavigationStateMachine.cs#12-48), [NavigationStateMachine](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#14-172), [NavigationExecutor](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#30-351) 中的 `targetPos` 參數從 `SdPoint` 改為 `SdPointF` (或 `PointF`)，確保從 MapData 讀取座標時保留小數點精度，避免 169.6 與 171.0 (實為 171.9) 之間的判定落差。
+
+## 驗證計畫
+1. **精度日誌檢查**：確認 `[FSM] 開始執行` log 中的目標座標包含小數點（如 171.9 而非 171）。
+2. **下爬測試**：確認角色下爬抵達座標後，能因精度對齊成功結束動作。

@@ -1,0 +1,33 @@
+# 跳躍動作一致性優化方案 (Phase 2, 3 & 4)
+
+解決因「分段標記」(Break Node) 被忽略、路徑順序錯亂及鄰近觸發過度積極導致的動作遺失與震盪問題。
+
+## 根本原因分析
+
+1.  **Break Node 被忽略 (Phase 2)**：`PathPlanningTracker.ForceAdvanceTarget` 跳過 Break Node，導致錄製在該點的動作遺失。
+2.  **路徑順序錯亂 (Phase 3)**：[jump.json](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/MapData/jump.json) 中路徑點順序與物理順序不一致，導致中間的動作點被錯過。
+3.  **目標來回跳動 (Phase 3)**：全域掃描機制導致角色在兩個鄰近點之間不斷切換 (Ping-Pong)。
+4.  **動作被取消 (Phase 4)**：**[NEW]** 當角色正位於某個動作節點準備執行時（例如 Index 5 左跳），鄰近觸發機制偵測到下一個動作節點（Index 7）距離很近，誤判為「更佳目標」並強行切換，導致當前跳躍動作被取消，角色直接走過去並墜落。
+
+## 已完成變更
+
+### [核心] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- [x] **Phase 2**: 修改 [ForceAdvanceTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1478-1578) 以支援帶動作的 Break Node。
+- [x] **Phase 3 (Scan)**: 實現 [CheckNearbyActionNodes](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#859-938) 全域掃描 (Global Scan)。
+- [x] **Phase 3 (Anti-PingPong)**: 引入 `_triggeredActionIndices` 防止對同一節點重複觸發。
+- [x] **Phase 4 (Action Priority)**: **[NEW]** 在 [CheckNearbyActionNodes](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#859-938) 中增加檢查：若當前目標是動作節點且玩家已在範圍內，禁止鄰近觸發切換目標，確保當前動作優先執行。
+- [x] **Phase 4.5 (Jump Deadlock)**: **[NEW]** 在 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) 中放寬跳躍觸發距離從 1.5f 至 4.5f，解決 MovementController 無法達到極高精度 (dx~2.0) 導致的無限修正迴圈。
+- [x] **Phase 4.6 (Loop Fix)**: **[NEW]** 在 [ForceAdvanceTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1478-1578) 中，當成功完成一個動作節點並推進時，將該節點加入 `_triggeredActionIndices`。這防止因落地點靠近起跳點（如短距離來回跳）導致 Proximity Trigger 再次抓取舊節點而陷入無限迴圈。
+- [x] **Phase 4.7 (Jump Logic)**: **[NEW]** 優化 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) 的 [WaitForLanding](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#946-980)，加入「起跳偵測」邏輯。確保在判定落地前，角色已經離開地面（Y軸變化）或經過最小等待時間，防止在空中時將下一個目標的「回頭」指令輸入，導致角色跳躍動量被抵銷而「跳回來/掉落」。
+
+## 驗證計劃
+
+### 手動驗證
+- 使用 [jump.json](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/MapData/jump.json) 測試。
+- **重點驗證**：
+    - Index 5 (LeftJump)：角色應在該點停下並執行左跳，**不應**在中途突然切換目標到 Index 7。
+    - Index 6 (Break)：應被正確跳過（或作為動作執行）。
+    - Index 7 (RightJump)：跳躍落地後，應順利接續前往 Index 7。
+- **日誌確認**：
+    - 日誌中不應出現：在到達 Index 5 後緊接著出現 `[鄰近觸發] 自動修正目標：5 -> 7`。
+    - 應看到：`[路徑追蹤] 到達路徑點 5` -> 執行按鍵動作 -> `[路徑追蹤] 到達路徑點 7`。

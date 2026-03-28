@@ -1,0 +1,53 @@
+# 路徑編輯與錄製路徑整合方案
+
+## 目標
+讓路徑編輯可以編輯錄製路徑的節點，格式統一為 `[x, y, actionCode]`
+
+---
+
+## 修改清單
+
+### 1. MapEditor.HandleClick - 統一格式
+
+**現況**：儲存 `[x, y]`
+**修改**：儲存 `[x, y, actionCode]`
+
+```csharp
+// 路線標記模式
+var coord = new float[] { x, y, 0 };  // actionCode=0 (Idle)
+
+// 繩索標記模式（讓用戶選擇上/下）
+var coord = new float[] { x, y, 3 };  // actionCode=3 (ClimbUp)
+```
+
+---
+
+### 2. MapEditor.Render - 根據 actionCode 繪製顏色
+
+根據第三個值決定繪製顏色：
+- `0` = 藍色（普通路徑）
+- `1-2` = 綠色（左右移動）
+- `3-4` = 黃色（爬繩）
+- `22` = 紅色（邊界標記）
+
+---
+
+### 3. MapEditor.HandleDeleteAction - 支援刪除 3 值格式
+
+確保刪除功能能處理 `[x, y, code]` 格式
+
+---
+
+### 4. 載入錄製路徑到編輯器
+
+在路徑編輯分頁載入 JSON 時：
+- WaypointPaths 顯示為可編輯的節點
+- 可點擊刪除、可新增節點
+
+---
+
+## 實作優先順序
+1. [x] 格式統一（HandleClick 加入 actionCode）
+2. [ ] Render 根據 actionCode 顯示顏色
+3. [ ] 載入已錄製的路徑並顯示
+4. [ ] 刪除功能支援新格式

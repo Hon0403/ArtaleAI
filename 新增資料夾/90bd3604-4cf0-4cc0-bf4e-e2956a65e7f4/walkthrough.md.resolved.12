@@ -1,0 +1,23 @@
+# Fix Rope X-Alignment Logic
+
+## Changes
+Modified [UI/MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) to handle rope approaches more safely.
+
+### [UI/MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- Increased the distance threshold for switching from generic "Move To" behavior to specialized "Climb Rope" behavior from **2.0px** to **10.0px**.
+- This change prevents the character from overshooting the rope using generic movement (which has higher speed/inertia) and allows the dedicated `RopeAlignmentController` to take over earlier for precise, tapped alignment.
+
+```csharp
+// Before
+if (distanceToRopeX > 2.0f) { ... MoveToTargetAsync(..., 2.0f); }
+
+// After
+if (distanceToRopeX > 10.0f) { ... MoveToTargetAsync(..., 10.0f); }
+```
+
+## Verification
+- **Scenario**: Character moving towards a rope at X=100 from X=150.
+- **Previous Behavior**: Character runs (MoveTo) until X=102. If inertia carries it to X=98, it corrects back. Oscillations or falls could occur. Precise alignment only triggered if it miraculously stopped between 98.5 and 101.5.
+- **New Behavior**: Character runs (MoveTo) until X=110. It stops (or hands off). Then [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#631-834) starts. It detects distance=10px (>1.5px), so it calls `AlignToRopeAsync`. This function uses precise key taps to nudge user to X=100 +/- 1.5px, then climbs.
+
+This should eliminate the "not checking X alignment" issue by enforcing a dedicated check and alignment phase.

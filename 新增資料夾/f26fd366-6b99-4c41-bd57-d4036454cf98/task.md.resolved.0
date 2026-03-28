@@ -1,0 +1,17 @@
+# PathPlanningTracker 重構任務
+
+## 高優先 (穩定性)
+- [ ] 修復 `_isTracking` 多執行緒問題 (加 volatile)
+- [ ] 修復 `CurrentPathState` 競爭條件 (使用區域快照)
+
+## 中優先 (可維護性)
+- [ ] 統一魔數至常數區塊
+- [ ] 拆分 [SelectSafeRandomTarget()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#277-348) 為 3 個子方法
+
+## 低優先 (程式碼品質)
+- [ ] 修正 Log 等級 (Error → Warning)
+- [ ] 標記未使用參數 ([Obsolete])
+
+## 驗證
+- [ ] 編譯成功
+- [ ] 功能測試通過

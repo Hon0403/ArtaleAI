@@ -1,0 +1,22 @@
+# 按鍵執行路徑系統 任務清單
+
+## ✅ 所有功能完成
+
+### 已完成
+- [x] PathNode 加入 Keys 和 PathActionType
+- [x] 載入時解析 action 碼為按鍵
+- [x] 執行時根據 PathNode.Action 決定動作
+- [x] 自動尋找附近爬繩點（當 Y 差距大）
+- [x] **繩索雙向支援**（只錄製單向即可雙向使用）
+
+### 繩索雙向邏輯
+```
+錄製：只爬上繩索A（ClimbUp）
+執行：需要爬下繩索A
+  ↓
+FindNearbyClimbPoint 找到 ClimbUp 點
+  ↓
+創建新 PathNode，設定 Keys=["down"]
+  ↓
+執行下爬！
+```

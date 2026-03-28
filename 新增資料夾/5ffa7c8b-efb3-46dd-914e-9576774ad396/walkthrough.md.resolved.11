@@ -1,0 +1,40 @@
+# 完成說明 - 純邊驅動動作架構
+
+## 變更摘要
+動作執行邏輯已從「讀取節點動作」改為「讀取邊 (連結) 的動作」。
+
+## 變更的檔案
+
+### PathPlanningTracker.cs
+- 新增 `_currentNavigationEdge` 欄位
+- 新增 `CurrentNavigationEdge` 公開屬性
+- [SelectNextTarget()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1384-1729) 現在會查詢並設定當前導航邊
+- 移除舊的「節點動作注入」邏輯
+
+### MainForm.cs
+- 新增 `using ArtaleAI.Core.Domain.Navigation`
+- 動作讀取改為：`Tracker.CurrentNavigationEdge.ActionType`
+- 將 `NavigationActionType` 轉換為 `PathActionType` 供既有邏輯使用
+
+## Verification Results
+### Static Rope Injection
+- **Build Status**: Success. Fixed compilation errors regarding `PathActionType`.
+- **Logic Verification**:
+    - [InjectRopeNodes](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#554-642) successfully integrated.
+    - Uses `Keys=["up"]` to trigger [ClimbUp](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#2118-2142) action correctly.
+    - Uses `Keys=[]` (Empty) for rope exit node to default to `Idle`, allowing next waypoint to dictate movement.
+- **Next Steps**: User to run the application and verify physical movement.
+
+## 新架構運作方式
+
+```
+3. 存入 _currentNavigationEdge
+4. MainForm 讀取 CurrentNavigationEdge.ActionType 執行動作
+```
+
+## 驗證結果
+- ✅ 編譯成功 (0 錯誤)
+- ⚠️ 需要手動測試跳躍執行
+
+## 下一步
+請啟動程式，在 MapEditor 中畫一條 **跳躍連結** (例如從右平台到左平台)，驗證角色是否能正確執行跳躍。

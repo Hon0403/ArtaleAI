@@ -1,0 +1,77 @@
+# 掉落恢復功能設計 v2
+
+## 核心概念：錄製時加入平台資訊
+
+在錄製路徑時，每個路徑點自動記錄所屬的**平台層級**，形成「平台感知」的路徑資料。
+
+```
+┌────────────────────────────────────────┐
+│  路徑點 #5: (150, 80)  Platform=3      │ ← 3F
+│       ║                                │
+│  路徑點 #3: (120, 130) Platform=2      │ ← 2F
+│       ║                                │
+│  路徑點 #1: (100, 180) Platform=1      │ ← 1F
+└────────────────────────────────────────┘
+```
+
+---
+
+## 實作方案
+
+### 1. 擴充 PathNode 類別
+
+```csharp
+public class PathNode
+{
+    // ...現有屬性...
+    
+    /// <summary>所屬平台層級 (1=最低層, 2, 3...)</summary>
+    public int PlatformLevel { get; set; } = 0;
+    
+    /// <summary>此平台的 Y 軸範圍上限</summary>
+    public float PlatformTopY { get; set; }
+    
+    /// <summary>此平台的 Y 軸範圍下限</summary>
+    public float PlatformBottomY { get; set; }
+}
+```
+
+### 2. 錄製時自動偵測平台切換
+
+在 `RouteRecorderService` 中：
+- 當 Y 軸大幅變化（爬繩/掉落）時，`PlatformLevel++` 或 `--`
+- 記錄每個平台的 Y 軸範圍
+
+### 3. 執行時的掉落偵測
+
+```csharp
+// 取得目前目標點的平台層級
+int targetPlatform = _currentTarget.PlatformLevel;
+
+// 取得玩家位置對應的平台層級（從 Y 座標判斷）
+int currentPlatform = GetPlatformLevelFromY(playerPos.Y);
+
+// 如果玩家平台 < 目標平台 = 掉落了！
+if (currentPlatform < targetPlatform)
+{
+    StartFallRecovery(currentPlatform, targetPlatform);
+}
+```
+
+---
+
+## 修改檔案
+
+| 檔案 | 修改 |
+|------|------|
+| [PathNode.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs) | 新增 `PlatformLevel`, `PlatformTopY`, `PlatformBottomY` |
+| [RouteRecorderService.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/RouteRecorderService.cs) | 錄製時自動填入平台資訊 |
+| [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) | 新增 `GetPlatformLevelFromY()` |
+| [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) | 新增掉落恢復邏輯 |
+
+---
+
+## 優點
+- ✅ 基於錄製的真實路徑，不需要猜測
+- ✅ 精確知道每個平台的 Y 範圍
+- ✅ 可以計算目標在幾樓、玩家在幾樓

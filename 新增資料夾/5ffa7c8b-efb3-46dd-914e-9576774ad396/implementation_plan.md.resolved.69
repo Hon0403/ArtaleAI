@@ -1,0 +1,296 @@
+# 重構計畫 Route B：徹底刪除舊版導航系統
+
+> [!IMPORTANT]
+> **策略：路線 B（改 JSON 格式 + 刪光舊系統）**
+> 新的 JSON 直接儲存 NavigationGraph（Nodes + Edges），不再經過 PathNode 中間層。
+> 為了不讓現有地圖靜默失效，將引入 `LegacyMapMigrator` 自動升級舊檔，並在 MapEditor 保留內部 index 狀態與新格式的轉換。
+
+## 當前數據流（Before）
+
+```mermaid
+graph LR
+    JSON["JSON 檔案<br/>WaypointPaths + Connections"] -->|AppConfig.LoadMapFromFile| MD[MapData DTO]
+    MD -->|LoadMap| SPA[SetPlannedPathWithActions]
+    SPA -->|"建立 List&lt;PathNode&gt;"| PN["_pathNodes<br/>(舊系統)"]
+    PN -->|BuildNavigationGraph| NG["NavigationGraph<br/>(新系統)"]
+    NG -->|A* FindPath| AI[AI 導航]
+```
+
+## 目標數據流（After）
+
+```mermaid
+graph LR
+    JSON["JSON 檔案<br/>Nodes + Edges + Ropes"] -->|AppConfig.LoadMapFromFile| MD[MapData DTO v2]
+    MD -->|LoadMap| NG["NavigationGraph<br/>(唯一系統)"]
+    NG -->|A* FindPath| AI[AI 導航]
+```
+
+## 預估影響
+
+| 指標 | Before | After |
+|:---|:---|:---|
+| [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) | ~1390 行 (60KB) | **~700 行 (~30KB)** |
+| [PathNode.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs) | ~197 行 | **刪除整個檔案** |
+| [SmartRopeNavigator.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/SmartRopeNavigator.cs) | ~150 行 | **刪除整個檔案** |
+| [BuildNavigationGraph()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#812-970) | ~170 行 | **刪除** |
+| [SetPlannedPathWithActions()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#402-452) | ~50 行 | **刪除** |
+| 可刪減總行數 | — | **~700+ 行** |
+
+---
+
+## Phase 1：更新 MapData DTO（新 JSON 格式）
+
+新增直接儲存導航圖的屬性 [Nodes](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs#120-121) 與 [Edges](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#274-342)。
+> ⚠️ **保留 `WaypointPaths` 與 `Connections`** 供舊檔反序列化以及 MapEditor 內部暫存使用。
+
+```csharp
+public class MapData
+{
+    // ===== 核心導航資料 (Route B) =====
+    /// <summary>導航節點列表</summary>
+    public List<NavNodeData> Nodes { get; set; } = new();
+    
+    /// <summary>導航邊列表</summary>
+    public List<NavEdgeData> Edges { get; set; } = new();
+
+    // ===== 舊檔反序列化 / MapEditor 內部狀態 =====
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<float[]>? WaypointPaths { get; set; }
+    
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<int[]>? Connections { get; set; }
+
+    // ===== 附加環境資料 =====
+    public List<float[]> SafeZones { get; set; } = new();
+    public List<float[]> Ropes { get; set; } = new();
+    public List<float[]> BoundaryMarkers { get; set; } = new();
+}
+// NavNodeData 與 NavEdgeData 相同...
+```
+
+/// <summary>節點序列化 DTO</summary>
+public class NavNodeData
+{
+    public string Id { get; set; } = "";
+    public float X { get; set; }
+    public float Y { get; set; }
+    public string Type { get; set; } = "Platform"; // Platform, Rope
+}
+
+/// <summary>邊序列化 DTO</summary>
+public class NavEdgeData
+{
+    public string From { get; set; } = "";
+    public string To { get; set; } = "";
+    public string Action { get; set; } = "Walk"; // Walk, JumpLeft, JumpRight, ClimbUp, ClimbDown
+    public float Cost { get; set; } = 1.0f;
+    public List<string>? InputSequence { get; set; }
+}
+```
+
+---
+
+## Phase 2：AppConfig + 遷移工具 (原 Phase 5)
+
+> [!NOTE]
+> 必須先建立 `LegacyMapMigrator`，後續的 Phase 3 (MapEditor) 才能引用其靜態轉換方法，否則會 CS0246。
+
+#### [ADD] [LegacyMapMigrator.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/LegacyMapMigrator.cs)
+- 讀舊格式 JSON (`WaypointPaths` 與 `Connections`) → 轉換為 `Nodes`/`Edges` 並回傳新 `MapData`
+- 轉換 `Nodes` 時需判定 `Type`：
+  - `var actionCode = wp.Length > 2 ? (int)wp[2] : 0;`
+  - `Type = (actionCode == 11 || actionCode == 12) ? "Rope" : "Platform"`
+- **提供靜態轉換方法供 MapEditor 使用：**
+  - `public static string ActionCodeToString(int actionCode)`
+  - `public static List<string> ActionCodeToInputSequence(int actionCode)`
+  - `public static List<string> ActionStringToInputSequence(string action)` (供雙向邊反向使用)
+- **內建邊成本 (Cost) 計算邏輯：**
+  - 不依賴 `PathPlanningTracker` 以避免循環依賴：
+```csharp
+private static float GetEdgeCost(string action, float fromX, float fromY, float toX, float toY) => action switch
+{
+    "Walk"      => MathF.Sqrt(MathF.Pow(toX - fromX, 2) + MathF.Pow(toY - fromY, 2)),
+    "ClimbUp"   => 5.0f,
+    "ClimbDown" => 3.0f,
+    "JumpLeft"  or "JumpRight" => 8.0f,
+    "JumpDown"  => 2.0f,
+    _           => 6.0f
+};
+```
+- **內建邊成本 (Cost) 計算邏輯：**
+  - 不依賴 `PathPlanningTracker` 的 `CalculateEdgeCost` 以避免循環依賴：
+```csharp
+private static float GetEdgeCost(string action, float fromX, float fromY, float toX, float toY) => action switch
+{
+    "Walk"      => MathF.Sqrt(MathF.Pow(toX - fromX, 2) + MathF.Pow(toY - fromY, 2)),
+    "ClimbUp"   => 5.0f,
+    "ClimbDown" => 3.0f,
+    "JumpLeft"  or "JumpRight" => 8.0f,
+    "JumpDown"  => 2.0f,
+    _           => 6.0f
+};
+```
+
+#### [MODIFY] [AppConfig.cs](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs)
+
+**修改 `LoadMapFromFile()`：**
+- 讀圖後檢查 `if (mapData.Nodes.Count == 0 && mapData.WaypointPaths?.Count > 0)`
+- 若條件成立，自動呼叫 `LegacyMapMigrator.Migrate()` 完成升級。
+
+**修改 `SaveMapToFile()`：**
+- 建立乾淨的序列化副本，避免污染 MapEditor 內部參照：
+
+```csharp
+public void SaveMapToFile(MapData mapData, string filePath)
+{
+    var serializeTarget = new MapData
+    {
+        Nodes           = mapData.Nodes,
+        Edges           = mapData.Edges,
+        Ropes           = mapData.Ropes,
+        SafeZones       = mapData.SafeZones,
+        BoundaryMarkers = mapData.BoundaryMarkers,
+        WaypointPaths   = null,  // 明確不寫入
+        Connections     = null
+    };
+    var json = JsonSerializer.Serialize(serializeTarget, _jsonOptions);
+    File.WriteAllText(filePath, json);
+}
+```
+
+---
+
+## Phase 3：PathPlanningTracker 載入邏輯重構 (原 Phase 2)
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+
+**修改方法：`LoadMap(MapData)`**
+- 解析 `mapData.Nodes` 與 `mapData.Edges`，直接建構並指派給 `_navGraph`
+- 不再處理任何轉換邏輯
+
+**刪除欄位（舊系統全部）：**
+- `_pathNodes` (List\<PathNode\>)
+- `_currentTarget` (PathNode?)
+- `_currentPathIndex`
+- `_ropeNavigator` (SmartRopeNavigator)
+- `_triggeredActionIndices` (HashSet)
+- `_hasInitializedTarget`
+- `_previousPosition`
+
+**刪除方法：**
+- `SetPlannedPath(List<SdPoint>)` — 純座標版
+- `SetPlannedPathWithActions()` — PathNode 建構器
+- `BuildNavigationGraph()` — PathNode → NavigationGraph 轉換
+- `ActionCodeToKeys()` — 舊 actionCode 轉換（Edge 已內建 InputSequence）
+- `GetNodePriorities()` — 舊版熱力圖
+- `FindClosestPathNodeIndex()` — 舊版最近點搜尋
+- `InitializePathState()` — 重寫為接受 NavigationGraph 的版本
+
+**修正方法：**
+- `SetActiveEdge()` — 移除 `_currentPathIndex` 和 `_pathNodes[legacyIndex]` 引用
+- `UpdatePathState()`（無參數版）— `_currentPathIndex` → `_currentEdgeIndex`
+- `ForceAdvanceTarget()` — 移除 `_currentTarget.MarkVisited()`
+- `Dispose()` — 移除 `_triggeredActionIndices.Clear()`
+- 建構子 — 移除 `_ropeNavigator = new SmartRopeNavigator();`
+
+---
+
+## Phase 4：MapEditor 儲存邏輯更新 (原 Phase 3)
+
+#### [MODIFY] [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)
+
+**修改 `LoadMapData()` 確保內部狀態非 null：**
+- 由於 Phase 1 將欄位改為 nullable，為了避免編輯器（尤其是 Link 模式）報錯，載入時強制初始化：
+
+```csharp
+public void LoadMapData(MapData data)
+{
+    _currentMapData = data ?? new MapData();
+    // 確保編輯器內部 List 永遠非 null
+    _currentMapData.WaypointPaths ??= new List<float[]>();
+    _currentMapData.Connections   ??= new List<int[]>();
+}
+```
+
+```csharp
+public MapData GetCurrentMapData()
+{
+    // 新格式：已有 Nodes 資料，直接回傳，不走 Migrate
+    if (_currentMapData.Nodes != null && _currentMapData.Nodes.Count > 0)
+    {
+        return new MapData
+        {
+            Nodes           = _currentMapData.Nodes,
+            Edges           = _currentMapData.Edges,
+            Ropes           = _currentMapData.Ropes,
+            SafeZones       = _currentMapData.SafeZones,
+            BoundaryMarkers = _currentMapData.BoundaryMarkers
+            // WaypointPaths/Connections 刻意不帶出，SaveMapToFile 會排除
+        };
+    }
+
+    // 建立一個包含當前編輯器狀態的暫存物件
+    var tempMapData = new MapData
+    {
+        WaypointPaths   = _currentMapData.WaypointPaths,
+        Connections     = _currentMapData.Connections,
+        Ropes           = _currentMapData.Ropes,
+        SafeZones       = _currentMapData.SafeZones,
+        BoundaryMarkers = _currentMapData.BoundaryMarkers
+    };
+
+    // 舊格式：透過 LegacyMapMigrator 轉換
+    var result = LegacyMapMigrator.Migrate(tempMapData);
+    
+    // 轉換完後，保留原本的內部狀態給 MapEditor 繼續使用
+    result.WaypointPaths = _currentMapData.WaypointPaths;
+    result.Connections   = _currentMapData.Connections;
+    
+    return result;
+}
+```
+
+> [!NOTE]
+> 這樣 `LegacyMapMigrator` 成為唯一的轉換來源，日後維護只需改一個地方。
+
+---
+
+## Phase 5：刪除廢棄檔案 & 更新下游消費者
+
+#### [ADD] [NavigationEnums.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationEnums.cs)
+- 將 `PathActionType` enum 從 [PathNode.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs) 搬移至此。
+- 命名空間設為 `ArtaleAI.Core.Domain.Navigation`。
+- 確保所有參照它的檔案（如 MapEditor/MainForm）更新 `using`。
+
+#### [DELETE] [PathNode.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs)
+- 將 `PathActionType` enum 搬移到新的或現有的 `NavigationEnums.cs` 檔案（由於 [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#130-141) 和 [MapEditor](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#26-34) 有直接引用，不可刪除）。
+- 整個檔案刪除（包含 [PathNode](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs#26-195) class）。
+
+#### [DELETE] [SmartRopeNavigator.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/SmartRopeNavigator.cs)
+
+#### [MODIFY] [PathPlanningManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs)
+- 刪除 [GetNodePriorities()](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs#200-208)
+- 更新 [LoadMap](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#369-385) 相關轉發方法
+
+#### [MODIFY] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- 移除 [GetNodePriorities()](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs#200-208) 呼叫 + `n.IsBlacklisted` 引用
+
+#### [MODIFY] [MinimapViewer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs)
+- `GetPriorityColor()` 簽名移除 `isBlacklisted` 參數
+- 更新呼叫端
+
+#### [MODIFY] [PathVisualizationModels.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Visualization/PathVisualizationModels.cs)
+- 移除 `IsBlacklisted` 屬性及建構子參數
+
+---
+
+## Phase 6：建置與驗證
+
+### Automated Tests
+- `dotnet build` 編譯成功，0 個 CS error
+
+### Manual Verification
+1. 使用手動遷移後的 JSON 檔案載入，確認能夠正常讀取導航圖
+2. 存檔後重新載入 → 確認**新格式** JSON 結構寫入正確
+3. 繩索爬行路徑仍可正常規劃
+4. 編輯器新增/刪除節點 → 存檔 → 載入，確認資料完整性

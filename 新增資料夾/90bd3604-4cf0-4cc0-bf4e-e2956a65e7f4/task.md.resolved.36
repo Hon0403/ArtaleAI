@@ -1,0 +1,22 @@
+# ArtaleAI Improvements
+
+## Active Tasks
+- [ ] Monitor Smart Navigation Stability
+
+## Completed Tasks
+- [x] Fix Movement Oscillation (Dynamic Tap Duration)
+    - [x] Implement Dynamic Tap (30ms for <5px, 80ms for >5px) in [PerformGradualMoveAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#473-508)
+- [x] Fix Wiggle Test Drift (Increased Duration, Drift Guard)
+- [x] Implement Smart Rope Navigation (Multi-Floor Pathfinding)
+    - [x] Create [Services/SmartRopeNavigator.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/SmartRopeNavigator.cs)
+    - [x] Integrate BFS logic into `PathPlanningTracker.SelectNextTarget`
+- [x] Fix Rope Key Stuck Issue
+    - [x] Release UP/DOWN keys in `finally` block of [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#652-895)
+- [x] Fix Movement Oscillation
+    - [x] Correct [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#200-329) distance calculation (Euclidean -> Horizontal)
+    - [x] Add coordinates to movement logs
+- [x] Implement Active Rope Exit Check (Wiggle Test)
+- [x] Adjust Movement Parameters (Increased Tap Duration/Interval)
+- [x] Fix Rope Climbing Log Spam
+- [x] Fix Climb Down Logic (Auto-select Down key)
+- [x] Fix Rope X-Alignment Precision

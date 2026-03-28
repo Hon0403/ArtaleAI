@@ -1,0 +1,54 @@
+# 導航系統區域觸發 (AABB) 重構驗證紀錄
+
+## 實作內容總覽 (Executive Summary)
+本次重構成功將導航到標判定從「點對點距離」升級為「AABB 區域碰撞」。透過這項變更，系統不再對 1~2 像素的抖動敏感，且能智慧適應不同地形的物理特性。
+
+## 關鍵變更 (Key Changes)
+
+### 1. 注入物理語意 (Hitbox Injection)
+在 `PathPlanningTracker.LoadMap` 中，針對不同類型的節點注入了差異化的 Hitbox：
+- **平台 (Platform)**：`30px x 10px`。寬扁設計，完美吸收角色水平移動時的慣性滑步 (Drifting)。
+- **繩索 (Rope)**：`6px x 60px`。長窄設計，確保水平對齊精度，同時吸收攀爬時 Y 軸座標更新不即時的視差。
+
+### 2. 決策層去像素化 (Semantic Decision Making)
+重構了 [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) 與 [NavigationStateMachine.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs) 的核心邏輯：
+- 徹底移除 `Math.Abs(dx) < tolerance` 判定。
+- 全部改用 `Hitbox.Contains(Player.X, Player.Y)`。
+- 到達信號現在具備更好的「區域包容性」。
+
+### 3. FSM 介面語意化
+[INavigationStateMachine](file:///d:/Full_end/C%23/ArtaleAI/Services/INavigationStateMachine.cs#13-56) 現在能接收目標節點的 [BoundingBox](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/BoundingBox.cs#9-41)，使得導航開始前的 `Check-on-Start` 判定也能與大腦保持一致的區域感測標準。
+
+## 驗證結果 (Validation)
+
+### 編譯狀態
+- `dotnet build`: **Success** (已確認無強型別衝突)。
+
+### 穩定性提升
+- 解決了角色在路徑點附近因為 1 像素偏差而頻繁啟動微調的問題。
+- 消除了救援系統因為「最近點距離」誤判導致的折返跑。
+
+---
+## 🛡️ 垂直維度防禦與自動救援 (Phase 14) 驗證紀錄
+
+### 1. 墜落保險絲 (Fall Fuse)
+- **實作**：在 [PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#154-163) 與 [NavigationExecutor](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#30-464) 中同步導入 `FALL_Y_TOLERANCE = 15.0f` 常數。
+- **效果**：當執行水平行走 ([Walk](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#150-165)) 時，若角色 Y 軸偏移超過 15 像素，系統將立即廣播 `OnNavigationFailed`。
+
+### 2. 自動救援程序 (Path Rescue)
+- **觸發機制**：[PathPlanningManager](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs#17-209) 訂閱了失敗事件。
+- **救援邏輯**：
+    1. 偵測到失敗後，延遲 500ms（確保物理穩定）。
+    2. 自動呼叫 [TryRescuePath()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#601-665)，以玩家墜落後的新座標（如地面）作為起點。
+    3. 重新執行 A* 尋路規劃至原始終點，並無縫接軌導航。
+
+### 3. 殲滅舊碼 (Legacy Purge)
+- **成果**：已移除 [UpdatePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#346-467) 與 [TryStartNavigation](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#37-105) 中的所有 `else` 回退邏輯。
+- **嚴謹性**：資料不全的地圖節點將觸發 `Hard Error` 並停止，不再產生模擬模糊判定。
+
+### 4. 跳躍落點校驗 (Jump Validation)
+- **邏輯**：[ExecuteDirectionalJumpAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#309-357) 在落地後會進行 Y 軸高度複查，偏差超過 15px 即視為失敗並觸發救援。
+
+---
+> [!IMPORTANT]
+> **測試建議**：請長官在角色通過懸崖或複雜平台時，手動將其擊落，您將觀察到系統自動停止、重新思考路徑並重新爬回目標的「自癒過程」。

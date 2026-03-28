@@ -1,0 +1,36 @@
+# Walkthrough - Fix for Jump Execution at Node 11
+
+## User Objective
+Ensure directional jumps (specifically Left Jump at Node 11) are executed correctly instead of being treated as vertical jumps or skipped entirely.
+
+## Root Cause Analysis
+1.  **Premature Target Advancement**: When the character reached Node 11 (the jump start point), the system immediately advanced the target to Node 13 (the landing point) before executing the jump action.
+2.  **Action Clearing Bug**: The [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1247-1637) method aggressively cleared the [Keys](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#466-491) (actions) of the target node when traversing a "Walk" edge (Node 10 -> Node 11).
+    -   Although Node 11 was correctly identified as a "LeftJump" point during graph construction (Startup), the runtime navigation logic overwrote this information with "Idle" because the incoming edge from Node 10 was a standard Walk.
+3.  **Result**: [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#129-140) saw Node 11 as a normal walking waypoint, so it simply walked towards Node 13.
+
+## Implemented Fixes
+
+### 1. Smart Action Injection (Graph Build Time)
+Modified [BuildNavigationGraph](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#602-747) in [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) to explicitly inject "Smart Jump Actions" into the *Source Node*.
+-   If usage of a node implies a specific jump (e.g., Jumping Left from Node 11 to Node 13), Node 11 is now permanently marked with `LeftJump` action properties.
+
+### 2. Prevent Action Overwriting (Runtime)
+Modified [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1247-1637) in [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs):
+-   **Old Logic**: `if (edge.Action == Walk) target.Keys.Clear()`
+-   **New Logic**: `if (edge.Action == Walk && !target.HasJumpAction) target.Keys.Clear()`
+-   This ensures that if a node has an intrinsic Jump action (like Node 11), it is **preserved** even when approaching it via a Walk edge.
+
+### 3. Compilation Fixes
+-   Resolved multiple compilation errors related to [ResolveSmartAction](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#728-776) method duplication and type mismatches.
+-   Unified the logic to use the robust [ResolveSmartAction](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#728-776) method that returns `NavigationActionType`.
+
+## Verification Steps
+1.  **Build Success**: The project compiles successfully with 0 errors.
+2.  **Runtime Validation**:
+    -   Observe the log when reaching Node 11. It should now say `[路徑追蹤] 跳躍動作等待執行...`.
+    -   The character should pause at Node 11, execute the jump sequence (Left+Alt), and *then* advance to Node 13.
+
+## Next Steps
+-   Run the bot and verify the jump at Node 11.
+-   If the jump is executed but missed (distance), adjust `WaitMs` or `Smart Jump` thresholds.

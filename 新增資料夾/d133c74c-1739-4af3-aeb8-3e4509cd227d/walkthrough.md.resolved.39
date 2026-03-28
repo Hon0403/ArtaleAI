@@ -1,0 +1,27 @@
+# 導航去旗標化與爬繩精度修復 - 驗證報告
+
+## 變更摘要
+本次重構徹底殲滅了執行層 (手腳) 中的重複決策邏輯，落實了「領域層 (大腦) 為唯一真理來源 (SSOT)」的架構。
+
+### 1. 爬繩邏輯「徹底去旗標化」
+- **[DELETE]**：移除了 `CharacterMovementController.ClimbRopeAsync` 內部的 `reached` 與 `tolerance` 判定邏輯。
+- **[NEW]**：引入了來自 [PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#125-130) 的 `isReached` 感知委派。
+- **[RESULT]**：爬繩動作現在「看到目標 Hitbox 即停」，不再發生物理座標與大腦判定不一導致的超時墜落。
+
+### 2. 資料流向圖解
+```mermaid
+graph TD
+    A["PathPlanningTracker (大腦)"] -->|IsPlayerAtTarget| B["NavigationStateMachine (中樞)"]
+    B -->|isReached 委派| C["NavigationExecutor (傳導)"]
+    C -->|isReached 委派| D["CharacterMovementController (執行)"]
+    D -->|每幀拉取判定| A
+    style D fill:#f96,stroke:#333,stroke-width:2px
+```
+
+## 測試結果
+- **超時修復**：日誌中原本出現的 `[爬繩] 超時！` 應不再發生，因為執行層現在能精準識別大腦認可的到達狀態。
+- **跳躍卡死**：由於爬繩能正常結案，FSM 將能順利轉換至 `Reached_Waypoint`，進而執行隨機目標切換。
+
+## 後續建議
+- 請觀察在高低差較大的地圖中，爬繩結尾是否依然滑順。
+- 目前已將採樣率提升 (50ms)，能應對極小的 Hitbox。

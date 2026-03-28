@@ -1,0 +1,30 @@
+# Fix Rope Climbing Logic & Smart Navigation
+
+## Summary
+- **Fixed Infinite Rope Loop (Critical)**: Cleared `TemporaryTarget` after rope completion to prevent character from returning to the rope.
+- **Fixed Tolerance Deadlock (Critical)**: Synchronized "Arrival" definitions between Movement Controller (Box Logic) and Path Tracker (Circle Logic).
+- **Fixed Downward Navigation**: Adjusted rope detection logic to accurately identify ropes for climbing down (Tolerance 2.5px).
+- **Improvements**: Dynamic Tap for precision, Wiggle Test for stuck detection, Smart BFS Navigation for multi-floor paths.
+
+## Changes
+
+### 1. Rope Logic & Deadlock Fixes
+**File**: [Core/PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- **Fix 1 (Stale Target)**: Added `CurrentPathState.TemporaryTarget = null` in [ForceAdvanceTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1043-1079). This prevents the "Ghost Rope" issue.
+- **Fix 2 (Tolerance Sync)**: Increased [GetDynamicReachDistance](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1260-1280) minimum to **6.0px**.
+- **Fix 3 (Downward Navigation)**: Tightened [FindNearbyRope](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#240-332) vertical tolerance to **2.5px** for downward detection, ensuring the character only attempts to climb down when properly positioned at the rope top.
+
+### 2. Move Oscillation Fix
+**File**: [Services/CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **Dynamic Tap**: Uses 30ms taps for small adjustments (<5px) and 80ms for normal moves.
+- **Movement Tolerance**: Alignment tolerance relaxed to **5.0px**.
+
+### 3. Logging & Debugging
+**File**: [Utils/Logger.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs)
+- **Logs**: Now using timestamped filenames `artale-{yyyyMMdd-HHmmss}.log`.
+
+## Verification checklist
+- [x] **Rope Approach**: Character aligns to rope (X error < 5px).
+- [x] **Climb Action**: Character climbs up/down successfully.
+- [x] **Post-Climb**: Character immediately targets the *next* waypoint.
+- [x] **Downward Navigation**: Character correctly identifies and uses ropes to go lower.

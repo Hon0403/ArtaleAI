@@ -1,0 +1,7 @@
+# 綠色遮罩模板匹配實作
+
+- [/] 探索現有的模板匹配實作 (`GameVisionCore.FindMonsters`) <!-- id: 0 -->
+- [ ] 建立綠色遮罩產生函數 <!-- id: 1 -->
+- [ ] 修改模板載入邏輯，同時產生對應的遮罩 <!-- id: 2 -->
+- [ ] 修改 [FindMonsters](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#413-489) 方法使用遮罩進行匹配 <!-- id: 3 -->
+- [ ] 驗證編譯和功能 <!-- id: 4 -->

@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary": "Implementation plan for restructuring the ArtaleAI project to better follow Clean Architecture. Includes splitting enums, moving helpers to Utils, and integrating path planning models into the Core navigation domain.",
+  "updatedAt": "2026-03-21T13:31:10.976343300Z"
+}

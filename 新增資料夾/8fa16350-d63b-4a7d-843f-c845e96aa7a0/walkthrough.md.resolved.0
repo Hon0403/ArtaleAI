@@ -1,0 +1,39 @@
+# 跳躍動作修復完成 🚀
+
+我們已經修復了角色在路徑規劃中「只走路不跳躍」的問題。
+
+## 變更內容
+
+在 [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) 的 [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1117-1362) 方法中，我們新增了動作優先級檢查。當導航系統（A* 或 繩索搜尋）試圖導向一個臨時目標時，如果原始路徑點包含 **跳躍動作**（如 `LeftJump` 或 `RightJump`），系統現在會優先保留該動作。
+
+### 代碼變更說明
+
+```diff
+             if (!ropeOverride)
+             {
+                 // 正常導航
+                 _currentPathIndex = nextIndex;
+                 _currentTarget = nextNode;
+             }
++            else
++            {
++                // 🔧 重要修復：如果原始目標節點有跳躍動作，應該保留
++                var originalAction = nextNode.Action;
++                if (originalAction == PathActionType.LeftJump || 
++                    originalAction == PathActionType.RightJump || 
++                    originalAction == PathActionType.Jump)
++                {
++                    // 恢復使用原始節點（保留跳躍動作）
++                    _currentPathIndex = nextIndex;
++                    _currentTarget = nextNode;
++                    Logger.Info($"[路徑規劃] 🚀 優先保留跳躍動作: {originalAction}");
++                }
++            }
+```
+
+## 測試建議
+
+1. 請確保已關閉舊有的 `ArtaleAI` 執行程序（之前的編譯因為程序佔用檔案而失敗）。
+2. 重新啟動專案並載入 [jump.json](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/MapData/jump.json)。
+3. 觀察角色在跨越平台間隙時，日誌是否出現 `[路徑規劃] 🚀 優先保留跳躍動作`。
+4. 角色現在應該會正確執行「方向鍵 + Alt」組合鍵來飛越間隙。

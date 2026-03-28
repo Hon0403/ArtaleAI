@@ -1,0 +1,29 @@
+# 跳躍動作一致性優化方案 (Phase 2)
+
+解決因「分段標記」(Break Node) 被忽略導致的組合鍵跳躍失效問題。
+
+## 根本原因分析
+
+1.  **Break Node 被忽略**：`PathPlanningTracker.ForceAdvanceTarget` 在推進目標時，會無條件跳過所有 `IsBreak` (座標 -1,-1) 的節點。
+2.  **動作遺失**：根據日誌分析，路徑中存在 `Index=6` 的 Break Node 被跳過。若使用者在此節點錄製了跳躍動作（例如在平台邊緣），該動作會隨之遺失。
+3.  **目標不可達**：跳過 Break Node 後，目標直接設為下一段路徑的起點（例如 Index 7）。若 Index 5 與 Index 7 之間存在間隙，角色會嘗試直接走過去並墜落。
+
+## 提議的變更
+
+### [核心] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- [修改] [ForceAdvanceTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1383-1428)：
+    - 在跳過 Break Node 的迴圈中增加檢查。
+    - 若發現 Break Node 包含按鍵動作 (`Keys.Count > 0`)：
+        - 停止跳過。
+        - 創建一個臨時節點 (`TemporaryTarget`)。
+        - **座標**：設為上一個有效節點的位置（即當前玩家位置/起跳點）。
+        - **動作**：繼承該 Break Node 的按鍵動作。
+        - 將此臨時節點設為 `_currentTarget` 並返回。
+    - 確保在執行完該臨時節點動作後，下次推進能正確到達 Index 7。
+
+## 驗證計劃
+
+### 手動驗證
+- 使用 [jump.json](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/MapData/jump.json) 測試（重現 Index 6 被跳過的情況）。
+- 確認日誌中顯示 `[路徑規劃] 執行 Break Node 動作: Index=6`。
+- 確認角色在平台邊緣（Index 5 結束處）正確執行跳躍，而非直接走下去。

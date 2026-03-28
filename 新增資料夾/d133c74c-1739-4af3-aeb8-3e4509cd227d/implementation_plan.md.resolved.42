@@ -1,0 +1,31 @@
+# 修復導航路徑點跳轉與旗標時序漏洞
+
+## 問題描述
+角色在導航過程中，經常在未到達終點時即切換到下一個目標。
+經日誌分析（[artale-20260314-233147.log](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/Logs/artale-20260314-233147.log)），確認存在兩個時序競爭漏洞：
+1. **FSM 旗標溢出**：`_isTargetReached` 旗標在輔助當前任務結束後，未被正確清除。導致下一個任務啟動時，`Check-on-Start` 誤以為是「預收信號」而直接跳過任務。
+2. **Tracker 旗標遺忘/覆蓋**：在 [UpdatePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#313-427) 中，`_isWaitingForAcknowledge = true` 位元於 [NotifyTargetReached()](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#186-199) 之後。由於通知會觸發同步的狀態變更回調（[OnFsmStateChanged](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#160-193)），這導致回調中的「重置為 false」動作會被隨後執行的「賦值為 true」給覆蓋掉，使系統進入永久等待狀態或產生重複通知。
+
+## 擬定變更
+
+### ArtaleAI.Services (執行層)
+
+#### [MODIFY] [NavigationStateMachine.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs)
+- 在 [InternalExecuteEdgeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#97-166) 中，當判斷任務成功並準備進入 `Reached_Waypoint` 狀態前，強制將 `_isTargetReached` 設為 `false`。
+- 這保證了用於結束「上一段路徑」的信號不會汙染「下一段路徑」。
+
+### ArtaleAI.Core (決策層)
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- 在 [UpdatePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#313-427) 中，將 `_isWaitingForAcknowledge = true;` 的賦值動作移至 `_fsm?.NotifyTargetReached();` 之前。
+- 這能防止回調函數中的重置邏輯被覆蓋，確保旗標狀態與實作進度完全同步。
+
+## 驗證計畫
+
+### 自動測試
+- 運行 `dotnet build` 確保無語法錯誤。
+
+### 手動驗證
+- 觀察日誌，確保 `Check-on-Start` 只有在物理座標真正達標時才觸發。
+- 驗證角色是否能完整走完每一段路徑，不再出現中途跳變。
+- 測試掉落救援後，是否能正確執行爬升動作。

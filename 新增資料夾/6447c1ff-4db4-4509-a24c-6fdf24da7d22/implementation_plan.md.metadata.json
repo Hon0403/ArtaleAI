@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary":  "Add re-entry protection to `LiveViewManager.OnDetectionTimer` using a boolean flag to prevent concurrent frame processing and eliminate rollback artifacts.",
+  "updatedAt":  "2025-12-26T16:19:53.278793100Z"
+}

@@ -1,0 +1,41 @@
+# Implementation Plan - Fix Rope Key Stuck & Movement Stiffness
+
+## Problem 1: Accidental Rope Grabbing (User Reported)
+The user observed the character grabbing a rope unintentionally after finishing a previous rope climb.
+**Cause**: [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#641-872) breaks out of the climbing loop when the target height is reached but **fails to release the climb key** (UP or DOWN). The key remains physically pressed. When the character subsequently moves Left/Right (to align for the next path), the held UP key causes it to grab any rope it passes.
+
+## Problem 2: Movement Stiffness
+The character fails to move short distances despite logging "Tap" actions.
+**Cause**: The default tap duration (80ms) is too short to initiate movement from a standstill.
+
+## Solution
+
+### 1. Release Climb Key
+Ensure the climb key is released upon exiting the [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#641-872) method, regardless of how it exits (success, breakout, or exception).
+
+### 2. Tune Movement Parameters
+Increase the "Tap" duration and interval to ensure robust movement.
+
+## Proposed Changes
+
+### Services/CharacterMovementController.cs
+
+#### [MODIFY] ClimbRopeAsync
+- Wrap the main loop in a `try...finally` block (or add explicit release after loop).
+- In `finally` block or after loop:
+  ```csharp
+  // 確保釋放爬繩按鍵
+  SendKeyInput(climbKey, true);
+  Logger.Debug($"[爬繩] 釋放按鍵: {GetKeyName(climbKey)}");
+  ```
+
+#### [MODIFY] MovementProfile.HorizontalMove
+- Update values:
+  ```csharp
+  TapPressDurationMs = 120, // 80 -> 120
+  TapIntervalMs = 50        // 20 -> 50
+  ```
+
+## Verification Plan
+- **Rope**: Verify logs show "[爬繩] 釋放按鍵: UP" after climbing. Character should walk past other ropes without grabbing them.
+- **Movement**: Verify logs show changing coordinates during "Tap" movements.

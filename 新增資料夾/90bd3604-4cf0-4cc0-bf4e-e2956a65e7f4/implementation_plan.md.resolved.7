@@ -1,0 +1,56 @@
+# 顏色基礎小地圖偵測 - 實作計畫
+
+## 目標
+移除對範本匹配的依賴，改用 **顏色特徵** (白色邊框) 和 **區域大小** 來偵測小地圖。
+
+## 參考來源
+`MapleStoryAutoLevelUp` 專案的 `get_minimap_loc_size` 函數實作方式：
+```python
+def get_minimap_loc_size(img_frame):
+    white = np.array([255, 255, 255])
+    mask_white = cv2.inRange(img_frame, white, white)
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask_white, connectivity=8)
+    
+    for i in range(1, num_labels):
+        x0, y0, rw, rh, area = stats[i]
+        if rw < 100 or rh < 100:
+            continue
+        # 驗證四邊都是 1px 白色邊框
+        if not (np.all(img_frame[y0, x0:x0+rw] == white) and ...):
+            continue
+        # 找到符合條件的區域
+        return x_minimap, y_minimap, w_minimap, h_minimap
+```
+
+## 演算法核心概念
+1.  **白色遮罩 (White Mask)**: 找出所有純白 (255, 255, 255) 像素。
+2.  **連通分量分析 (Connected Components)**: 將連續的白色區域視為一個「候選框」。
+3.  **邊框驗證**: 確認候選區域的上、下、左、右邊界都是連續的 1px 白線。
+4.  **尺寸過濾**: 排除過小的區域 (例如 < 100x100 像素)。
+
+---
+
+## 預計修改
+
+### 1. [MODIFY] [AppConfig.cs](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs)
+- 新增設定項：
+  - `UseColorBasedMinimapDetection` (bool): 啟用顏色偵測模式
+  - `MinimapFrameColorBgr` (string): 小地圖邊框顏色 (預設 "255,255,255")
+  - `MinMinimapWidth` / `MinMinimapHeight` (int): 最小有效尺寸
+
+### 2. [MODIFY] [GameVisionCore.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs)
+- 新增 `FindMinimapByColor(Mat fullFrameMat)` 方法：
+  - 建立白色遮罩 (`Cv2.InRange`)
+  - 執行連通分量分析 (`Cv2.ConnectedComponentsWithStats`)
+  - 驗證四邊白色邊界
+  - 計算內部區域 (非白色部分) 的 Bounding Box
+- 修改 [FindMinimapOnScreen](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#204-324) 方法：
+  - 新增 `if (config.UseColorBasedMinimapDetection)` 判斷
+  - 符合條件時呼叫 `FindMinimapByColor`
+
+---
+
+## 驗證計畫
+1.  **編譯測試**: 確保程式碼無語法錯誤。
+2.  **視覺測試**: 在即時畫面上繪製偵測到的邊框，確認位置正確。
+3.  **效能對比**: 比較顏色偵測 vs 範本匹配的執行時間。

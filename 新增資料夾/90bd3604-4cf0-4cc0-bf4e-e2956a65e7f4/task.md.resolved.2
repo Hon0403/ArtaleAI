@@ -1,0 +1,12 @@
+# Integration of Auto-Attack Logic
+
+- [x] Explore [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) to identify the main processing loop and UI control references <!-- id: 0 -->
+- [x] Explore [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs) to see if an Attack method exists or needs adding <!-- id: 1 -->
+- [x] Create Implementation Plan <!-- id: 2 -->
+- [x] Implement [PerformAttackAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#605-626) in [CharacterMovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#18-887) <!-- id: 3 -->
+- [/] Modify [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) main loop to integrate detection and attack logic <!-- id: 4 -->
+    - [ ] Check UI conditions ([cbo_LoadPathFile](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2250-2351), `cbo_DetectMode`, `cbo_MonsterTemplates`, [ckB_Start](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2101-2216)) <!-- id: 5 -->
+    - [ ] Perform template matching for monsters <!-- id: 6 -->
+    - [ ] Filter monsters by Detection Box and Attack Range Box <!-- id: 7 -->
+    - [ ] Execute attack sequence (Stop -> Attack -> Wait) <!-- id: 8 -->
+- [ ] Verify implementation with user <!-- id: 9 -->

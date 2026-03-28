@@ -1,0 +1,34 @@
+# 導航層殭屍代碼殲滅行動：任務完成報告
+
+## 變更摘要
+本次重構成功移除了 `NavigationExecutor` 中基於「通量速度假設」的 `CalculateDynamicTimeoutMs` 動態超時邏輯，並同步清理了底層 `CharacterMovementController` 的冗餘參數，徹底消除了誘導「導航振盪」與「非法救援路徑」的技術債。
+
+### 1. 核心邏輯殲滅
+在 `NavigationExecutor.cs` 中：
+- **[DELETE]** `CalculateDynamicTimeoutMs` 方法。
+- **[DELETE]** `DefaultWalkSpeed`, `DefaultClimbSpeed`, `BaseBufferMs` 等魔術常數。
+- **[REFACTORED]** 移除 `MoveToTargetWithCorrectionAsync` 中用於第二次微調的 `secondTimeout` 重計算區塊，回歸純粹的 Hitbox 狀態判定。
+
+### 2. 底層參數精簡
+在 `CharacterMovementController.cs` 中：
+- **[MODIFY]** `MoveToTargetAsync` 移除 `int timeoutMs` 參數。
+- **[MODIFY]** `ClimbRopeAsync` 移除 `int timeoutMs` 參數。
+- 註：雖然底層先前就已不再實質使用這兩個參數，但移除簽名確保了架構層級的潔癖。
+
+## 驗證結果
+
+### 編譯測試
+- **指令**: `dotnet build d:\Full_end\C#\ArtaleAI\ArtaleAI.csproj`
+- **結果**: `ArtaleAI 成功但有 59 個警告` (所有警告均與本次修改無關，主要為舊有 MainForm 組件未使用警告)。
+- **結論**: 方法簽名變更後的參照完整性已透過編譯器自動驗證。
+
+### 架構提升 (DIP 與 SSOT)
+- 導航任務現在完全依賴 `CancellationToken` (由大腦感知層控制其生命週期) 或 `isReached` (由物理 Hitbox 觸發) 進行熔斷。這確保了執行層在面對地形阻礙或延遲時，不會因為「超時」而突然跳轉至救援邏輯，極大提升了移動的平滑度。
+
+## 相關檔案
+- [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs)
+- [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+
+---
+> [!TIP]
+> **後續建議**：下一步可考慮將 `NavigationExecutor` 對 `CharacterMovementController` 的依賴抽換為介面 `IMovementController`，以達成完全的依賴反轉 (DIP)。

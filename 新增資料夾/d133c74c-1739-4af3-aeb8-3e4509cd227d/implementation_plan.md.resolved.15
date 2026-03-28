@@ -1,0 +1,31 @@
+# 水平移動：長短按雙軌策略實作計畫
+
+我們將廢除之前嘗試「動態修改容差」的補丁，改為在執行層通過「按鍵頻率控制」來解決物理動量問題。
+
+## 擬更動檔案
+
+### [MODIFY] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- 撤銷 `executionTolerance` 的動態計算。
+- 統一傳遞 `Config.ArrivalTolerance` 給 FSM。
+- > [!IMPORTANT]
+  > 這符合「大腦認準絕對容差」的原則。
+
+### [MODIFY] [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs)
+- 撤銷在對齊繩索時使用的 `LatencyInertiaCompensation`。
+- 統一傳遞 `AppConfig.Instance.ArrivalTolerance` 給移動控制器。
+
+### [MODIFY] [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **重構 [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#193-288) 核心迴圈**：
+    1. **單一脫離條件**：只有 `Math.Abs(dx) <= reachDistance` 才能結束。
+    2. **雙軌策略 (Dual-Track)**：
+        - **狂奔 (Dash)**：`dx > Compensation` -> 直接長按，追求速度。
+        - **脈衝 (Pulse)**：`dx <= Compensation` -> [Hold(30ms) -> Release -> Wait(50ms)](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#372-404)。透過小步挪動消除慣性誤差。
+    3. **物理保護**：記錄 `initialDirection`，若 `Sign(dx)` 改變則代表越過中線，強制停止。
+
+## 驗證計畫
+### 自動測試
+- 觀察 4.9px 的橋接 Edge，確保進入「脈衝微調」模式並精確停在 1px 內。
+- 觀察長距離平台移動，確保在最後 7px (Compensation) 時切換為脈衝模式進行煞車。
+
+### 手動驗證
+- 重新載入 [test.json](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/MapData/test.json) 並執行導航。

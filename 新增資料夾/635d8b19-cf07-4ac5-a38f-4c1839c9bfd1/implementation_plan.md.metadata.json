@@ -1,0 +1,6 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary":  "Analysis of the current codebase regarding State Machines, showing that it lacks formal State Machines and instead relies on boolean flags and if-else statements. Proposing a refactoring plan to introduce a proper State Machine architecture for CharacterMovementController and PathPlanningTracker.",
+  "updatedAt":  "2026-03-02T12:56:54.977043Z",
+  "version":  "1"
+}

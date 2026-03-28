@@ -1,0 +1,33 @@
+# 固定小地圖模式 (Fixed Minimap Mode)
+
+## 概述
+應您的要求，為了進一步追求極致效能並完全排除模板匹配的潛在不穩定因素，我們新增了「固定小地圖模式」。此模式假設小地圖總是固定在螢幕左上角 (或其他指定位置)，直接鎖定該區域，不再進行任何影像搜尋。
+
+## 實作細節
+
+### 1. 設定選項 ([AppConfig.cs](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs))
+- **UseFixedMinimapPosition**: `true` / `false` (預設為 `false`)。
+- **FixedMinimapWidth**: 固定模式下的寬度 (預設 250px)。
+- **FixedMinimapHeight**: 固定模式下的高度 (預設 150px)。
+
+### 2. 邏輯繞過 ([GameVisionCore.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs))
+- 在 [FindMinimapOnScreen](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#204-324) 方法開頭加入檢查：
+  ```csharp
+  if (config.UseFixedMinimapPosition)
+  {
+      return new Rectangle(0, 0, width, height);
+  }
+  ```
+- 啟用此模式後，小地圖定位消耗時間趨近於 **0 ms**。
+
+## 如何啟用
+請在 [config.yaml](file:///d:/Full_end/C%23/ArtaleAI/Data/config.yaml) 或設定檔中，將 `UseFixedMinimapPosition` 設定為 `true`。
+
+## 比較表
+
+| 模式 | 原本 (Template Matching) | 優化後 (Smart ROI) | 固定模式 (Fixed Mode) |
+| :--- | :--- | :--- | :--- |
+| **機制** | 全螢幕搜尋 | 區域搜尋 + 自動復原 | 固定座標 (0,0) |
+| **搜尋像素** | ~2,000,000 | ~40,000 | **0** |
+| **準確度** | 高 | 極高 | 取決於玩家設定 |
+| **風險** | 背景誤判 | 極低 | 視窗移動會導致失效 |

@@ -1,0 +1,11 @@
+- [x] `[x]` 執行第一階段：碰撞體導航重構 (已完成)
+- [x] `[x]` 執行第二階段：時間之戰 (已完成)
+    - [x] `[x]` 實作 `GamePipeline` 的同步訊號燈 (15-25 FPS)
+    - [x] `[x]` 實作 `CharacterMovementController` 的視覺同步邏輯
+    - [x] `[x]` 壓縮所有輪詢間隔 (30ms -> 10ms/Signal)
+    - [x] `[x]` 移除 `NavigationExecutor` 與爬繩固定等待
+    - [x] `[x]` 將 `CaptureFrameRate` 提升至 25 FPS
+- [ ] `[/]` 執行第三階段：狀態機阻塞處理 (待啟動)
+    - [ ] `[ ]` 移除 `MovementStateMachine` 中的硬編碼冷卻時間
+    - [ ] `[ ]` 實作「零切換僵直」導航
+- [ ] `[x]` 驗證與效能測試 (已建置成功)

@@ -1,0 +1,76 @@
+# Boundary Handling Implementation Walkthrough
+
+## Summary
+成功實作邊界處理功能，讓路徑規劃系統能夠識別和處理 `RestrictedZones` 邊界。
+
+## Modified Files
+
+### 1. [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+
+**新增欄位和常數：**
+```csharp
+private const float BoundarySafetyMargin = 15f;
+private PlatformBounds? _platformBounds;
+```
+
+**新增事件：**
+```csharp
+public event Action<SdPointF, string>? OnBoundaryHit;
+```
+
+**新增方法：**
+| 方法 | 功能 |
+|-----|------|
+| `SetBoundaries()` | 設定平台邊界 |
+| `CheckBoundaryProximity()` | 檢測玩家是否超出邊界 |
+| `HandleBoundaryHit()` | 邊界碰撞處理，自動選擇安全目標 |
+| `SelectSafeRandomTarget()` | 安全隨機選點（過濾邊界候選） |
+
+---
+
+### 2. [PathPlanningManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs)
+
+- 新增 `OnBoundaryHit` 事件轉發
+- 新增 `SetBoundaries()` 方法轉發
+- 訂閱/取消訂閱邊界事件
+
+---
+
+### 3. [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+
+載入路徑時自動解析 `RestrictedZones` 為邊界：
+```csharp
+float minX = zones.Min(z => z[0]);
+float maxX = zones.Max(z => z[0]);
+_pathPlanningManager?.SetBoundaries(minX, maxX, minY, maxY);
+```
+
+---
+
+## Verification
+
+✅ **編譯成功**（0 錯誤, 82 警告）
+
+---
+
+## 第二次修復：移動控制問題
+
+### 問題
+邊界切換目標後角色還是掉下去 - 原因是移動指令仍在執行舊的方向
+
+### 新增欄位 (MainForm.cs)
+```csharp
+private DateTime _lastMovementTime = DateTime.MinValue;
+private const int MovementCooldownMs = 350;
+private SdPoint? _lastMovementTarget = null;
+private int _lastMovementDirection = 0;
+private bool _isMovementInProgress = false;
+```
+
+### 新增機制
+1. **350ms 移動冷卻時間** - 防止指令衝突
+2. **目標變化偵測** - 目標改變時先 StopMovement()
+3. **方向變化偵測** - 方向反轉時先 StopMovement()
+4. **互斥鎖** - 防止並行移動任務
+
+✅ **第二次編譯成功**

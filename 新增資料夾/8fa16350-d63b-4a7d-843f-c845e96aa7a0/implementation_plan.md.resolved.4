@@ -1,0 +1,28 @@
+# 跳躍與導航穩定性深度優化方案
+
+根據最新日誌分析，目前的系統存在兩個核心問題：
+1. **任務鎖死**：`_isMoving` 旗標導致當角色墜落並切換到「恢復目標」時，舊的移動任務（仍在嘗試走向原目標）不會停止，新的導航任務也無法啟動。
+2. **觸發精度過高**：1.5px 的跳躍觸發範圍在 10Hz 的檢測頻率下極易「穿透」（Overshoot），導致角色在兩幀之間直接走過起跳點而未觸發跳躍。
+
+## 根本原因分析
+
+- **同步問題**：[MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) 中的 `_isMoving` 檢查阻止了在同一幀處理目標變更。如果角色在移動中目標發生變更（如掉落後切換到繩索），舊任務會持續發送錯誤的方向指令。
+- **物理穿透**：角色移動速度與檢測頻率不匹配。1.5px 空間太小，角色只需 0.1 秒（一幀）就能跨越 5~10px，這導致很大機率永遠不會剛好停在 1.5px 範圍內。
+
+## 提議的變更
+
+### 1. [UI] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- **移動任務覆蓋**：在 [OnPathTrackingUpdated](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2033-2383) 中，如果偵測到目標點（`nextWaypoint`）與上次不同，主動呼叫 [StopMovement()](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#378-398) 並重置 `_isMoving`，允許新任務立即接管。
+- **放寬跳躍觸發範圍**：將 `distanceToJumpPoint > 1.5f` 放寬至 `5.0f` 或更高。這能大幅提升在高速移動下的觸發成功率。
+- **跳躍前置煞車**：在執行跳躍動作前導入 [StopMovement()](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#378-398)，確保姿勢穩定。
+
+### 2. [核心] [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **安全停止機制**：強化 [StopMovement](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#378-398)，確保 `CancellationToken` 能確實中斷 [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#229-362) 中的迴圈。
+- **墜落自動煞車**：在 [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#229-362) 中加入檢查，若 Y 座標異常下降則立即中止任務。
+
+## 驗證計劃
+
+### 手動驗證
+- 再次測試 [jump.json](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/MapData/jump.json)。
+- 故意將角色推下平台，驗證其是否能立即停止「走路」並開始執行「爬繩」恢復。
+- 觀察日誌中 `[按鍵執行] 跳躍` 是否在接近邊緣時穩定出現。

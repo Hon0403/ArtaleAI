@@ -1,0 +1,14 @@
+# 路徑編輯器 Auto-Guess UX 升級
+
+## 核心功能：智慧動作判定
+- [ ] 新增 `GuessActionType()` 方法到 [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)
+- [ ] 修改 [HandleClick](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#153-367) 的 [Waypoint](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2756-2768) 模式：自動帶入 Connection + 智慧 ActionCode
+- [ ] 修改 [HandleClick](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#153-367) 的 `Link` 模式：自動判定 ActionCode（不再依賴下拉選單）
+
+## 右鍵修正功能
+- [ ] 新增右鍵選單（ContextMenuStrip）到小地圖
+- [ ] 右鍵點擊連線 → 彈出動作選擇選單 → 更新動作
+
+## 驗證
+- [ ] Build 成功 (0 errors)
+- [ ] 手動測試：新增節點自動判定是否正確

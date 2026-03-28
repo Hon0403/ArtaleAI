@@ -1,0 +1,50 @@
+# 導航精度與繩索死結修正 Walkthrough
+
+我們已經成功解構了原本混亂的導航判定邏輯，並透過「職責分離」徹底解決了角色在繩索頂端停擺的問題。
+
+## 🛠️ 已完成的關鍵修復
+
+### 1. 參數語意分離 (Parameter Decoupling)
+我們將原本單一的 `waypointReachDistance` 拆分為兩個具有明確物理意義的參數：
+- **`ArrivalTolerance` (1.0)**：最終目標點的「判定半徑」。這決定了路徑點何時切換。
+- **`LatencyInertiaCompensation` (8.0)**：水平移動時的「提前煞車距離」。這用來補償物理慣性與網路延遲。
+
+> [!IMPORTANT]
+> 在 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) 中，我們現在會根據動作類型動態傳參：
+> - **Walk 動作**：傳遞 `LatencyInertiaCompensation`，讓角色提前放開按鍵，靠慣滑行到目標。
+> - **Climb/Jump 動作**：傳遞 `ArrivalTolerance`，確保精確對準繩索或跳躍點。
+
+### 2. FSM 狀態自檢與解鎖 (FSM Self-Unlock)
+修正了 [NavigationStateMachine](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#23-27) 在連續動作下的死結 Bug：
+- **舊版**：必須依賴大腦發送 [NotifyTargetReached](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#138-157) 才能解鎖。如果下個動作太近導致信號跳過，FSM 就會永遠卡在「忙碌」狀態。
+- **新版**：只要 [NavigationExecutor](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#55-64) 回傳 `Completed`，FSM 就會**自動轉入閒置**，確保能接續下一個動作（如：爬完繩索立即向左跳）。
+
+### 3. 爬繩自律判定 (Autonomous Climbing)
+在 `CharacterMovementController.ClimbRopeAsync` 中加入了 Y 軸抵達檢查，這讓攀爬動作能根據 `ArrivalTolerance` 自行決定何時結束，不再受限於外部輪詢。
+
+---
+
+## 🧪 驗證建議
+
+### 1. 重新編譯 (Critical)
+由於修改了數個核心類別的屬性與常數，請務必執行 **Rebuild Solution**。
+
+### 2. 觀察日誌特徵
+請留意 `artale.log` 中的以下序列：
+```text
+[導航狀態] ... Action=ClimbUp
+[NavigationExecutor] 開始上爬繩索，目標 Y=150
+[FSM] 狀態轉換：Moving_Vertical -> Reached_Waypoint  <-- 自動解鎖！
+[導航狀態] ... Action=JumpLeft                        <-- 順暢銜接下個動作
+```
+
+### 3. 參數調整指南 (config.yaml)
+- 如果覺得煞車太早（離目標太遠就放手）：調低 `latencyInertiaCompensation`。
+- 如果覺得爬繩爬不到頂：確認 `arrivalTolerance` 至少有 0.5 ~ 1.0。
+
+---
+
+## ✅ 任務總結
+- **核心目標**：解決繩索過衝與死結。
+- **解決方案**：參數分離、FSM 自動解鎖、移除硬寫數值。
+- **穩定性**：已移除全域所有 `1.5f`, `2.0f`, `3.0f` 等硬寫判定，回歸設定檔驅動。

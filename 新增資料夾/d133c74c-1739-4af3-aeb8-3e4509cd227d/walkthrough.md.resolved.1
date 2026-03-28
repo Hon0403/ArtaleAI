@@ -1,0 +1,32 @@
+# 導航精度與延遲補償邏輯拆分修復 (Final)
+
+為了從根本上解決「為了解決水平滑步（過衝）而調大容差，卻造成繩索攀爬提前中止」的衝突，我已將舊有的單一參數拆分為兩個職責明確的新參數。
+
+## 1. 核心參數更名與功能拆分
+
+我已在 [AppConfig.cs](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs) 與 [config.yaml](file:///d:/Full_end/C%23/ArtaleAI/Data/config.yaml) 中實作以下新參數：
+
+| 參數名稱 | 建議值 | 職責說明 |
+| :--- | :--- | :--- |
+| **`arrivalTolerance`** | `1.5` | **最終精確到達容錯**。決定何時將狀態切換到「下一條邊」。設小一點可保證繩索爬到頂、傳送門進得去。 |
+| **`latencyInertiaCompensation`** | `8.0` | **慣性與延遲補償**。決定移動對齊時何時「提早煞車」。補償你提到的影像辨識延遲、硬體延遲與角色物理滑步。 |
+
+## 2. 修改範圍摘要
+
+- **[AppConfig.cs](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs)**: 新增上述兩項屬性，並將 `waypointReachDistance` 標記為舊版過時參數。
+- **[config.yaml](file:///d:/Full_end/C%23/ArtaleAI/Data/config.yaml)**: 更新配置範本，讓你可以分別調整這兩個數值。
+- **[NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs)**: 對齊繩索時，使用 `latencyInertiaCompensation` 來判斷放開按鍵的時機（提早煞車）。
+- **[PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)**: 判定「到達路徑點」時，使用 `arrivalTolerance`，確保精密動作不會提前結束。
+- **[CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)**: 爬繩吸附範圍已連動至 `latencyInertiaCompensation`，確保即便提早煞車也能成功吸附。
+
+## 3. 測試與驗證建議
+
+1. **重新編譯**：由於代碼已更換屬性名稱，請務必 **Rebuild** 專案位確保生效。
+2. **調整設定**：
+   - 如果角色滑行過頭，請調高 `latencyInertiaCompensation` (例如 10.0)。
+   - 如果角色爬完繩索後卡在半空中，請確認 `arrivalTolerance` 是否夠小 (例如 1.5)。
+3. **觀察日誌**：
+   - 尋找 `[參數分離] 這裡使用「延遲與慣性補償」來提早煞車`。
+   - 觀察 [PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#20-660) 觸發「到達路徑點」時的 `dx` 和 `dy` 是否符合 `arrivalTolerance` 的設定。
+
+現在角色應該能在保持高精度的情況下，依然擁有流暢且精準的提前煞車行為。

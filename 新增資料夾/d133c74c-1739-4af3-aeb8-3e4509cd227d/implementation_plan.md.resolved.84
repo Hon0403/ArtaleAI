@@ -1,0 +1,55 @@
+# 導航架構校準與技術債清理計畫
+
+## 設計動機
+目前的系統實作與 3/21 達成的結論存在幾處關鍵不一致：
+1. **邏輯外洩**：H型拓撲生成邏輯目前滯留在 UI 層 ([MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs))。
+2. **判定矛盾**：[CharacterMovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#19-533) 的抵達判定仍受預測延遲影響，而非純物理容差。
+3. **結構冗餘**：`RopeData` 與節點型別仍存在命名空間歧義。
+
+本計畫旨在將核心邏輯回歸 `Core` 層，並嚴格落實「物理容差優先」的抵達判定原則。
+
+## Proposed Changes
+
+### 1. 核心層 (Core & Domain)
+
+#### [NEW] [MapGenerationService.cs](file:///d:/Full_end/C#/ArtaleAI/Core/Domain/Navigation/MapGenerationService.cs)
+- 從 [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs) 中抽出 **H型拓撲生成引擎**。
+- 提供 `BuildHTopology(MapData rawData)` 方法，負責端點打樁 (Staking) 與橫向接軌 (Bridge)。
+- **設計動機**：解耦 UI 與核心算法，符合 SRP 與 Clean Architecture。
+
+#### [MODIFY] [NavigationGraph.cs](file:///d:/Full_end/C#/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs)
+- 增加對 `MapGenerationService` 的引用或提供靜態擴充，確保從 [MapData](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#104-116) 初始化時能自動套用 H型拓撲。
+
+### 2. 服務層 (Application Services)
+
+#### [MODIFY] [CharacterMovementController.cs](file:///d:/Full_end/C#/ArtaleAI/Services/CharacterMovementController.cs)
+- **抵達判定重構**：
+    - `isReached` 回歸純物理判定：`Math.Abs(remainingDx) <= reachDistance`。
+    - **預測性煞車** 依然存在，但其角色僅為「何時停止按鍵」，不再作為「是否判定到達」的依據。
+    - **設計動機**：落實 3/21 「徹底棄用延遲補償作為抵達判定」的結論，防止「偽到達」導致狀態機在物理未停穩時提前切換。
+
+### 3. UI 層 (Framework/UI)
+
+#### [MODIFY] [MapEditor.cs](file:///d:/Full_end/C#/ArtaleAI/UI/MapEditor.cs)
+- 移除 [GetCurrentMapData()](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#117-328) 內部的 H型拓撲生成代碼。
+- 改為呼叫 `MapGenerationService` 取得處理後的地圖。
+
+### 4. 資料模型與清理 (Models & Cleanup)
+
+#### [CLEANUP] [RopeData.cs](file:///d:/Full_end/C#/ArtaleAI/Models/MapData.cs)
+- 統一 `RopeData` 的定義與命名空間，移除 `PathPlanningTracker` 中冗餘的 `using` 別名與轉換。
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- 執行 `dotnet build` 確保強型別檢查通過。
+- 檢查生成的 `test.json` 檔案，確認 `n_v_top` 等虛擬節點依然正確生成。
+
+### Manual Verification
+1. **導航穩定性測試**：
+   - 啟動路徑規劃，觀察 Log 中是否仍出現 `預測補償觸發`。
+   - 確認角色在停止後，FSM 的 `StateChanged` 事件是否與物理位移完全同步。
+2. **繩索對準測試**：
+   - 在複雜地形上進行爬繩動作，確認 H型拓撲的 X 軸零誤差對齊依然生效。

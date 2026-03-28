@@ -1,0 +1,9 @@
+# 解決角色越過繩索 (Overshoot) 問題
+
+- [x] 分析並解決 `waypointReachDistance` 設定未生效的問題
+    - [x] 調核 [AppConfig](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs#18-524) 的載入路徑
+    - [x] 修正 [NavigationExecutor](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#55-64) 中的硬寫容差值 (1.5f)
+- [x] 調整繩索攀爬的判定區間
+    - [x] 在 [CharacterMovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#18-754) 中同步提升垂直跳躍的判定範圍，以配合較大的容差圈
+- [ ] 驗證與測試
+    - [ ] 確認角色在設定為 10 像素時能提前停止

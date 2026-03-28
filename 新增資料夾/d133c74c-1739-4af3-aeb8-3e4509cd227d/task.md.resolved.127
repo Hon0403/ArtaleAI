@@ -1,0 +1,14 @@
+# ArtaleAI AppConfig Refactor Task
+
+## 核心任務
+- [x] 重構 [AppConfig.cs](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs) 模組化
+- [x] 分離 [MapFileManager](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs#50-57) 地圖 I/O
+- [x] 遷移全域 `AppConfig.Instance` 引用 (包含 GamePipeline, OverlayRenderer 等)
+- [x] 修復所有編譯錯誤 (型別轉換與路徑不匹配)
+- [x] 修復 [MinimapViewer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs) 縮放倍率型別不匹配
+- [x] 更新 [config.yaml](file:///d:/Full_end/C%23/ArtaleAI/Data/config.yaml) 結構符合新架構
+- [ ] 最終整合測試與驗證
+
+## 進度紀錄
+- 2026-03-21: 完成 AppConfig 模組化與全域引用遷移。
+- 2026-03-21: 修正 [MinimapViewerStyle](file:///d:/Full_end/C%23/ArtaleAI/Models/Minimap/MinimapStyles.cs#68-78) 缺失問題與 [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#90-98) 型別轉換錯誤。

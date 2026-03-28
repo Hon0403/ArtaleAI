@@ -1,0 +1,6 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary":  "新增階段 4.5：移除與重構 MainForm 殘留的多重小地圖標記邏輯。",
+  "updatedAt":  "2026-03-07T03:53:04.001633100Z",
+  "version":  "4"
+}

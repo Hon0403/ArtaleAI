@@ -1,0 +1,40 @@
+# 全專案代碼淨化與重構結案報告
+
+針對 ArtaleAI 專案進行的「去 Vibe Coding」任務已圓滿完成。本次行動不僅徹底淨化了全專案的註解系統，更在過程中對系統穩定性進行了深層加固。
+
+## 核心達成事項
+
+### 1. 全域代碼淨化 (Global Sanitization)
+完成了跨目錄（Core, Services, Models, Utils, UI）共計 20+ 個檔案的註解優化：
+- **消滅廢話與冗餘**：移除了所有「顯而易見」的代碼解釋、臨時開發備註與「智慧型」等非專業字眼。
+- **清除架構碎念**：刪除了散落在 [MapFileManager](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs#50-57)、[OverlayRenderer](file:///d:/Full_end/C%23/ArtaleAI/UI/OverlayRenderer.cs#17-103) 等檔案中的長篇架構演進說明，改以嚴謹的 XML `<summary>` 替代。
+- **視覺去噪**：移除了所有不符合首席架構師身份的表情符號 (Emojis) 與 ASCII 分隔線。
+
+### 2. 關鍵技術修復 (Critical Fixes)
+在清理過程中發現並解決了以下穩定性缺陷：
+- **[ScreenCapture.cs] 顯存洩漏修復**：修正了 GPU Staging Texture 讀取後未正確 Dispose 的問題，預防常駐執行時的記憶體爆炸風險。
+- **[LiveViewManager.cs] 併發與同步修復**：優化了幀處理佇列，並修復了重構過程中意外遺失的變數宣告。
+
+### 3. 架構防禦與規範 (Architectural Integrity)
+- **單一真理來源 (SSOT)**：確認所有 UI 顏色解析均收攏至 [GameVisionCore](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#23-1343) 與 `AppConfig`，消滅 Magic Values。
+- **解耦驗證**：確認 [MapFileManager](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs#50-57) 與 [OverlayRenderer](file:///d:/Full_end/C%23/ArtaleAI/UI/OverlayRenderer.cs#17-103) 等組件已完全剝離 WinForms 控制項依賴，僅透過 Data Models 與事件進行通訊。
+
+## 修改檔案清單 (部分摘要)
+
+| 目錄 | 重點檔案 | 狀態 |
+| :--- | :--- | :--- |
+| **Core** | [GameVisionCore.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs) | 專業化 XML 註解 |
+| **Services** | [ScreenCapture.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/ScreenCapture.cs), [MapFileManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs) | 穩定性修復 + 備註清理 |
+| **Models** | [MapData.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Map/MapData.cs), [PathVisualizationModels.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Visualization/PathVisualizationModels.cs) | 移除過時格式說明 |
+| **Utils** | [Logger.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs), [DrawingHelper.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/DrawingHelper.cs) | 移除配置過程的流水帳 |
+| **UI** | [MinimapViewer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs), [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs), [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs) | 去 Emoji + 移除 UI 綁定冗談 |
+
+## 驗證結果
+- **編譯狀態**：已確認所有檔案編譯正確，無變數遺失。
+- **代碼潔癖度**：全項目已無任何「// !!!」或「// 改這個」等非正式標記。
+
+---
+> [!IMPORTANT]
+> 此次清理範圍涵蓋了整個 ArtaleAI 專案。若後續有新的功能開發，請務必遵守現有的嚴謹註解規範，嚴禁再次帶入非正式的開發習慣。
+
+**下一步行動**：建議針對目前的代碼基礎進行一次完整的導航壓力測試，確保在無冗餘日誌干擾下，FSM 狀態機與 A* 尋路邏輯的執行流路徑依然如期運作。

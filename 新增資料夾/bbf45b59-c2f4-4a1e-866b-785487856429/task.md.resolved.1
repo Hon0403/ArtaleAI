@@ -1,0 +1,21 @@
+# 優先級 1 重構：統一枚舉 + 提取 NavigationExecutor + 清除死碼
+
+## Phase 1：建立基礎設施
+- [x] 建立 [IKeyboardService](file:///d:/Full_end/C%23/ArtaleAI/Services/IKeyboardService.cs#12-28) 介面
+- [x] 建立 [IPlayerPositionProvider](file:///d:/Full_end/C%23/ArtaleAI/Services/IPlayerPositionProvider.cs#11-16) 介面
+- [x] 清理 `NavigationActionType` 枚舉（移除 Climb, FlashJump）
+- [x] 刪除 `PathActionType` 枚舉
+
+## Phase 2：建立 NavigationExecutor
+- [x] 建立 [Services/NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs)
+- [x] 讓 [CharacterMovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#18-1029) 實作 [IKeyboardService](file:///d:/Full_end/C%23/ArtaleAI/Services/IKeyboardService.cs#12-28)
+- [x] 建立 [LambdaPositionProvider](file:///d:/Full_end/C%23/ArtaleAI/Services/LambdaPositionProvider.cs#15-19) 橋接
+
+## Phase 3：修改 MainForm
+- [x] 替換 200 行 switch-case 為 NavigationExecutor 呼叫
+- [x] 刪除 MainForm 內的 [WaitForLanding](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#996-1030) 重複方法
+- [x] 修復 [MapFileManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs) 的 `PathActionType` 引用
+- [x] 初始化 [NavigationExecutor](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#52-61)
+
+## Phase 4：驗證
+- [x] 確認專案可編譯（✅ 0 錯誤, 89 既有警告）

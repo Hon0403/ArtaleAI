@@ -1,0 +1,44 @@
+## 待清理目標
+1.  **範圍**：涵蓋全專案 **65 個核心檔案** (62 .cs + 3 config/md)。
+2.  **排除清單**：不可更動 [test.json](file:///d:/Full_end/C%23/ArtaleAI/MapData/test.json), [README.md](file:///d:/Full_end/C%23/ArtaleAI/README.md), [.csproj](file:///d:/Full_end/C%23/ArtaleAI/ArtaleAI.csproj), [.sln](file:///d:/Full_end/C%23/ArtaleAI/ArtaleAI.sln), [.resx](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.resx)。
+3.  **清理原則**：
+    *   **殲滅**：`🔧`、`🎯`、`🧠` 標記、殭屍代碼、過時補丁筆記、純描述性內聯註解。
+    *   **保留**：對外接口的 `/// <summary>` (XML 註釋)、授權聲明、複雜算法的必要非冗餘說明。
+
+---
+
+## 🟢 第一階段：核心服務層清理 (已就緒，等待驗收)
+- [x] [Services\GamePipeline.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/GamePipeline.cs) (已移除歷史備註與冗餘步驟說明)
+- [x] [Services\ScreenCapture.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/ScreenCapture.cs) (已修復資源洩漏並精簡 GPU 指令註解)
+- [x] [Services\WindowFinder.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/WindowFinder.cs) (已移除 UI 相關 Emoji)
+- [x] [Services\LegacyMapMigrator.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/LegacyMapMigrator.cs) (已淨化遷移邏輯中的非正式筆記)
+
+## 🟡 第二階段：核心邏輯與模型層 (待驗收後啟動)
+- [ ] [Core\GameVisionCore.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs)
+- [ ] [Core\PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- [ ] [Models\Map\MapData.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Map/MapData.cs)
+- [ ] [Models\Visualization\PathVisualizationModels.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Visualization/PathVisualizationModels.cs)
+- [ ] [Services\PathPlanningManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs)
+
+## 🟠 第三階段：基礎工具與日誌 (待驗收後啟動)
+- [ ] [Utils\Logger.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs)
+- [ ] [Utils\CoordinateHelper.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/CoordinateHelper.cs)
+- [ ] [Utils\DrawingHelper.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/DrawingHelper.cs)
+- [ ] [Utils\MsgLog.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/MsgLog.cs)
+- [ ] [Utils\PathManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/PathManager.cs)
+
+## 🔴 第四階段：使用者介面 (待驗收後啟動)
+- [ ] [UI\MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- [ ] [UI\MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)
+- [ ] [UI\LiveViewManager.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/LiveViewManager.cs)
+- [ ] [UI\MinimapViewer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs)
+- [ ] [UI\FloatingMagnifier.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/FloatingMagnifier.cs)
+- [ ] [UI\OverlayRenderer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/OverlayRenderer.cs)
+
+---
+
+## 驗證計畫
+### 1. 逐階段編譯驗證
+*   每階段處理後執行編譯，確保 XML 與 資源檔結構無損。
+### 2. 最終代碼審計
+*   所有非 XML Documentation 的冗餘註解均需殲滅。

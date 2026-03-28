@@ -1,0 +1,10 @@
+# 繩索爬升問題修復任務
+
+## 根本原因
+爬繩完成後，[PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#18-1212) 沒有立即推進到下一個目標，導致下一幀又觸發同一個爬繩動作。
+
+## 修復步驟
+- [/] 1. 在 [PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#18-1212) 新增 `ForceAdvanceTarget()` 方法
+- [ ] 2. 修改 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) 在 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#519-763) 完成後呼叫 `ForceAdvanceTarget()`
+- [ ] 3. 還原之前對 [HasReachedWaypoint](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1022-1043) 閾值的修改（不需要放寬）
+- [ ] 4. 建置並測試

@@ -1,0 +1,12 @@
+### [Component] Precision Upgrade
+- 將 `INavigationStateMachine`, [NavigationStateMachine](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#14-172), [NavigationExecutor](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#55-64) 中的 `targetPos` 參數從 `SdPoint` 改為 `PointF` (或 `SdPointF`)，避免從 MapData 讀取座標時發生像素捨去誤差。
+
+### [Component] Navigation - CharacterMovementController
+#### [MODIFY] [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **[ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#568-704) 停滯偵測**：
+    - 追蹤 `lastY` 座標。
+    - 如果連續 5 幀（約 0.5 秒）Y 軸變動 < 0.5 像素，且距離目標小於一個合理閾值（如 5.0px），則視為已抵達（觸地或撞牆），主動退出循環並釋放按鍵。
+
+## 驗證計畫
+1. **下爬測試**：從上層平台爬下，確認角色在腳尖碰到地面後能立刻釋放「下」鍵並結束動作，不再卡死。
+2. **精度日誌檢查**：確認 `[FSM] 開始執行` log 中的目標座標包含小數點（如 171.9 而非 171）。

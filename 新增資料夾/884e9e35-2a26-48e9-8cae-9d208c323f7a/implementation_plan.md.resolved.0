@@ -1,0 +1,29 @@
+# Fix: ArgumentException in WritePixels due to Insufficient Buffer Size
+
+此專案在執行時發生 `System.ArgumentException: 緩衝區大小不足` 異常。經分析，主要原因是在呼叫 `WriteableBitmap.WritePixels` 時，將單行的 Stride 當作了整個 Buffer 的 Size，導致 WPF 無法正確讀取影像資料。
+
+## User Review Required
+
+> [!IMPORTANT]
+> 此修正將變動 `MainWindow.xaml.cs` 中的核心顯示邏輯。修正後，影像更新將使用 OpenCV 原生的 `Step()` 屬性來處理 Stride，這比硬編碼 `Width * 3` 更具魯棒性（能處理記憶體對齊問題）。
+
+## Proposed Changes
+
+### CameraMonitor Component
+
+#### [MODIFY] [MainWindow.xaml.cs](file:///d:/Full_end/C%23/CameraMonitor/CameraMonitor/MainWindow.xaml.cs)
+*   **修正 `UpdateImage`**：填入正確的 `sourceBufferSize` ( `step * height` ) 與 `sourceBufferStride` ( `step` )。
+*   **清理 `CaptureLoop`**：刪除第 56 行無意義的 `frame.ToBytes(".bmp")` 呼叫。這是一個高耗能操作（影像壓縮），且其傳回值 `data` 從未被使用。
+
+## Open Questions
+目前 RTSP URL 與攝影機數量 (8) 是硬編碼的。如果環境中沒有 8 台攝影機，背景執行緒會持續嘗試重新連線。是否需要調整為可配置或在連線失敗一定次數後停止？
+
+## Verification Plan
+
+### Automated Tests
+*   執行 `dotnet build` 確保編譯成功。
+*   使用 `dotnet run` 觀察是否仍會拋出 `ArgumentException`。
+
+### Manual Verification
+*   觀察 8 路監控視窗是否能顯示畫面（若 RTSP 位址正確）。
+*   監測系統 CPU/RAM 佔用，確認移除 `.bmp` 編碼後效能有所提升。

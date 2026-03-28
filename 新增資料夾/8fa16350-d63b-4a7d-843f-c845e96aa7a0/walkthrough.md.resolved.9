@@ -1,0 +1,46 @@
+# 跳躍與導航修復報告
+
+## 已解決的問題
+
+### 1. 動作遺失修復 (Phase 2 - 新增)
+- **問題**：錄製在路徑分段點（Break Node，例如平台邊緣）的跳躍動作被系統忽略，且因距離過近 (`distance=0`)，[MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#126-137) 移動控制器直接判定為「已到達」而不執行任何動作。
+- **原因**：
+    1. [ForceAdvanceTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1478-1578) 跳過 Break Node。
+    2. [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#126-137) 僅在 `distance > ReachDistance` 時才執行指令。
+- **修復**：
+    1. [Tracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#98-108)：偵測帶動作的 Break Node 並轉換為臨時目標。
+    2. [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#126-137)：修改移動控制邏輯，**允許在近距離下執行特殊動作** (Jump/Climb)，確保原地起跳或爬繩能被觸發。
+- **驗證**：編譯成功。預期日誌顯示 `[移動控制] 距離接近 ... 但有動作 ... 強制執行`。
+
+### 2. 跳躍不穩定 (Phase 1)
+- **問題**：角色在平台邊緣雖然觸發跳躍，但因移動精確度閾值衝突（1.5px vs 5.0px），導致有時不跳直接走下去。
+- **修復**：統一改用動態 [ReachDistance](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1776-1796)，確保移動控制器能達到觸發跳躍所需的精確度。
+
+### 3. 著陸滑落 (Phase 1)
+- **問題**：跳躍落地後立即移動，導致慣性滑出平台。
+- **修復**：著陸後強制等待 100ms 讓物理狀態穩定。
+
+### 4. 繩索導航被阻擋 (Phase 1)
+- **問題**：跳躍動作保留邏輯過於激進，導致角色掉落到下層後無法使用繩索爬回上層。
+- **修復**：加入 Y 軸高度檢查，僅在同一層時保留跳躍動作，掉落後允許導航系統接管。
+
+### 3. 跳躍點順序錯誤 (Phase 3 - 新增)
+- **問題**：若錄製時先走到遠處目的地，才記錄中間的跳躍點，依序執行時系統會試圖直走而忽略跳躍點，導致掉落。
+- **修復**：實作
+    1.  **「鄰近動作觸發機制 (Proximity Action Trigger)」**：
+        - [PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#98-108) 在導航時會同時掃描前方 5 個節點。
+        - 若發現途中有**包含動作**且**距離極近 (<8px)** 的節點，系統會自動判定為「錯過的動作點」。
+        - 立即暫停前往遠處目標，優先執行該動作節點。
+    2.  **鄰近動作觸發 (Proximity Trigger)**：實作 [CheckNearbyActionNodes](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#859-938)，主動掃描全路徑列表。若偵測到附近的動作節點（距離 < 12px），即使索引未到也強制觸發。
+    3.  **防止震盪 (Ping-Pong Prevention)**：引入 `_triggeredActionIndices` 記錄已觸發過的鄰近節點，防止角色在兩個相近的動作點之間來回修正目標。
+    4.  **動作優先權 (Action Priority)**：增加檢查機制，若玩家正位於當前動作節點的有效範圍內，則禁止鄰近觸發切換到其他點，確保當前跳躍動作不被「更佳目標」打斷。
+    5.  **防止動作卡死 (Jump Deadlock Fix)**：調整 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) 中的跳躍動作觸發距離判定 (1.5f -> 4.5f)，解決因移動控制器精度限制 (dx~2.0) 導致角色無限微調位置而無法起跳的問題。
+    6.  **防止無限迴圈 (Infinite Loop Fix)**：在 [ForceAdvanceTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1478-1578) 中，當動作完成並推進時，將該節點加入「已觸發清單」。防止角色落地後因距離舊節點太近，而被 Proximity Trigger 再次判定為「未執行動作」並強制走回頭路。
+- **驗證方式**：使用 [jump.json](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/MapData/jump.json) 測試，確認角色能順利通過 Index 6 的斷點，並在乱序路径區段（如 5 -> 20 -> 18）順暢執行而不迴頭，且 Index 5 的左跳動作能正確執行完畢。
+- **驗證**：此機制允許程式「自動修正」不完美的路徑錄製順序，無需使用者手動修改 JSON。
+
+## 下一步驗證
+使用者請協助測試：
+1. 執行包含跨平台跳躍的路徑（如 [jump.json](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/MapData/jump.json)）。
+2. 觀察角色在平台邊緣是否能穩定跳躍。
+3. 檢查 log 是否出現 `[鄰近觸發]` 相關訊息，確認系統自動修正了目標。

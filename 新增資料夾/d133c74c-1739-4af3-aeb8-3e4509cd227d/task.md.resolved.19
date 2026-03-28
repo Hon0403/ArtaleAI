@@ -1,0 +1,19 @@
+# 深度淨化：撤除安全區任務
+
+## 階段 1：基礎定義清理 (Data & Enums)
+- [ ] 修改 [MapData.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Map/MapData.cs)：移除 `SafeZones` 屬性。
+- [ ] 修改 [Enums.cs](file:///d:/Full_end/C%23/ArtaleAI/Data/Enums.cs)：移除 `EditMode.SafeZone`。
+
+## 階段 2：UI 層清理 (MainForm)
+- [ ] 修改 [MainForm.Designer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.Designer.cs)：移除 `rdo_SafeZone` 控制項。
+- [ ] 修改 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)：移除編輯模式切換邏輯。
+
+## 階段 3：核心邏輯清理 (MapEditor)
+- [ ] 修改 [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)：
+    - [ ] 移除 [HandleClick](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#330-632) 與 [InterpolatePoints](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#658-675)。
+    - [ ] 移除 [DrawCompletedShapes](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#687-840) 中的繪製邏輯。
+    - [ ] 移除 [HandleDeleteAction](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#886-980) 中的刪除目標。
+
+## 階段 4：驗證
+- [ ] 確認專案編譯成功。
+- [ ] 啟動程式確認 UI 點選正常。

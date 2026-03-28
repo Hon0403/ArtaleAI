@@ -1,0 +1,146 @@
+# 編輯器驅動路徑系統設計
+
+## 整體流程
+
+```mermaid
+flowchart LR
+    subgraph 編輯階段
+        A[開啟地圖編輯器] --> B[載入小地圖背景]
+        B --> C[標記關鍵節點]
+        C --> D[定義繩索區域]
+        D --> E[儲存地圖資料]
+    end
+    
+    subgraph 執行階段
+        E --> F[載入地圖資料]
+        F --> G[路徑規劃器分析]
+        G --> H[智慧動作決策]
+        H --> I[執行移動/跳躍/爬繩]
+    end
+```
+
+---
+
+## 1. 編輯階段
+
+### 使用者操作流程
+
+| 步驟 | 操作 | 系統行為 |
+|------|------|----------|
+| 1 | 選擇「路線標記」模式 | 準備接收點擊 |
+| 2 | 點擊地圖上的關鍵位置 | 新增 Waypoint 節點 |
+| 3 | 選擇「繩索標記」模式 | 切換模式 |
+| 4 | 點擊繩索頂端和底端 | 建立 Rope 物件 |
+| 5 | 按「儲存」 | 輸出 JSON |
+
+### 節點類型定義
+
+```
+WaypointType:
+  - Walk       # 普通行走點
+  - JumpStart  # 跳躍起點
+  - JumpLand   # 跳躍落點
+  - RopeTop    # 繩索頂端
+  - RopeBottom # 繩索底端
+```
+
+### 自動推導規則
+
+系統在儲存時自動分析：
+
+1. **Walk**：相鄰點 Y 差距 < 5px
+2. **Jump**：相鄰點 Y 差距 > 10px 且 X 差距 > 0
+3. **Rope**：節點 X 座標在已定義繩索 ±3px 內
+
+---
+
+## 2. 資料結構
+
+### 新版 JSON 格式
+
+```json
+{
+  "Waypoints": [
+    { "x": 46, "y": 161, "type": "Walk" },
+    { "x": 47, "y": 155, "type": "JumpLand" },
+    { "x": 47, "y": 142, "type": "RopeTop", "ropeId": 0 }
+  ],
+  "Ropes": [
+    { "id": 0, "x": 47, "topY": 142, "bottomY": 161 }
+  ],
+  "SafeZones": [],
+  "Boundaries": []
+}
+```
+
+---
+
+## 3. 執行階段
+
+### 智慧動作決策器
+
+```
+輸入：CurrentPosition, NextWaypoint, WaypointType
+輸出：ActionToExecute
+
+決策邏輯：
+┌─────────────────────────────────────────────────┐
+│ 如果 Type == Walk:                              │
+│   → 計算方向，按 Left 或 Right                  │
+├─────────────────────────────────────────────────┤
+│ 如果 Type == JumpStart:                         │
+│   → 按 Alt (跳躍)                               │
+├─────────────────────────────────────────────────┤
+│ 如果 Type == RopeTop 且 PlayerY > TargetY:      │
+│   → 先對齊 X，再按 Up (爬上)                    │
+├─────────────────────────────────────────────────┤
+│ 如果 Type == RopeBottom 且 PlayerY < TargetY:   │
+│   → 按 Down (爬下)                              │
+└─────────────────────────────────────────────────┘
+```
+
+### 執行流程
+
+```mermaid
+flowchart TD
+    A[取得下一個目標點] --> B{目標類型?}
+    B -->|Walk| C[計算方向並移動]
+    B -->|Jump| D[執行跳躍]
+    B -->|Rope| E{上爬還是下爬?}
+    E -->|上| F[對齊X → 按Up]
+    E -->|下| G[按Down]
+    C --> H[檢查是否到達]
+    D --> H
+    F --> H
+    G --> H
+    H -->|是| A
+    H -->|否| I[繼續當前動作]
+```
+
+---
+
+## 4. 與現有系統的整合
+
+### 需要修改的檔案
+
+| 檔案 | 修改內容 |
+|------|----------|
+| [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs) | 新增節點類型選擇 UI |
+| [MapFileManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs) | 支援新 JSON 格式 |
+| [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) | 使用類型資訊決策 |
+| [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs) | 根據類型執行動作 |
+
+### 向下相容
+
+- 舊格式 JSON 仍可載入
+- `[x, y, actionCode]` 自動轉換為新格式
+
+---
+
+## 5. 預期效果
+
+| 問題 | 解決方式 |
+|------|----------|
+| 錄製時間差導致錯誤動作 | 不再依賴錄製按鍵 |
+| 箱子/繩索誤判 | 明確定義繩索區域 |
+| 路徑卡住無法自救 | 智慧判斷當前狀態 |

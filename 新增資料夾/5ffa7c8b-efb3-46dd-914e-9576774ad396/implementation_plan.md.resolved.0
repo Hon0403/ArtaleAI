@@ -1,0 +1,30 @@
+# Avoid Incorrect Jump Direction
+
+Based on user feedback, the character sometimes performs a jump in the opposite direction immediately after landing (e.g., LeftJump -> RightJump) because the path node for the return jump is co-located with the landing point.
+
+## User Review Required
+> [!IMPORTANT]
+> This change enforces strict direction flow for jumps. After a **LeftJump**, any immediate **RightJump** nodes will be skipped, and vice-versa. This assumes the user always wants to continue in the general direction of the path and not immediately reverse course.
+
+## Proposed Changes
+
+### Core Logic
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- In [ForceAdvanceTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1204-1411) method:
+- Enhance the post-jump direction check loop.
+- If `lastAction` was `LeftJump`:
+    - Skip if candidate node action is `RightJump`.
+    - Skip if candidate node position is to the right (existing check).
+- If `lastAction` was `RightJump`:
+    - Skip if candidate node action is `LeftJump`.
+    - Skip if candidate node position is to the left (existing check).
+
+## Verification Plan
+
+### Automated Tests
+- Run `dotnet build` to ensure compilation.
+
+### Manual Verification
+- User will run the application with the problematic map path.
+- Observe logs for `[路徑規劃] 🔄 跳過反向動作節點` messages.
+- Confirm character does not jump back after landing.

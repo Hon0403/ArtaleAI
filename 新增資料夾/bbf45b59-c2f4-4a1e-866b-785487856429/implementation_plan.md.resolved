@@ -1,0 +1,199 @@
+# 優先級 2 重構：GamePipeline + MapFileManager 解耦
+
+## 問題描述
+
+`MainForm.OnFrameAvailable` (195 行) 混合了 5 種職責：小地圖追蹤、自動攻擊決策、血條偵測、怪物偵測、UI 渲染。[MapFileManager](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs#28-244) 建構子直接接收 [ComboBox](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1152-1153) 和 [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#33-2154) 引用。
+
+> [!IMPORTANT]
+> **風險評估**：[OnFrameAvailable](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#787-868) 內部大量使用 `lock` 保護共享狀態清單（`_currentBloodBars`, `_currentMonsters` 等）。GamePipeline 必須保留這些線程安全語意，否則會引入競態條件。
+
+## Proposed Changes
+
+### GamePipeline (Application 層)
+
+#### [NEW] [GamePipeline.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/GamePipeline.cs)
+
+核心設計：將 [OnFrameAvailable](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#787-868) 的 5 步流程封裝為一個不依賴 WinForms 的協調器。
+
+**遷移的邏輯：**
+- ✅ 小地圖追蹤（`gameVision.GetMinimapTracking`）
+- ✅ 自動攻擊決策（[CheckAutoAttackCondition](file:///d:/Full_end/C%23/ArtaleAI/Services/GamePipeline.cs#513-544), `PerformAutoAttackAsync`）
+- ✅ 血條偵測排程（計時 + [ProcessBloodBarDetection](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#131-155)）
+- ✅ 怪物偵測排程（計時 + [FindMonsters](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#561-711) + NMS）
+
+**不遷移的邏輯（留在 MainForm）：**
+- ❌ `RenderAndDisplayOverlays` — 純 UI 渲染
+- ❌ `pictureBoxMinimap.Invalidate()` — UI 控件操作
+- ❌ [UpdateDisplay](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#314-365) — Bitmap 顯示
+
+**事件模型：**
+
+```csharp
+// 偵測結果事件 — 供 MainForm 訂閱更新 UI
+public event Action<FrameProcessingResult>? OnFrameProcessed;
+
+// FrameProcessingResult 包含所有偵測結果的快照
+public class FrameProcessingResult
+{
+    public List<Rectangle> BloodBars { get; init; }
+    public List<Rectangle> DetectionBoxes { get; init; }
+    public List<Rectangle> AttackRangeBoxes { get; init; }
+    public List<DetectionResult> Monsters { get; init; }
+    public List<Rectangle> MinimapMarkers { get; init; }
+    public string? StatusMessage { get; set; }
+}
+```
+
+---
+
+### MapFileManager 解耦
+
+#### [MODIFY] [MapFileManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs)
+
+建構子改為只接收資料依賴：
+
+```diff
+- public MapFileManager(ComboBox mapFilesComboBox, MapEditor mapEditor, MainForm mainForm)
++ public MapFileManager(MapEditor mapEditor)
+```
+
+**移除的 UI 引用：**
+- `_mainForm.textBox1` → 改用 `StatusMessage` 事件
+- `_mainForm.UpdateWindowTitle()` → 改用 `MapLoaded` 事件（已存在但未充分利用）
+- `_mainForm.RefreshMinimap()` → 改用 `MapLoaded` 事件
+- `_mainForm.OnMapSaved()` → 改用 [MapSaved](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#454-466) 事件（已存在）
+- `_mapFilesComboBox` → `GetAvailableFiles()` 方法 + `FileListChanged` 事件
+
+#### [MODIFY] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+
+- [OnFrameAvailable](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#787-868) 改為：收到幀 → 呼叫 `_gamePipeline.ProcessFrame()` → 訂閱結果事件更新 UI 列表 → 自行決定是否渲染
+- 訂閱 [MapFileManager](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs#28-244) 事件更新 ComboBox 和標題列
+
+---
+
+## Phase 4.5：清理 MainForm 殘留的多重小地圖座標追蹤 (Dead Code Removal)
+
+目前系統中存在「多個版本」的小地圖腳色標記計算與賦值邏輯，導致 LiveView 可能出現閃爍或相衝：
+1. **GamePipeline 內的新版**：[ProcessMinimapTracking](file:///d:/Full_end/C%23/ArtaleAI/Services/GamePipeline.cs#231-260) 會正確追蹤並產生 `MinimapMarkers`。
+2. **MainForm 內的舊版**：`ProcessMinimapPlayer` (完全未被呼叫的死碼)。
+3. **MainForm 的 OnPathTrackingUpdated**：在掛載 `PathTrackingResult` 事件時，又自己寫入了 `_currentMinimapMarkers`，這會與新架構下 `GamePipeline.OnFrameProcessed` 傳回的結果發生競態條件與覆寫衝突。
+
+### Proposed Changes
+#### [MODIFY] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- **刪除** `ProcessMinimapPlayer(Mat frameMat)` 方法及其相關的 `_currentMinimapMarkers` 邏輯。
+- **清除** [OnPathTrackingUpdated](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1638-1785) 內對 `_currentMinimapBoxes` 與 `_currentMinimapMarkers` 的手動鎖定與覆寫，讓 MainForm 徹底回歸「唯讀顯示者」的本分，一切標記資料皆由 [GamePipeline](file:///d:/Full_end/C%23/ArtaleAI/Services/GamePipeline.cs#125-134) 的快照供給。
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- `cmd /c dotnet build --no-restore` — 確認零編譯錯誤
+
+### Manual Verification
+> [!WARNING]
+> 這是遊戲自動化應用，需要實際遊戲視窗才能完整測試。以下是建議的手動驗證步驟：
+
+1. 啟動應用程式，確認 UI 正常載入
+2. 在地圖編輯分頁，確認地圖檔案下拉選單正常載入選項
+3. 選擇地圖檔案，確認地圖正確載入到編輯器
+4. 儲存地圖，確認儲存功能正常
+
+能否請你確認以上方向是否正確？特別是這兩個問題：
+
+1. `RenderAndDisplayOverlays` 渲染邏輯是否保留在 MainForm，還是也要抽出？
+2. MapFileManager 現在是由它自己管理 ComboBox，重構後 ComboBox 的填充/選擇邏輯要完全回到 MainForm 處理嗎？
+
+---
+
+## 專案防禦性設計盤點 (Defensive Design Survey)
+
+為了確保系統在各種意外狀況下都不會死鎖（Deadlock）或出現不可預期的行為，專案內實作了多種**防禦性設計 (Defensive Defaults & Fallbacks)**。以下是目前的防卡死機制清單：
+
+### 1. 爬繩強制中斷防護 (Rope Climbing Safety)
+- **位置**：[CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs) (L857 附近)
+- **機制**：在爬繩的 `while` 迴圈中，持續檢查玩家的 X 軸是否偏離繩索（`currentDx > 5.0f`）。
+- **目的**：若角色在爬繩中途被怪物撞飛，或者路徑追蹤器漏判導致已經離開繩索卻仍在按上鍵，此機制會強制中斷爬繩動作，把控制權交還系統，避免死鎖在無限的爬繩狀態。
+
+### 2. 跳躍落地超時檢測 (Jump Landing Timeout)
+- **位置**：[NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs) (L290, L319 附近)
+- **機制**：跳躍後會透過 [WaitForLandingAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#271-337) 等待 Y 軸穩定。如果超過設定的超時時間（通常為 2000ms），強制結束等待。
+- **目的**：防止角色跳躍後卡在某個邊緣不斷微幅抖動（不滿足完全靜止條件），導致整個 Navigation Pipeline 被卡死。
+
+### 3. A* 尋路同層搜尋退路 (A* Layer Search Fallback)
+- **位置**：[NavigationGraph.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs) (L145 附近)
+- **機制**：[FindNearestNode](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs#93-166) 在尋找起點時，優先過濾出同高度層 (`sameLayerYThreshold = 15.0f`) 的節點。如果因為極端地形導致同層內完全找不到節點，會有一套退路機制 (Fallback) 轉為全域搜尋。
+- **目的**：防止角色在某些特殊地圖（例如只有單層，或是所有節點都在空中）完全失去導航能力，這是典型的降級服務 (Graceful Degradation) 設計。
+
+### 4. 邊界安全點退避 (Boundary Fallback)
+- **位置**：[PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) (HandleBoundaryHit 邏輯)
+- **機制**：當偵測到角色靠近地圖邊界時，會自動尋找遠離邊界的「安全」路徑點作為新目標。如果找不到符合條件的安全點，會直接選擇路徑陣列的正中間點 (`middleIndex`) 作為強制避險目標。
+- **目的**：防止角色走入地圖死角被大量怪物圍毆，或者卡在邊界無法轉向。
+
+### 5. 架構組件防呆降級 (Component Initialization Fallback)
+- **位置**：[MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) (L1817 附近)
+- **機制**：在驅動路徑時，如果發現 `_navigationExecutor` 尚未初始化或為 null，不會拋出 Exception，而是退回直接呼叫底層的 `_movementController.MoveToTargetAsync`。
+- **目的**：確保即使上層的複雜策略執行器失效，最基本的「走到附近點」功能依然能運作。類似的設計也出現在 `WindowFinder.TryCreateItemWithFallback`（捕捉機制失效時的備用方案）。
+
+> [!TIP]
+> 這些機制體現了一套成熟的系統思維：「不要假設環境總是完美的，永遠要為最壞的情況準備一條退路」。
+
+---
+
+## 移動執行層死碼盤點與精簡計畫 (Movement Execution Refactoring)
+
+針對最底層的硬體控制層 [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs) 與 [RopeAlignmentController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/RopeAlignmentController.cs)，目前存在嚴重的過度防禦與「物理引擎代理」技術債。這兩個檔案是早期為了彌補導航座標誤差而違章加蓋的產物，現在我們既然已經「信任領域模型 (Trust the Domain)」，就應該大刀闊斧地刪除。
+
+### 1. RopeAlignmentController.cs (建議：整支刪除 ❌)
+
+*   **原始用途**：爬繩前，用 15ms、30ms、50ms 的短按，嘗試把角色的 X 軸「像素級」對齊到繩索正下方（誤差限制在 2px 以內）。最多嘗試 10 次。
+*   **為何是技術債**：
+    1.  **與遊戲引擎搶工作**：大部分平台遊戲（如 MapleStory）都有吸附機制。只要角色靠近繩索一定範圍（如 5-10px），長按「上」鍵就會自動吸附並開始爬升。
+    2.  **導致詭異的行為**：你會看到角色在繩索底下「抽搐式地左右微調」，不但慢，而且容易因為網路或幀數波動導致微調過頭，陷入無窮迴圈（10次嘗試失敗）。
+*   **處置方式**：
+    *   直接刪除 [RopeAlignmentController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/RopeAlignmentController.cs) 整個檔案。
+    *   移除 [CharacterMovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#18-942) 中所有對 `_ropeAligner` 的實例化與呼叫。
+    *   把爬繩的 X 軸容差放寬到遊戲物理引擎允許的範圍（例如 ±8px），並直接執行長按 `↑`。
+
+### 2. CharacterMovementController.cs (建議：大幅精簡 ✂️)
+
+這個檔案超過 940 行，包含了過多「自作聰明」的微調邏輯，違反了我們現在的架構原則。主要需砍除的違章建築有兩大塊：
+
+#### A. 漸進式點按邏輯 (PerformGradualMoveAsync)
+*   **原始用途**：為了怕角色「走過頭 (Overshoot)」，當距離目標 < 50px 時改為「中等點按」，< 15px 時改為「微調點按」(只按幾毫秒)。
+*   **為何是技術債**：
+    1.  這導致角色每次快走到目標點時，就會出現不自然的「碎步、卡頓」。
+    2.  A* 節點只是一個路徑點，**越過它並不會死**，只要角色過了 X 座標，直接切換下一個節點即可。這層的點按防禦完全沒有必要。
+*   **處置方式**：
+    *   廢除 [PerformGradualMoveAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#514-568) 這個過度複雜的方法。
+    *   改為單純的「只要目標在右，就長按右鍵，直到角色的 X 大於等於目標 X 即鬆開（或交由 CancellationToken 中斷）」。
+
+#### B. 垂直高度差的 Walk 攔截 (MoveToTargetAsync 內)
+*   **原始用途**：如果目前的導航指令是 Walk，但目標點的 Y 軸差距過大（例如 > `reachDistance`），它會印出 `[移動] 水平已對齊...需要繩索處理` 並在此卡死停止。
+*   **為何是技術債**：
+    1.  這就是我們剛剛在 [FindNearestNode](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs#93-166) 解決的問題的「受害者」。
+    2.  執行層不應該去質疑「這條 Walk 邊的高低差合不合理」。既然 A* 給了 Walk，它就該盲目走到指定的 X 座標即可。Y 軸不對齊應該是 A* 圖資的責任，不該由鍵盤控制層來踩煞車。
+*   **處置方式**：
+    *   刪除 [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#229-370) 裡面所有關於 Y 軸差距 (`dy`) 的 [if](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#135-154) 檢查與警告。Walk 就只看 X 軸。
+
+### 重構後的預期效益
+1.  **程式碼減少**：保守估計能減少 300-400 行死碼。
+2.  **移動流暢感**：抽搐的爬繩對齊與走路碎步將完全消失，角色動作會像人類玩家一樣果斷（直接長按，到點就轉向或跳躍）。
+
+---
+
+## 導航系統有限狀態機重構 (FSM Refactoring)
+
+為根除 `_isMoving` 帶來的非同步競態條件與死鎖問題，並徹底抽離 UI 層的控制職責，導航系統已重構為 FSM 架構：
+
+### 階段一：狀態定義與介面設計
+- **[NEW]** [NavigationState.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationState.cs): 定義導航專用狀態，包含 `Idle`、`Moving_Horizontal`、`Moving_Vertical`、`Jumping`、`Transitioning`、`Reached_Waypoint`、[Error](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#478-482)。
+- **[NEW]** [INavigationStateMachine.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/INavigationStateMachine.cs): 定義狀態機對外介面，提供 [ExecuteEdgeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#75-115)、[CancelNavigation](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#116-134) 與 [NotifyTargetReached](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#135-154)。
+
+### 階段二：狀態機核心邏輯開發 (隔離開發)
+- **[NEW]** [NavigationStateMachine.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs): 實作 FSM，內建針對狀態切換的 `lock` 防護。將 `CancellationToken` 嚴格限縮於例外流 (中斷導航)；建立 `_isTargetReached` 旗標以接管常規流 (到達節點的自然完結)，徹底解決任務異常取消的安全隱患。
+
+### 階段三：開刀替換 MainForm 與解決 Polling 衝突
+- 將 [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#33-2154) 內所有的 `_isMoving` 邏輯移除，並全權委託 FSM 管理導航行動。
+- **🚨 關鍵修正 (Post-Phase 6)**：FSM 是 Fire-and-Forget 任務模式，會阻斷原本 MainForm 每幀 10Hz 的呼叫。因此原本依賴外圍 10Hz 瘋狂呼叫才「走得動」的 [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#229-370) 被我們重構為 **長期輪詢任務 (Long-running Awaitable Loop)**，使其真正具備非同步等待抵達目標的能力，確保 `ClimbUp` 等多段式動作能自律地完成。
+3.  **架構清晰**：[CharacterMovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#18-942) 退化為一個純粹的「Win32 Input API 包裝器」外加簡單的「長期自動輪詢移動」功能，不再擁有任何導航或避障的決策權。

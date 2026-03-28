@@ -1,0 +1,6 @@
+{
+  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary": "全域架構搶救實作計畫，旨在修復 298 個編譯錯誤。這包括在 AppConfig.cs 中加入橋接屬性以實現向下相容，重建遺失的 MsgLog 靜態類別提供 UI 日誌介面，並在 MainForm.cs 中補齊被誤刪的核心服務實例（如 PathManager）與 UI 事件控制邏輯。驗證計畫包含執行 dotnet build 直到 0 錯誤，確保導航與渲染系統恢復運作。",
+  "updatedAt": "2026-03-23T12:42:05.494786800Z",
+  "version": "1"
+}

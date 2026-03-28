@@ -1,0 +1,130 @@
+# 垂直維度防禦、路徑救援與舊碼殲滅重構計畫
+
+## 核心目標
+本計畫旨在強化導航系統對異常狀況（如墮落、跳躍失敗）的自癒能力，並徹底清理過時的像素距離判定邏輯，落實「語意化區域觸發」。
+
+## 擬定變更
+
+### 1. 舊碼殲滅 (Clean-up Phase) - 實踐「Hitbox 唯一真理」
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- **移除舊常數**：刪除 `ReachDistancePercent`、`checkDistance` 等過時變數。
+- **強硬判定重構**：在 [UpdatePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#241-321) 中，若 `targetNode?.Hitbox` 缺失，直接發出 `Logger.Error` 並調用 `_fsm.NotifyNavigationFailed()` 觸發熔斷。移除所有 `Math.Abs` 回退邏輯。
+
+#### [MODIFY] [NavigationStateMachine.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs)
+- **介面加固**：在 [TryStartNavigation](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#37-89) 中，若 `targetHitbox` 為 null 且動作非傳送/救援，則視為不合法調用，發出 Error 並拒絕啟動。
+- **[修復] FSM 死鎖**：修正 `Check-on-Start` 觸發後狀態未重置的問題。手動切換至 `Reached_Waypoint` 後，必須同步切回 `Idle`，否則狀態機將卡死，導致 [ChangeState](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#196-209) 的冪等檢查攔截後續所有跳轉事件。
+
+### 6. 圖層級路徑淨化 (Path Simplification)
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- **[新增] `SimplifyPath`**：實作私有淨化方法，移除相鄰距離 `< 15.0` (Width/2) 且高度差 `< 5.0` 的冗餘節點。
+- **[同步] 索引機制**：在 `SimplifyPath` 中同步處理座標序列與節點 ID 序列。
+- **[植入] 流程嵌入**：在 [ApplyRandomSelectionAndPathfind](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#348-397) 與 [TryRescuePath](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#415-471) 的最終指派前，強制通過淨化過濾器。
+
+---
+
+### 2. 垂直維度防禦 (Vertical Defense) - 墜落保險絲實作
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- **新增常數**：`private const float FALL_Y_TOLERANCE = 15.0f;`
+- **實作監控邏輯**：
+    - 在 [UpdatePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#241-321) 中，若當前為 [Walk](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#100-114) 動作，且 `|Player.Y - TargetNode.Y| > FALL_Y_TOLERANCE`。
+    - 判定為「導航偏離」，立即呼叫 `_fsm?.CancelNavigation("角色墜落偵測觸發")` 並廣播導航失敗。
+
+---
+
+### 3. 自動路徑救援 (Path Rescue) - 事件驅動自癒
+
+#### [MODIFY] [PathPlanningManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs)
+- **訂閱失敗事件**：監聽 FSM 的異常終止狀態。
+- **救援流程實作**：
+    1. 當 FSM 報錯或大腦回報偏離時，先呼叫 [CancelNavigation](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#163-181) 停止殘留按鍵。
+    2. 自動調用 `Tracker.TryRescuePath()`，以當前不幸墜落的位置為起點，重新規劃 A* 至原目標。
+    3. 成功重規劃後，自動觸發新一輪導航。
+
+#### [MODIFY] [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs)
+- 在 [ExecuteDirectionalJumpAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#213-234) 的 [WaitForLandingAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#255-286) 後，新增座標複查：若落地 Y 座標與目標差距過大，回傳 `ExecutionResult.Failed`。
+
+### 5. 導航協調修正 (Coordination Gap)
+
+#### [MODIFY] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- **修正調用簽名**：在 `tryMoveToWaypoint` 邏輯中，獲取 `Tracker.CurrentTarget?.Hitbox` 並傳遞給 [TryStartNavigation](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#37-89)。
+- **補全遺失資料**：確保 FSM 的硬性防禦校驗能獲取正確的 [BoundingBox](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/BoundingBox.cs#9-41)。
+
+## 驗證計畫
+
+### 自動測試
+- 運作 `dotnet build`。
+
+### 手動驗證
+- **墜落測試**：在角色移動時手動將其擊落平台，確認系統是否能立即停止當前走路動作，並在 1 秒內重新規劃出爬回原本平台的路線。
+
+---
+
+### 👁️ 階段 18：視覺系統防抖與緩衝優化 (Vision Debounce)
+
+#### [MODIFY] [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **起步緩衝**：將初始位置獲取的重試次數從 3 提高至 30 次（約 600ms），解決啟動瞬間的閃爍。
+- **移動中防抖**：
+    - 引入 `visionLossWatcher` (Stopwatch)。
+    - 遇到視覺丟失時，容許 1.5 秒內的「盲飛」，期間不停止按鍵，維持動量。
+    - 超過 1.5 秒盲區後才執行緊急煞車並回報 Failed。
+
+---
+
+### 🦾 階段 17：運動執行層物理微調 (Physics Tuning)
+
+#### [MODIFY] [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs)
+- **爬繩對齊**：引入 `ROPE_ALIGN_TOLERANCE = 2.0f`，取代寬鬆的全局容差，強化 X 軸鎖定精度。
+- **跳躍時序**：
+    - 延長助跑初速度產生延遲 (30ms -> 80ms)。
+
+---
+
+### 🚉 階段 19：狀態機開局預檢邏輯移除 (Start Check Removal)
+
+#### [MODIFY] [NavigationStateMachine.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs)
+- **移除 `isReachedAtStart`**：刪除所有在啟動前預判座標是否已達標的邏輯。
+- **移除預收信號消費**：啟動時不再因 `_isTargetReached` 為真而直接進入完成狀態。
+- **強制職責分離**：確保所有導航請求都進入非同步執行迴圈，由 [NavigationExecutor](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#16-287) 自行決定何時結束。
+- **保留安全閘門**：維持對 `targetHitbox` 的 Null 檢查，防止地圖資料不全導致的崩潰。
+
+---
+
+### 🧹 階段 20：路徑簡化機制移除 (Simplification Removal)
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- **刪除 `SimplifyPath`**：移除整個私有方法定義。
+- **修正呼叫點**：在 [ApplyRandomSelectionAndPathfind](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#348-397) 與 [TryRescuePath](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#415-471) 中直接進行賦值，不再執行過濾。
+- **保留原始性**：確保 A* 演算法生成的每個節點坐標與 ID 都 100% 保留在計畫路徑中。
+
+---
+
+### 🚀 階段 21：預測性煞車架構 (Predictive Braking Architecture)
+
+#### [MODIFY] [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **實時測速 (Velocity Tracker)**：在 `while` 迴圈中紀錄上一次座標與時間，計算即時速度 `vx`。
+- **預測性煞車 (Predictive Key Release)**：
+    - 預估延遲補償：`float estimatedStopDist = vx * 0.150f;` (假設延遲 + 慣性煞車期共 150ms)。
+    - 判定條件：當 `Math.Abs(remainingDist) <= (reachDistance + estimatedStopDist)` 時，立即執行 [StopMovement()](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#318-330)。
+- **動態停穩偵測 (Stability Check)**：
+    - 釋放按鍵後不立即回傳，進入 [WaitForStabilityAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#269-306)。
+    - 持續監控座標變動，直到連續 3 幀位移 `< 0.2px` (忽略視覺雜訊) 視為完全停穩。
+
+#### [MODIFY] [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs)
+- **清理舊補丁**：刪除 `BaseWalkSpeed = 20.0f` 等靜態降級常數。
+- **動態超時優化**：超時判定應結合實時速度，若位移停滯則視為失敗。
+- **重構微調鏈**：移除固定 `Task.Delay(150)`，依賴 [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#105-268) 回傳的「已停穩」狀態進行最終誤差複查。
+
+---
+
+### 🛡️ 階段 23：雙重防禦超時架構 (Dual-Defense Timeout)
+
+#### [MODIFY] [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **機制 A：動態幀率防抖 (Adaptive Debounce)**：
+    - 若檢測到速度趨近於零 (`Vx <= 0.1`)，根據 `AppConfig.VisionFps` 計算安全等待時間（1.5 倍更新週期）。
+    - 執行非阻塞等待後重新採樣，確認是否為視覺延遲導致的「假性卡死」。
+- **機制 B：物理動能結算 (Physical Extension)**：
+    - 通過防抖驗證後，若確實具備動能，則依據物理公式 `t = d / v` 進行超時展延。
+    - 僅在二次驗證後仍無動能時才判定為「真實卡死」並熔斷。

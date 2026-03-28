@@ -1,0 +1,21 @@
+# 任務清單：解決重複定義與命名空間衝突 (已完成)
+
+## 核心目標
+消除專案中因重複類別定義與命名空間歧義導致的編譯錯誤，並統一使用 `ArtaleAI.Models` 作為資料模型標準。
+
+## 待辦事項
+- [x] **清理重複檔案 (Strict Refactoring)**
+    - [x] [DELETE] `d:/Full_end/C#/ArtaleAI/Data/AppConfig.cs` (保留 [Config/AppConfig.cs](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs))
+    - [x] [DELETE] `d:/Full_end/C#/ArtaleAI/Data/DataModels.cs` (統一移至 `Models/`)
+    - [x] [DELETE] `d:/Full_end/C#/ArtaleAI/Services/Logger.cs` (統一移至 [Utils/Logger.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs))
+    - [x] [DELETE] `d:/Full_end/C#/ArtaleAI/Core/Domain/Navigation/MapData.cs` (消除與 `Models/` 的衝突)
+- [x] **修復基礎設施組態**
+    - [x] [NEW] `d:/Full_end/C#/ArtaleAI/API/Config/ApiConfig.cs` (修復 MonsterImageFetcher 的依賴)
+    - [x] [MODIFY] `d:/Full_end/C#/ArtaleAI/Config/NavigationSettings.cs` (補完導航參數)
+- [x] **統一模型引用 (Namespace Consolidation)**
+    - [x] [MODIFY] `d:/Full_end/C#/ArtaleAI/Core/GameVisionCore.cs` (完成模組化組態遷移)
+    - [x] [MODIFY] `d:/Full_end/C#/ArtaleAI/UI/MainForm.Detection.cs` (修復型別歧義)
+    - [x] [MODIFY] `d:/Full_end/C#/ArtaleAI/Services/MapFileManager.cs` (遷移地圖 I/O 邏輯)
+- [x] **最終驗證**
+    - [x] 執行全域掃描，確認 `AppConfig.Instance` 的舊版屬性引用歸零。
+    - [x] 產出 [walkthrough_final_consolidation.md](file:///C:/Users/HonWu/.gemini/antigravity/brain/d133c74c-1739-4af3-aeb8-3e4509cd227d/walkthrough_final_consolidation.md)。

@@ -1,0 +1,11 @@
+# 實作編輯器節點動作選擇功能
+
+- [ ] UI 修改：新增動作選擇 ComboBox <!-- id: 1 -->
+    - [ ] 在 [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#126-137) 的路徑編輯分頁新增 `cbo_ActionType`
+    - [ ] 填入所有支援的動作選項 (Walk, Jump, RightJump, LeftJump, ClimbUp, ClimbDown)
+- [ ] 邏輯修改：MapEditor 支援動作設定 <!-- id: 2 -->
+    - [ ] 修改 `MapEditor.HandleClick`，讀取 `cbo_ActionType` 的值
+    - [ ] 將選定的動作代碼寫入新建立的節點資料中
+- [ ] 驗證 <!-- id: 3 -->
+    - [ ] 確認存檔後的 JSON 包含正確的動作代碼 (第三個數值)
+    - [ ] 確認載入時能正確解析並執行跳躍動作

@@ -1,0 +1,50 @@
+# 架構清理計畫：轉型為純圖形導航
+
+## 目標
+移除舊「順序導航」邏輯，全面採用 **圖形導航 (Graph-Based Navigation)**。
+
+---
+
+## 現況分析
+
+### ✅ 圖形導航 (保留)
+| 方法/結構 | 說明 |
+|-----------|------|
+| `Connections` | 自定義邊(Edge)，含動作代碼 |
+| [BuildNavigationGraph()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#602-727) | 將節點+連接轉換為 NavigationGraph |
+| [ResolveSmartAction()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#728-776) | 自動判斷跳躍/爬繩方向 |
+
+### ❌ 順序導航遺跡 (待移除)
+| 方法/結構 | 問題 |
+|-----------|------|
+| `_pathNodes[i].Action` | 節點自帶動作 → 應由 Edge 定義 |
+| [GenerateIntermediatePoints()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#2173-2211) | 動態插值 → 應改為圖的密集邊 |
+| [ForceAdvanceTarget()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1648-1874) 循序邏輯 | 用 index+1 推進 → 應改為圖遍歷 |
+
+---
+
+## 清理步驟
+
+### Phase 1: 修正存檔邏輯 (MapEditor)
+- [ ] 建立連結時，**同步更新節點 Action Code**
+```csharp
+// MapEditor.cs Line 221 後新增：
+_currentMapData.WaypointPaths[_linkStartIndex][2] = _currentActionType;
+```
+
+### Phase 2: 移除動態插值
+- [ ] 刪除 [GenerateIntermediatePoints()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#2173-2211) 方法
+- [ ] 刪除 `_intermediateQueue` 欄位
+- [ ] 移除 [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1247-1637) 中的插值邏輯
+
+### Phase 3: 統一為圖遍歷
+- [ ] [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1247-1637) 改用 `NavigationGraph.FindPath()`
+- [ ] 移除 [ForceAdvanceTarget()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1648-1874) 的 index+1 遞增邏輯
+- [ ] 改用 Edge 的 `InputSequence` 決定動作
+
+---
+
+## 驗證計畫
+1. 建立測試地圖（含跳躍連結）
+2. 確認 JSON 中節點 Action 正確寫入
+3. 確認導航時正確執行跳躍動作

@@ -1,0 +1,24 @@
+# Implementation Plan - Path Initialization Logic
+
+## Goal Description
+Ensure path planning always starts relative to the character's actual position by waiting for a valid position detection before initializing the target.
+
+## User Review Required
+> [!NOTE]
+> The character will not start moving immediately upon enabling "Path Trace". It will wait until the system detects the character's position on screen.
+
+## Proposed Changes
+
+### Core
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- Modify [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#802-877) logic:
+    - Check if `_lastKnownPosition` is valid.
+    - If valid, proceed with [FindClosestPathNodeIndex](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#925-948).
+    - If invalid (Empty), **return immediately** and log a warning/info that it's waiting for position.
+    - Remove the fallback logic that defaults to `pathNodes.FirstOrDefault()`.
+
+## Verification Plan
+1. Enable `Path Trace` without character visibility (e.g., covered by window).
+2. Verify log shows "Waiting for character position...".
+3. Reveal character.
+4. Verify log shows "Synced to closest node: Index=X".

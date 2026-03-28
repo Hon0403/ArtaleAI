@@ -1,0 +1,36 @@
+# Auto-Attack Integration
+
+## Overview
+Successfully integrated Auto-Attack logic into the main game loop ([MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)). The system now automatically detects monsters within the predefined attack range, pauses path planning, and engages in combat.
+
+## Implementation Details
+
+### 1. State Switching Logic ([OnFrameAvailable](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#753-954))
+- **Location**: [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) (inside [OnFrameAvailable](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#753-954) loop).
+- **Logic**:
+  - Checks if **Auto-Attack is Enabled** (`_autoAttackEnabled`) and monsters are detected (`_currentMonsters`).
+  - Uses the player's precise position derived from the **Team Blood Bar Offset** (`_currentAttackRangeBoxes`).
+  - Calculates intersections between the Player's Attack Range and Detected Monsters.
+  - **Switch Condition**:
+    - **IF** Monster intersects Attack Range -> Set `_isAttacking = true`, Call [PerformAutoAttack](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2530-2583).
+    - **ELSE** -> Set `_isAttacking = false`, Resume [ProcessPathPlanning](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2584-2623).
+
+### 2. Auto-Attack Execution ([PerformAutoAttack](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2530-2583))
+- **Target Selection**: Selects the monster closest to the player's center on the X-axis.
+- **Direction Control**:
+  - Compares `Monster.CenterX` vs `Player.CenterX`.
+  - Turns **Left** if monster is to the left.
+  - Turns **Right** if monster is to the right.
+  - Includes a cooldown (`DirectionChangeCooldownMs`) to prevent rapid flickering.
+- **Attack Action**:
+  - Sends the **Attack Key** (`Ctrl` / `VK_CONTROL`).
+  - Uses `Task.Delay` to simulate key press duration without blocking the UI thread.
+
+### 3. Safety & Performance
+- **Thread Safety**: Uses `lock` when accessing shared collections (`_currentMonsters`).
+- **Optimization**: Skips path planning calculations during combat to save resources and prevent movement conflicts.
+- **Ambiguity Resolution**: Explicitly uses `SdPoint` (System.Drawing) and `SdRect` to avoid conflicts with OpenCvSharp types.
+
+## Verification
+- **Build Success**: Validated that all code compiles without errors.
+- **Logic Verification**: Reviewed flow to ensure [PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#85-94) is not starved of updates (Minimap tracking continues) while Movement is paused.

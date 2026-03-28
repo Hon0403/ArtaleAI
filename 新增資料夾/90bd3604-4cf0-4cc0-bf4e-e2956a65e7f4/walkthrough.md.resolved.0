@@ -1,0 +1,45 @@
+# Auto-Attack Logic Integration Walkthrough
+
+We have successfully integrated the Auto-Attack logic into the ArtaleAI path planning system.
+
+## Changes Implemented
+
+### 1. Attack Mechanics ([CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs))
+- Added [PerformAttackAsync(int cooldownMs)](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#605-626) method.
+- Sends a `Ctrl` key press to attack.
+- Implements a configurable cooldown (currently set to 1000ms).
+- Ensures movement is fully stopped before attacking.
+
+### 2. Detection & Trigger Logic ([MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs))
+- **Condition Check**: [CheckAutoAttackCondition()](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1000-1054) verifies:
+    - [Start](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2687-2751) checkbox is checked.
+    - Path, Detection Mode, and Monster Templates are selected.
+    - Monsters are detected within the defined **Attack Range**.
+- **Execution Flow**:
+    - When a monster enters the attack range, [PerformAutoAttackAsync()](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1055-1090) is triggered.
+    - Path Planning movement is immediately paused ([StopMovement()](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#345-365)).
+    - Attack key (`Ctrl`) is pressed.
+    - System waits for 1 second (Cooldown).
+    - Movement automatically resumes in the next frame cycle.
+
+## Verification
+
+### Automated Verification
+- **Build Status**: The project compiled successfully with 0 errors.
+
+### Manual Verification Steps
+1.  **Configure**:
+    - Select a valid Path File.
+    - Select a Detection Mode (e.g., Color).
+    - Select Monster Templates.
+    - Check the [Start](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2687-2751) box.
+2.  **Test**:
+    - Observe the character moving along the path.
+    - When a monster appears in the **Attack Range Box** (Blue/Green box):
+    - **Observe**: Character should stop moving.
+    - **Observe**: Character should perform an attack animation (Ctrl key).
+    - **Observe**: Logs should show `[自動攻擊] 發現怪物...` and `[自動攻擊] 攻擊完成...`.
+    - **Observe**: Character resumes path following after ~1 second.
+
+> [!NOTE]
+> The attack logic is designed to prioritize attacking over moving. If multiple monsters keep appearing, the character may stay in place to fight them off before continuing the path.

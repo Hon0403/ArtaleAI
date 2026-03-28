@@ -1,0 +1,66 @@
+# 繩索爬升系統衝突分析 v2
+
+## 目前已修復
+- ✅ 爬繩完成後 [ForceAdvanceTarget()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#950-985) 強制推進目標
+- ✅ 移除 [FindNearbyClimbPoint](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1181-1238) 備用路徑
+- ✅ 移除 [HasReachedWaypoint](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1058-1070) 繩索特殊閾值
+
+---
+
+## 🔴 衝突 1: RopeAlignmentController 複雜度過高
+
+[RopeAlignmentController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/RopeAlignmentController.cs) 有 303 行，做粗調+精調兩階段對齊。
+
+| 閾值 | 值 | 用途 |
+|------|-----|------|
+| `PerfectAlignmentThreshold` | 0.5px | 完美對齊 |
+| `GoodAlignmentThreshold` | 1.5px | 良好對齊 |
+| `AcceptableAlignmentThreshold` | 3.0px | 可接受對齊 |
+
+**問題**: 
+- 精調最多嘗試 8 次，每次 60ms → 最長 480ms 只為對齊
+- 如果角色已經在繩索上 (例如上次爬繩後)，還會嘗試對齊 → 浪費時間
+
+**建議**: 簡化或移除精調，直接使用粗調 3px 閾值即可
+
+---
+
+## 🔴 衝突 2: HandleBoundaryHit 與爬繩的交互
+
+`PathPlanningTracker.HandleBoundaryHit()` 會在角色碰到邊界時切換目標。
+
+**潛在問題**: 如果角色正在爬繩並且繩索在邊界附近，[HandleBoundaryHit](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#586-626) 可能中途切換目標，導致爬繩未完成就被打斷。
+
+---
+
+## 🟡 潛在問題: 卡住偵測機制
+
+[CheckMovementProgress()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1082-1116) 和 [HandleStuckSituation()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1117-1140) 用於偵測角色卡住並重新選擇目標。
+
+**可能衝突**: 
+- 如果爬繩時間較長，卡住偵測可能誤判為「卡住」並強制切換目標
+- 但現在有 [ForceAdvanceTarget()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#950-985)，應該不會卡太久
+
+---
+
+## 🟡 潛在問題: 閾值分散
+
+目前系統中使用的閾值散落各處：
+
+| 位置 | 閾值 | 說明 |
+|------|------|------|
+| `CharacterMovementController.ClimbRopeAsync` | 6px, 15px | 爬繩到達判定 |
+| [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) | 2.0f | 繩索 X 對齊閾值 |
+| [RopeAlignmentController](file:///d:/Full_end/C%23/ArtaleAI/Services/RopeAlignmentController.cs#13-289) | 0.5, 1.5, 3.0 | 精調閾值 |
+| [GetDynamicReachDistance()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1159-1180) | 動態計算 | 路徑點到達 |
+| [SelectRandomNearbyIndex](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#986-1033) | 30px, 10px | 隨機選點範圍 |
+
+**建議**: 集中到 `AppConfig` 統一管理
+
+---
+
+## 📋 可刪除/簡化的項目
+
+1. **RopeAlignmentController 精調階段** (L188-262) → 只保留粗調
+2. **HandleBoundaryHit** → 如果已有良好的路徑規劃，邊界處理可能不需要
+3. **卡住偵測相關字段** (`_stuckCounter`, `_lastStuckCheckPos` 等) → 確認是否仍在使用

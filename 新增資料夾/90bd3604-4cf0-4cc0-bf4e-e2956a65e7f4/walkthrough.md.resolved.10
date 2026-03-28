@@ -1,0 +1,22 @@
+# Walkthrough - Remove Rope Visualization Extension
+
+## Problem
+The user noticed that the rope visualization in the independent Minimap window showed a line longer than the actual rope nodes they created.
+Logs confirmed that the system was automatically adding `+15px` to the `BottomY` of every loaded rope to handle "jump catch" scenarios.
+User requested to remove this mechanism.
+
+## Solution
+
+### 1. Remove Rope Extension in [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+*   **Location:** [SetRopes](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#145-224) method.
+*   **Change:** Removed the logic that added `15f` to `rope[2]` (BottomY).
+*   **Result:** The internal [RopeData](file:///d:/Full_end/C%23/ArtaleAI/Models/PathPlanning/RopeData.cs#6-28) now exactly matches the coordinates provided in the path file. [MinimapViewer](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs#45-81) will now draw the rope exactly as defined.
+
+## Verification
+*   **Code Review:** Verified `BottomY = rope[2]` (raw value) instead of `rope[2] + 15f`.
+*   **Logs:** Updated logs to reflect that no extension is applied.
+*   **Expected Visuals:** The rope line in the MinimapViewer should now align perfectly with the bottom rope node.
+
+## Notes
+*   **Risk:** Reducing the rope length *might* affect the ability to detect reachable ropes if the character is standing slightly below the recorded "bottom" node (e.g., needing to jump to grab it).
+*   **Mitigation:** If users find characters failing to grab ropes, they may need to manually extend the rope nodes downwards in the editor or we might need to re-introduce a *logic-only* extension that isn't visualized. For now, we respect the WYSIWYG preference.

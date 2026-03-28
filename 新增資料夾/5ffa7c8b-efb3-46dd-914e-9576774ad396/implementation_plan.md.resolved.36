@@ -1,0 +1,41 @@
+# 架構清理計畫：純圖形導航
+
+## 目標
+移除順序導航遺跡，全面採用 **圖形導航 (Graph-Based Navigation)**。
+
+---
+
+## Phase 1: 修正存檔邏輯
+
+#### [MODIFY] [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)
+- 建立連結時，同步更新起點節點的 Action Code
+```csharp
+// Line 221 後新增：
+_currentMapData.WaypointPaths[_linkStartIndex][2] = _currentActionType;
+```
+
+---
+
+## Phase 2: 移除動態插值
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- [ ] 刪除 [GenerateIntermediatePoints()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#2173-2211) 方法 (L2173-2210)
+- [ ] 刪除 `_intermediateQueue` 欄位
+- [ ] 刪除 [GetIntermediateQueueSnapshot()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#2165-2172) 方法 (L2165-2171)
+- [ ] 移除 [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1247-1637) 中所有插值相關邏輯
+
+---
+
+## Phase 3: 統一圖遍歷
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- [ ] [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1247-1637) 改用 [NavigationGraph](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs#13-122) 搜尋
+- [ ] 移除 index+1 遞增邏輯
+- [ ] 使用 Edge 的 `InputSequence` 決定動作
+
+---
+
+## 驗證
+1. MapEditor 建立跳躍連結 → JSON 節點 Action = 正確值
+2. 載入路徑 → 圖正確建構
+3. 導航執行 → 跳躍動作正確觸發

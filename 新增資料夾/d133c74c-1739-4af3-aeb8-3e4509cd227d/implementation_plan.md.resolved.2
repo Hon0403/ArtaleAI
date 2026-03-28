@@ -1,0 +1,24 @@
+# 修復角色越過繩索 (Overshoot) 實作計畫
+
+目前的過衝問題源於程式碼中存在多處硬寫的容差值 (Hardcoded Tolerances)，導致全域設定 `waypointReachDistance` 在攀爬行為中失效。
+
+## 待解決問題
+- [ ] **設定檔路徑混淆**：使用者修改了 [Data\config.yaml](file:///d:/Full_end/C%23/ArtaleAI/Data/config.yaml)，但編譯後的執行檔通常讀取 `bin\Debug\...\Data\config.yaml`。
+- [ ] **導航執行器硬寫值**：`NavigationExecutor.ExecuteClimbAsync` 固定使用 `1.5f` 作為到點判定。
+- [ ] **動作控制器判定區間**：如果到點判定 (10.0) 大於跳躍判定 (3.5)，會導致角色停在原地決定「側跳」而非「直跳」。
+
+## 建議變更
+
+### [Component] Navigation
+### [Component] Core - PathPlanningTracker
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- 在 [UpdatePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#286-365) 中區分「動作語意」：
+    - **慣性動作 (Walk, Jump)**：使用 `waypointReachDistance` 作為提前停止判定，補償物理滑步。
+    - **精密動作 (ClimbUp, ClimbDown, Teleport)**：無視全域容差，強制使用嚴格容差 (`1.5f`)。
+- 這樣設計能確保：
+    1. 水平走路時能提早 10 像素放開按鍵，剛好滑停。
+    2. 爬繩子時必須完全爬到頂端 (誤差 < 1.5) 才會切換到下一個動作，避免在半空中就執行跳躍。
+
+## 驗證計畫
+1. **日誌驗證**：檢查執行 `ClimbUp` 時，是在 `dy <= 1.5` 時才觸發 `到達路徑點`。
+2. **行為驗證**：確認角色在大容差設定下，水平移動依然能提早停止，且繩索攀爬能正確完成。

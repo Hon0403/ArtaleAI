@@ -1,0 +1,137 @@
+# 混合式動態導航 (Hybrid Dynamic Navigation)
+
+## 設計目標
+針對「每平台只有起點+終點」的稀疏路徑標記，結合兩種機制：
+
+```mermaid
+flowchart LR
+    A[當前位置] --> B{解析節點 (Action?)}
+    B -->|Idle| C[取得當前/目標平台]
+    C --> D{同平台?}
+    D -->|是| E[直接導航 (隨機漫遊)]
+    D -->|否| F{尋找中途動作點}
+    F --> G[設定動作點為臨時目標]
+    E --> H[執行導航]
+    G --> H
+    B -->|Action| I[鎖定目標 (精準模式)]
+    I --> H
+```
+
+---
+
+## 核心改動
+
+### 1. 平台驅動選點 (Platform-Aware Selection) **[NEW]**
+- **核心概念**：不再只看距離，而是看「所在的平台」。
+- **邏輯**：
+  1. 呼叫 [GetCurrentPlatformSegment(playerPos)](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#574-602) 取得當前平台段落。
+  2. 獲取該段落內 **所有** 非動作節點 (`Indices`)。
+  3. 從中進行 **加權隨機選擇**。
+- **優勢**：角色可以在整個平台上隨機行走，而不僅僅是往前走。能更自然地清除平台上的隨機生成物。
+
+### 2. 動態中間點生成 (Dynamic Runtime Interpolation)
+- **變更點**：在 [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1005-1301) 執行時動態生成。
+- **邏輯**：
+  - 選中目標後，若距離 > 30px 且為安全走路區段。
+  - 動態生成 1~3 個「臨時路徑點」放入 `_intermediateQueue`。
+  - 這些點 **每次執行時座標都會隨機重算** (真正的反外掛)。
+- **微隨機偏移 (Jitter)**：即便不插值，目標點座標也會加入 ±1~3px 的隨機偏移。
+
+### 3. 動作優先與精準 (Action Priority & Precision) 🌟
+- **關鍵約束**：當前正在執行「跳躍」或「爬繩」動作時，必須禁用隨機選點與中間點插入。
+- 動作點必須嚴格循序執行，直到該動作狀態結束。
+- 動作完成後，系統才會恢復隨機導航模式。
+
+---
+
+## 修改項目
+
+### 4. 跨平台動作路由 (Cross-Platform Action Routing) **[NEW]**
+- **問題**：隨機選到隔壁平台的點時，角色會傻傻地走過去卡在懸崖邊。
+- **解法**：
+  1. 檢查 `TargetNode` 是否在 [CurrentSegment](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#603-611) 內 (或 Y 軸差異大)。
+  2. 若不同平台，**不直接前往 Target**。
+  3. **水平移動優化**：若目標在不同平台且非垂直移動需求。
+  4. 搜尋當前平台內，**方向正確** 且 **距離最近** 的 **跳躍點 (Jump)** (排除繩索，因繩索為垂直移動)。
+  5. 將該 `JumpNode` 設為 **臨時優先目標**。
+  6. **垂直移動**：若目標有顯著垂直差異，則維持原有的 [FindNearbyRope](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#262-355) 邏輯運作 (不需額外搜尋)。
+
+### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+
+#### 核心邏輯修正
+- **錨點基準更新**：
+  - [GenerateIntermediatePoints](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1837-1875) 的起始點由 `currentPos` 改為 `_pathNodes[_currentPathIndex].Position` (即當前所在的錄製節點)。
+  - 這能確保生成的臨時目標點永遠落在「錄製的路徑線」上，而不是跟隨角色的辨識誤差。
+- **插值佇列管理 (SelectNextTarget Logic Fix)**：
+  - 在 [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1005-1301) 中，優先檢查 `_intermediateQueue` 是否有剩餘點。
+  - 若有，直接取出下一個點作為 `_currentTarget`，**不重新生成**。
+  - 若無且距離仍遠，才調用 [GenerateIntermediatePoints](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1837-1875) 重新生成。
+  - 當使用中間點時，不推進 `_currentPathIndex`，保持鎖定在當前路段終點。
+- **坐標穩定化**：
+  - 插值點的 **Y 坐標** 嚴格從 `from` 與 [to](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs#125-153) 節點中值（或線性補間）取得，不再跟隨 `currentPos.Y`。
+  - 移除 `midX` 的隨機抖動 (±5px)，確保視覺上與路徑點完美契合。
+- **坐標系同步 (MainForm Fix)**：
+  - 在 [BuildPathVisualizationData](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1277-1388) 中，移除 `TemporaryTarget` 與 [IntermediatePoints](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1837-1875) 對 `minimapBounds` 的減法運算。
+  - 這些資料源自錄製好的路徑點，本身即為小地圖相對座標 (Map Space)，不需要再次轉換。
+- **尺寸一致性** (MinimapViewer)：
+  - **臨時目標** 與 **動態插值點** 的繪製半徑改為與錄製節點完全一致 (使用相同的 `_baseSize` 與 `_zoomFactor` 計算邏輯)。
+#### 新增/修改方法
+| 方法 | 說明 |
+|---|---|
+| `SelectNextTarget_PositionBased()` | **[MODIFY]** 改為 `SelectNextTarget_PlatformBased()` |
+| `FindCandidateNodes()` | 搜尋範圍內候選節點 |
+| `CalculateNodeWeight()` | 權重計算 |
+| `WeightedRandomSelect()` | 加權隨機選擇 |
+| [GenerateIntermediatePoints()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1837-1875) | 強化版動態中間點生成 |
+
+#### [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1005-1301) 執行流程 (Simplified)
+1. **動作檢查**：若當前點 `Action != Idle`，**禁止隨機化**，循序執行。
+2. **路徑選點**：
+   - 呼叫 `SelectNextTarget_PlatformBased()`。
+   - 邏輯：取得當前 Segment -> 撈取所有點 -> 加權隨機。
+   - 若失敗，fallback 到傳統序列尋點。
+3. **繩索導航 (Override)**：檢查是否需要跨樓層繩索導航。
+
+### [MODIFY] [MinimapViewer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs)
+
+#### 功能增強
+- **目標可視化**：
+  - **臨時目標 (TemporaryTarget)**：
+    - 樣式：**青色 (Cyan)** 實心圓點 + 半透明光圈 (Glow)。
+    - 大小：遵循 `_baseSize` 與 `_zoomFactor` 縮放規則。
+    - 額外標記：繪製十字準心以區別於主目標。
+  - **動態路徑 (IntermediatePoints)**：
+    - 樣式：**亮綠色 (Lime)** 小圓點 (與路徑點同色)，點之間用細線連接。
+    - 大小：比普通路徑點稍小 (`_baseSize - 1`)。
+  - **繩索 (Rope)**：
+    - **目標繩索**：**亮綠色 (Lime)** + **強力光圈 (Glow)** (用光亮區分)。
+    - **正在爬**：**亮青色 (Cyan)** + 光圈。
+    - **普通**：**亮綠色 (Lime)** (無光圈，保持原樣)。
+
+#### 類別更新
+- [PathVisualizationData](file:///d:/Full_end/C%23/ArtaleAI/Models/Visualization/PathVisualizationModels.cs#9-35)：新增 `TemporaryTarget` (SdPointF?) 與 [IntermediatePoints](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1837-1875) (List<SdPointF>?) 欄位。
+
+---
+
+
+---
+
+## 預期效果
+
+**原本 (線性)**:
+```
+Node0 → Node1 → Node3 → Node4 → ...
+```
+
+**新設計 (混合動態)**:
+```
+Node0 → [M1] → [M2] → Node1 → Node6 → [M3] → Node7 → ...
+         ↑隨機生成      ↑位置選點跳過了 Node3,4
+```
+
+---
+
+## 驗證計畫
+- Log: `[路徑規劃] 🎯 位置選點: 選中 Index N (距離=D)`
+- Log: `[路徑規劃] 🎲 動態生成 M 個中間點`
+- 確認動作點 (Jump/Climb) 正確執行

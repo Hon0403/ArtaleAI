@@ -1,0 +1,31 @@
+# 穩定性還原計畫 (基於 3/21 稽核報告)
+
+## 目的
+將系統物理參數與執行邏輯精準回撥至 3/21 的穩定版本，消除近期重構引入的過度靈敏與慣性控制失效。
+
+## 執行方案 (Restoration Items)
+
+### 1. [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs)
+- **[還原] 繩索容差**：將 `ropeAlignTol` 從 2.5f 恢復為 **2.0f**。
+- **[還原] 跳躍時序**：
+    - 助跑 (Run-up) 延遲：**80ms**。
+    - 跳躍推力維持：**350ms**。
+
+### 2. [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **[校對] 預測性煞車**：
+    - 精確使用 `Vx * Latency(預估約 66ms)` 作為斷點。
+    - 恢復 **反向點按 (Reverse Tap)** 的穩定參數（25ms 點按 + 120ms 觀測）。
+- **[校對] 穩定化偵測**：
+    - `RequiredStableCount` 設為 3。
+    - `StabilityTolerance` 設為 0.2f。
+
+### 3. [GamePipeline.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/GamePipeline.cs)
+- **[檢查] 舊幀丟棄**：確保視覺同步不產生堆疊性延遲。
+
+## 預期效果
+- 角色在繩索對齊時將展現出「快到、急停、精準」的質感。
+- 平台跳躍的空中軌跡將完全符合 2D 物理慣性預期。
+
+## 驗證計畫
+- **建置驗證**：`dotnet build` 通過。
+- **日誌驗證**：確認 `vx * latency` 觸發時的座標偏差恆定在 2.0px 左右。

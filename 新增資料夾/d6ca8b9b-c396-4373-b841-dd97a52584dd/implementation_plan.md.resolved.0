@@ -1,0 +1,119 @@
+# Fix Multi-Floor Rope Climbing
+
+## Problem Description
+
+角色在一樓，目標點在三樓（Y=143），但角色爬到二樓（Y=162 或 Y=176）就停止移動了。
+
+### 根本原因
+
+在 `CharacterMovementController.ClimbRopeAsync`（第 642-684 行）中，爬繩完成的判定邏輯只檢查 **Y 是否穩定**（連續 15 次檢查 Y 沒有變化），**沒有檢查是否已到達目標 Y**：
+
+```csharp
+// 問題代碼（第 674-678 行）
+if (stableCounter >= StableThreshold)
+{
+    Logger.Info($"[爬繩] Y 穩定在 {currentPos.Y:F1}，視為已完成");
+    break;  // 這裡會停止，即使 targetY 還沒到達
+}
+```
+
+當角色爬到中間樓層時：
+1. Y 位置會暫時穩定（角色站在平台上）
+2. 系統誤判為「爬繩完成」
+3. 角色停止爬繩，但實際目標（Y=143）還沒到達
+
+---
+
+## Proposed Changes
+
+### [MODIFY] [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+
+修改 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#519-699) 方法的完成判定邏輯，新增兩個檢查：
+
+1. **到達目標 Y**：如果當前 Y 已經到達或超過目標 Y（考慮方向），視為完成
+2. **Y 穩定但未到達目標**：如果 Y 穩定但尚未到達目標 Y，繼續嘗試爬繩（可能需要重新抓繩）
+
+修改範圍：第 662-690 行
+
+```diff
+ if (isMovingCorrectDirection)
+ {
+     // 還在移動中，重置計數器
+     stableCounter = 0;
+     lastPos = currentPos;
+ }
+ else
+ {
+     // Y 沒有往預期方向移動
+     stableCounter++;
+     
++    // 🔧 新增：檢查是否已經到達目標 Y
++    bool reachedTarget;
++    if (climbUp)
++    {
++        reachedTarget = currentPos.Y <= targetY + 5;  // 上爬：Y 減少，允許 5px 誤差
++    }
++    else
++    {
++        reachedTarget = currentPos.Y >= targetY - 5;  // 下爬：Y 增加
++    }
++    
++    if (reachedTarget)
++    {
++        Logger.Info($"[爬繩] 已到達目標 Y (當前={currentPos.Y:F1}, 目標={targetY:F1})");
++        break;
++    }
+     
+     // Y 穩定（連續 15 次沒動）= 視為到達或落地
+     if (stableCounter >= StableThreshold)
+     {
+-        Logger.Info($"[爬繩] Y 穩定在 {currentPos.Y:F1}，視為已完成");
+-        break;
++        // 🔧 修改：Y 穩定但未到達目標，可能落在中間平台
++        float yDiff = Math.Abs(currentPos.Y - targetY);
++        if (yDiff <= 10)
++        {
++            // 接近目標，允許小誤差
++            Logger.Info($"[爬繩] Y 穩定且接近目標 (差距={yDiff:F1}px)，視為已完成");
++            break;
++        }
++        else
++        {
++            // 🔧 還沒到達目標，但 Y 已穩定（落在中間平台）
++            // 返回讓外層邏輯再次觸發爬繩
++            Logger.Warning($"[爬繩] Y 穩定在 {currentPos.Y:F1} 但目標為 {targetY:F1}（差距={yDiff:F1}px），需要繼續爬繩");
++            break;
++        }
+     }
+ }
+```
+
+---
+
+## Verification Plan
+
+### Manual Verification
+
+由於這是遊戲自動化控制程式，需要使用者在實際遊戲環境中進行手動測試：
+
+1. **設定測試環境**：
+   - 載入包含多層樓地圖的路徑檔（已有 [Ropes](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#141-186) 資料）
+   - 將角色放置在一樓（Y 座標較大，例如 Y=184）
+   - 確保目標點在三樓或更高（Y 座標較小，例如 Y=143）
+
+2. **執行測試**：
+   - 啟動路徑規劃功能（[rdo_Start](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1622-1671) 或 [ckB_Start](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2053-2165)）
+   - 觀察角色是否成功爬過多層樓到達目標
+
+3. **預期結果**：
+   - 角色應該連續爬繩通過每一層樓
+   - 日誌應顯示：
+     - `[爬繩] Y 穩定在 X 但目標為 Y（差距=Z px），需要繼續爬繩` 當落在中間平台時
+     - `[爬繩] 已到達目標 Y` 或 `[爬繩] Y 穩定且接近目標` 當最終到達時
+
+4. **檢視日誌**：
+   - 查看 `Logs/artale-YYYYMMDD.log` 確認：
+     - 不再出現在中間樓層就「視為已完成」的情況
+     - 角色能持續觸發爬繩直到到達最終目標
+
+請使用者在測試後反饋實際行為是否符合預期。

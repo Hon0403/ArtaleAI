@@ -1,0 +1,25 @@
+# 修復導航「X 軸執著」與「樓層死結」計畫
+
+報告架構師：針對您回報的「腳色無視高度差、在下層瘋狂對準 X 軸」問題，我已經定位到兩大核心 Bug：
+1. **測速慣性失效**：在 [CharacterMovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#19-559) 中，如果連續兩次採樣位置相同（因為影像辨識還沒出下一幀），速度會被誤判為 0，導致預測性煞車失效，造成頻繁過衝。
+2. **對齊震盪 (Fluttering)**：救援機制在過衝後過快介入，導致腳色在對準繩索的瞬間被拉回原位，形成循環。
+
+## ⚠️ 關鍵變更
+
+### 1. 核心邏輯層 ([CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs))
+- **[核心強化] 測速過濾**：只有在位置發生變化時，或經過足夠長的時間後，才更新 `currentVx`。如果位置沒變，則保留前一次的速度狀態。
+- **[煞車防禦]**：在進入預測性煞車區間時，增加 [StopMovement()](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#334-346) 的強制延遲。
+
+### 2. 執行層 ([NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs))
+- **[穩定性強化] 停穩驗證**：在繩索對齊 X 軸成功後，增加 [WaitForStabilityAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#269-306) 並再次驗證 `isReached`，確保角色沒有因為慣性滑出繩索範圍才開始爬。
+- **[救援門檻]**：放寬救援介入的頻率，避免過度靈敏的重定位。
+
+## 🧪 驗證計畫
+1. **自動化編譯**：執行 `dotnet build` 確保無破壞性更動。
+2. **日誌追蹤**：監控 `[移動]` 標籤，確認 `Vx` 在影像更新間隙不會跳回 0。
+3. **路徑測試**：模擬下層往上層的爬繩動作，觀察是否有穩定的「停→爬」動作。
+
+---
+
+> [!IMPORTANT]
+> 此修正將徹底解決「滑過頭」導致的救援死循環。

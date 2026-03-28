@@ -1,0 +1,44 @@
+# Implementation Plan - Fix Wiggle Test Drift
+
+## Problem
+The "Wiggle Test" (used to verify if character has reached the top) moves the character Right.
+If it fails to detect "Off Rope" status (because the movement was just under the 2.0px threshold), it repeats.
+Repeated Wiggle Tests caused the character to drift from `X=59` to `X=68` (Rope 2 location), where it accidentally grabbed Rope 2 and climbed it.
+
+## Solution
+
+### 1. Increase Sensitivity
+On a rope, horizontal movement is effectively zero.
+Any movement `> 1.0px` (accounting for noise) should be considered "Off Rope".
+Current threshold `2.0f` is too high (drift was ~2.1px but maybe noise made it fail).
+
+### 2. Add Drift Guard
+If the character's X coordinate deviates significantly (e.g., > 5px) from the original rope X, we are definitely no longer on the rope.
+We should abort the climbing loop to prevent interacting with other map elements (like Rope 2).
+
+## Proposed Changes
+
+### Services/CharacterMovementController.cs
+
+#### [MODIFY] ClimbRopeAsync
+- **Wiggle Check**:
+  ```csharp
+  if (deltaX > 1.0f) // Reduced from 2.0f
+  ```
+- **Drift Guard**:
+  Inside the loop, check:
+  ```csharp
+  if (Math.Abs(currentPos.X - startX) > 5.0f)
+  {
+      Logger.Warning($"[爬繩] X 軸偏差過大 (Delta={Math.Abs(currentPos.X - startX):F1})，判定已脫離繩索");
+      break;
+  }
+  ```
+  (Note: Need to capture `initialPos` before loop).
+
+## Verification Plan
+- **Scenario**: Character climbs rope.
+- **Success**:
+  - Wiggle Test detects "Off Rope" on the FIRST try.
+  - Character stops climbing immediately.
+  - Character does NOT drift 10px to the right.

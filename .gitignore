@@ -1,0 +1,38 @@
+# Build
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+*.dll
+*.exe
+*.pdb
+*.cache
+
+# Visual Studio / VS Code
+.vs/
+*.user
+*.userosscache
+*.suo
+*.rsuser
+*.DotSettings.user
+
+# NuGet
+*.nupkg
+**/packages/*
+!**/packages/build/
+
+# Test / coverage
+TestResults/
+*.coverage
+*.coveragexml
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs（執行時產物，不納入版本）
+**/Logs/
+*.log
+
+# 本機設定若含敏感資訊可改為忽略；目前保留 Data 範本由你決定是否提交
+# Data/config.local.yaml

@@ -1,0 +1,20 @@
+# 統一容差參數 (ArrivalTolerance) 實作計畫
+
+我們將響應「單一參數化」的建議，將落地判定也掛鉤到 `arrivalTolerance` 上，但會透過內部的「垂直補強」來解決 Y 軸雜訊問題。
+
+## 核心設計邏輯
+- **水平對齊**：直接使用 `ArrivalTolerance` (例如 2.5px)。
+- **落地判定**：使用 `ArrivalTolerance + 2.5px` 的緩衝。
+    - *理由*：Y 軸受限於角色圖標底部邊緣的識別雜訊，誤差通常比中心點 X 軸大。若 `ArrivalTolerance` 設為 1.0 的精確值，直接用於 Y 軸會導致容易發生「落地超時」死循環。
+
+## 擬更動檔案
+
+### [MODIFY] [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs)
+- 在 [WaitForLandingAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#275-341) 中，移除 `const float YTolerance = 5f;`。
+- 改為動態計算：`float YTolerance = (float)AppConfig.Instance.ArrivalTolerance + 2.5f;`。
+- 這樣當你調整 `arrivalTolerance` 時，落地容差也會跟著動態縮放。
+
+## 驗證計畫
+### 自動測試
+- 當 `arrivalTolerance` 為 2.5 時，落地容差為 5.0，確保跳躍不會超時。
+- 當 `arrivalTolerance` 調為 1.0 時，落地容差為 3.5，測試是否依然能穩定落地。

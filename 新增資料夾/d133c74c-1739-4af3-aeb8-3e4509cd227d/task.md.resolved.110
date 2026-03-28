@@ -1,0 +1,26 @@
+# 全專案代碼淨化任務 (首席架構師無情重構)
+
+- [x] 第一階段：核心邏輯層「極致淨化」（修訂版：完整保留 XML + 殲滅內部註解）
+    - [x] [Core\PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) (XML 還原與代碼去噪)
+    - [x] [Core\GameVisionCore.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs) (還原專業 XML 說明與內部清理)
+    - [x] [Services\PathPlanningManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs) (完整 XML 文件化)
+- [ ] 第二階段：核心服務層清理 (待驗收)
+    - [ ] [Services\GamePipeline.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/GamePipeline.cs)
+    - [ ] [Services\ScreenCapture.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/ScreenCapture.cs)
+    - [ ] [Services\WindowFinder.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/WindowFinder.cs)
+    - [ ] [Services\LegacyMapMigrator.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/LegacyMapMigrator.cs)
+
+## 🟠 第三階段：基礎工具與日誌 (待啟動)
+- [ ] [Utils\Logger.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs)
+- [ ] [Utils\CoordinateHelper.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/CoordinateHelper.cs)
+- [ ] [Utils\DrawingHelper.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/DrawingHelper.cs)
+- [ ] [Utils\MsgLog.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/MsgLog.cs)
+- [ ] [Utils\PathManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/PathManager.cs)
+
+## 🔴 第四階段：使用者介面 (待啟動)
+- [ ] [UI\MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- [ ] [UI\MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)
+- [ ] [UI\LiveViewManager.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/LiveViewManager.cs)
+- [ ] [UI\MinimapViewer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs)
+- [ ] [UI\FloatingMagnifier.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/FloatingMagnifier.cs)
+- [ ] [UI\OverlayRenderer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/OverlayRenderer.cs)

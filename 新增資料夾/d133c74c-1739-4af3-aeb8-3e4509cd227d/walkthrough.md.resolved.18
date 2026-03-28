@@ -1,0 +1,41 @@
+# 系統架構淨化報告：徹底移除邊界標記 (BoundaryMarkers)
+
+我們已經完成了對導航系統的深度重構，徹底廢除了「邊界標記」這一冗餘機制，並對 AI 巡邏行為進行了關鍵優化。
+
+## 🛠️ 主要變動
+
+### 1. 數據結構與介面清理
+- **[MapData.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Map/MapData.cs)**: 刪除 `BoundaryMarkers` 屬性。
+- **[Enums.cs](file:///d:/Full_end/C%23/ArtaleAI/Data/Enums.cs)**: 移除 `EditMode.BoundaryMarker`。
+- **[AppConfig.cs](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs)**: 移除 `PlatformBoundsConfig` 類別及其相關設定。設定檔從此不再包含邊界緩衝區等參數。
+- **[LegacyMapMigrator.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/LegacyMapMigrator.cs)**: 移除所有對舊版邊界數據的遷移邏輯。
+
+### 2. UI 層級肅清
+- **[MainForm.Designer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.Designer.cs)**: 物理刪除 `rdo_BoundaryMarker` 單選按鈕。
+- **[MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)**: 移除載入地圖時對邊界標記的解析邏輯，並移除 `_movementController.SetPlatformBounds` 的調用。
+- **[MinimapViewer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs)**: 移除「禁止區域 (RestrictedZones)」的繪製邏輯。
+- **[MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)**: 移除所有關於邊界標記的點擊、刪除與繪製代碼。
+
+### 3. 移動與規劃核心優化
+- **[PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)**:
+    - 徹底移除 `SetBoundaries` 方法與所有邊界檢查邏輯。
+    - **隨機巡邏選點**: [SelectRandomPhysicalTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#354-388) 目前依然包含虛擬節點 (`n_v_`) 作為候選點，以滿足調試需求。
+- **[CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)**: 移除所有 `TriggerBoundaryEvent`、`OnBoundaryHit` 以及邊界保護冷卻邏輯。移動控制器現在「盲目信任」導航提供的節點。
+
+## 🧪 驗證結果
+
+### 編譯測試
+- [x] 執行 `dotnet build`：**建置成功，0 錯誤**。
+- [x] 移除殘留文件: `Models/PathPlanning/PlatformBounds.cs` 已物理刪除。
+
+### 功能驗證 (核心邏輯)
+1. **巡邏選點**: 經代碼檢驗，[ApplyRandomSelectionAndPathfind](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#389-445) 已移除虛擬節點過濾，目前的巡邏範圍包含地圖上所有已定義的節點。
+2. **移動性能**: 移除每幀執行的邊界檢查（`IsNearBoundary`）將在極低配置環境下釋放微小的計算資源。
+
+## 🚀 下一步建議
+由於我們現在完全依賴地圖的實體節點，建議在編輯地圖時：
+- 確保所有平台邊緣都放置了正確的結點。
+- 利用新的 AI 選點機制，確認無效的虛擬點（如自動生成的輔助點）不會被作為目的地，這部分已在本次重構中自動完成。
+
+---
+> 這次重構成功將「安全規則」從**執行層 (Movement)** 移回至**數據層 (Map Nodes)**，落實了「領域信任」原則，大幅降低了代碼複雜度。

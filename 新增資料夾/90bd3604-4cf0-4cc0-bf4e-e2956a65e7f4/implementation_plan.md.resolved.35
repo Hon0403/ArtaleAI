@@ -1,0 +1,40 @@
+# 實作計畫 - 動態點按時間 (Dynamic Tap Duration)
+
+## 問題分析
+使用者希望能「減少點擊移動的時間」來解決抖動。
+如果我們直接把全域的點擊時間改短（例如 30ms），雖然解決了抖動，但平常走路會變得很像「便祕」（走一步停一步，效率極差）。
+
+## 解決方案
+採用 **動態調整** 的策略。
+程式自動判斷距離：
+1. **還有段距離 (>= 5.0px)**：使用原本的 **80ms** 點按。保持移動效率。
+2. **快到了 (< 5.0px)**：自動切換成 **30ms** 的「微調模式」。步距變小 (1-2px)，就能精準對齊，不會過頭。
+
+## 預計變更
+
+### Services/CharacterMovementController.cs
+
+#### [修改] PerformGradualMoveAsync
+- **動態判斷邏輯**：
+  ```csharp
+  // 決定按鍵時間
+  int actualDuration = profile.TapPressDurationMs; // 預設 80ms
+  
+  // 如果距離很近 (< 5.0px)，切換成微調模式
+  if (currentDistance < 5.0f)
+  {
+      actualDuration = 30; // 改用 30ms 進行微調
+      Logger.Debug($"[{actionName}] 微調模式: {GetKeyName(key)}, 距離={currentDistance:F1}, 時間={actualDuration}ms");
+  }
+  else
+  {
+      Logger.Debug($"[{actionName}] 點按: {GetKeyName(key)}, 距離={currentDistance:F1}");
+  }
+  
+  await TapKeyAsync(key, actualDuration, profile.TapIntervalMs, ct);
+  ```
+
+## 驗證計畫
+- **情境**：腳色距離目標 4.0px。
+- **執行**：程式偵測距離 < 5.0，使用 30ms 點按。
+- **結果**：腳色移動 1.5px -> 距離變 2.5px -> 再點 30ms -> 移動 1.5px -> 距離變 1.0px -> 對齊成功。

@@ -1,0 +1,31 @@
+# 導航系統自癒與路徑淨化驗證紀錄
+
+## 🛠️ 已完成變更 (Current Changes)
+
+### 1. 單一檔案安全重構 (PathPlanningTracker ONLY)
+- **變更**：完全遵循架構邊界，僅針對 [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) 進行內部邏輯升級。
+- **介面相容**：維持與 [INavigationStateMachine](file:///d:/Full_end/C%23/ArtaleAI/Services/INavigationStateMachine.cs#13-56) 現有定義的 100% 相容，不引發編譯崩潰。
+
+### 2. 圖層級路徑淨化 (Path Simplification)
+- **實作**：新增私有方法 [SimplifyPath](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#398-428)。
+- **邏輯**：當相鄰兩點 $dx < 15.0$ 且 $dy < 5.0$ 時，判定為冗餘雜訊並予以移除。
+- **效果**：生成巡邏與救援路徑時，有效減少密集 Hitbox 引發的導航信號抖動。
+
+### 3. AABB 唯一真理判定 (Code Purge)
+- **清理**：徹底刪除舊有的 `ReachDistancePercent` 等像素常數。
+- **原則**：[UpdatePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#241-321) 內部現在全面依賴 `Hitbox.Contains()`，若缺失 Hitbox 資料則主動熔斷。
+
+---
+
+## 🚦 驗證結果 (Validation)
+
+### 建置測試 (Build Test)
+- **狀態**：`dotnet build` 成功。
+- **結論**：證明變更完全符合專案現有的介面簽名，無介面不匹配風險。
+
+### 邏輯分析
+- **常規路徑**：[ApplyRandomSelectionAndPathfind](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#348-397) 已正確嵌入淨化過濾器。
+- **救援路徑**：[TryRescuePath](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#446-494) 已正確嵌入淨化過濾器，確保自癒後的第一次移動即具備最高效率。
+
+> [!IMPORTANT]
+> **架構安全聲明**：本次重構已徹底撤銷所有涉及 FSM 或 MainForm 的外部修改。所有變更均被物理隔離在 Tracker 內部。

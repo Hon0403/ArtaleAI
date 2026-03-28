@@ -1,0 +1,17 @@
+# 導航系統穩健性與去旗標化重構任務
+
+## ✅ 階段 23：雙重防禦超時架構 (Completed)
+- [x] **[Debounce]**：實作基於視覺 FPS 的動態防抖。
+- [x] **[Extension]**：實作基於物理公式的速度展延。
+- [x] **[Cleanup]**：確保代碼無魔法數字。
+
+## 🛡️ 階段 26：導航「去旗標化」與 SSOT 重構 (In Progress)
+- [ ] **[Sense]**：[PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#125-130) 轉為純感官模式，提供 [IsPlayerAtTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#61-79)。
+- [ ] **[Sense]**：[PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#125-130) 轉為純感官模式，提供 [IsPlayerAtTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#61-79)。
+- [ ] **[Inject]**：[NavigationStateMachine](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs#25-30) 注入感知委派 (Predicate) 給執行層。
+- [ ] **[Physics]**：[NavigationExecutor](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#16-297) 實作每幀「實時拉取」感知狀態，並將其傳入 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#470-566)。
+- [ ] **[Fix]**：修復救援單節點導致的索引越界 (Index Out of Range)。
+- [ ] **[Flow]**：修正到終點後不觸發隨機目標的邏輯斷裂。
+
+## 🎨 視覺化進度報告 (Wait-list)
+- [ ] 視覺化 Hitbox 與當前判定狀態。

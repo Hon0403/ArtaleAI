@@ -1,0 +1,125 @@
+# 優先級 2 重構：GamePipeline + MapFileManager 解耦
+
+## 問題描述
+
+`MainForm.OnFrameAvailable` (195 行) 混合了 5 種職責：小地圖追蹤、自動攻擊決策、血條偵測、怪物偵測、UI 渲染。[MapFileManager](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs#28-244) 建構子直接接收 [ComboBox](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1513-1520) 和 [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#127-138) 引用。
+
+> [!IMPORTANT]
+> **風險評估**：[OnFrameAvailable](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#832-903) 內部大量使用 `lock` 保護共享狀態清單（`_currentBloodBars`, `_currentMonsters` 等）。GamePipeline 必須保留這些線程安全語意，否則會引入競態條件。
+
+## Proposed Changes
+
+### GamePipeline (Application 層)
+
+#### [NEW] [GamePipeline.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/GamePipeline.cs)
+
+核心設計：將 [OnFrameAvailable](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#832-903) 的 5 步流程封裝為一個不依賴 WinForms 的協調器。
+
+**遷移的邏輯：**
+- ✅ 小地圖追蹤（`gameVision.GetMinimapTracking`）
+- ✅ 自動攻擊決策（[CheckAutoAttackCondition](file:///d:/Full_end/C%23/ArtaleAI/Services/GamePipeline.cs#513-544), [PerformAutoAttackAsync](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1191-1226)）
+- ✅ 血條偵測排程（計時 + [ProcessBloodBarDetection](file:///d:/Full_end/C%23/ArtaleAI/Services/GamePipeline.cs#398-431)）
+- ✅ 怪物偵測排程（計時 + [FindMonsters](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#561-711) + NMS）
+
+**不遷移的邏輯（留在 MainForm）：**
+- ❌ [RenderAndDisplayOverlays](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1227-1319) — 純 UI 渲染
+- ❌ `pictureBoxMinimap.Invalidate()` — UI 控件操作
+- ❌ [UpdateDisplay](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#315-366) — Bitmap 顯示
+
+**事件模型：**
+
+```csharp
+// 偵測結果事件 — 供 MainForm 訂閱更新 UI
+public event Action<FrameProcessingResult>? OnFrameProcessed;
+
+// FrameProcessingResult 包含所有偵測結果的快照
+public class FrameProcessingResult
+{
+    public List<Rectangle> BloodBars { get; init; }
+    public List<Rectangle> DetectionBoxes { get; init; }
+    public List<Rectangle> AttackRangeBoxes { get; init; }
+    public List<DetectionResult> Monsters { get; init; }
+    public List<Rectangle> MinimapMarkers { get; init; }
+    public string? StatusMessage { get; set; }
+}
+```
+
+---
+
+### MapFileManager 解耦
+
+#### [MODIFY] [MapFileManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs)
+
+建構子改為只接收資料依賴：
+
+```diff
+- public MapFileManager(ComboBox mapFilesComboBox, MapEditor mapEditor, MainForm mainForm)
++ public MapFileManager(MapEditor mapEditor)
+```
+
+**移除的 UI 引用：**
+- `_mainForm.textBox1` → 改用 `StatusMessage` 事件
+- `_mainForm.UpdateWindowTitle()` → 改用 `MapLoaded` 事件（已存在但未充分利用）
+- `_mainForm.RefreshMinimap()` → 改用 `MapLoaded` 事件
+- `_mainForm.OnMapSaved()` → 改用 [MapSaved](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#432-444) 事件（已存在）
+- `_mapFilesComboBox` → `GetAvailableFiles()` 方法 + `FileListChanged` 事件
+
+#### [MODIFY] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+
+- [OnFrameAvailable](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#832-903) 改為：收到幀 → 呼叫 `_gamePipeline.ProcessFrame()` → 訂閱結果事件更新 UI 列表 → 自行決定是否渲染
+- 訂閱 [MapFileManager](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs#28-244) 事件更新 ComboBox 和標題列
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- `cmd /c dotnet build --no-restore` — 確認零編譯錯誤
+
+### Manual Verification
+> [!WARNING]
+> 這是遊戲自動化應用，需要實際遊戲視窗才能完整測試。以下是建議的手動驗證步驟：
+
+1. 啟動應用程式，確認 UI 正常載入
+2. 在地圖編輯分頁，確認地圖檔案下拉選單正常載入選項
+3. 選擇地圖檔案，確認地圖正確載入到編輯器
+4. 儲存地圖，確認儲存功能正常
+
+能否請你確認以上方向是否正確？特別是這兩個問題：
+
+1. [RenderAndDisplayOverlays](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1227-1319) 渲染邏輯是否保留在 MainForm，還是也要抽出？
+2. MapFileManager 現在是由它自己管理 ComboBox，重構後 ComboBox 的填充/選擇邏輯要完全回到 MainForm 處理嗎？
+
+---
+
+## 專案防禦性設計盤點 (Defensive Design Survey)
+
+為了確保系統在各種意外狀況下都不會死鎖（Deadlock）或出現不可預期的行為，專案內實作了多種**防禦性設計 (Defensive Defaults & Fallbacks)**。以下是目前的防卡死機制清單：
+
+### 1. 爬繩強制中斷防護 (Rope Climbing Safety)
+- **位置**：[CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs) (L857 附近)
+- **機制**：在爬繩的 `while` 迴圈中，持續檢查玩家的 X 軸是否偏離繩索（`currentDx > 5.0f`）。
+- **目的**：若角色在爬繩中途被怪物撞飛，或者路徑追蹤器漏判導致已經離開繩索卻仍在按上鍵，此機制會強制中斷爬繩動作，把控制權交還系統，避免死鎖在無限的爬繩狀態。
+
+### 2. 跳躍落地超時檢測 (Jump Landing Timeout)
+- **位置**：[NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs) (L290, L319 附近)
+- **機制**：跳躍後會透過 [WaitForLandingAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#255-321) 等待 Y 軸穩定。如果超過設定的超時時間（通常為 2000ms），強制結束等待。
+- **目的**：防止角色跳躍後卡在某個邊緣不斷微幅抖動（不滿足完全靜止條件），導致整個 Navigation Pipeline 被卡死。
+
+### 3. A* 尋路同層搜尋退路 (A* Layer Search Fallback)
+- **位置**：[NavigationGraph.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs) (L145 附近)
+- **機制**：[FindNearestNode](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs#93-166) 在尋找起點時，優先過濾出同高度層 (`sameLayerYThreshold = 15.0f`) 的節點。如果因為極端地形導致同層內完全找不到節點，會有一套退路機制 (Fallback) 轉為全域搜尋。
+- **目的**：防止角色在某些特殊地圖（例如只有單層，或是所有節點都在空中）完全失去導航能力，這是典型的降級服務 (Graceful Degradation) 設計。
+
+### 4. 邊界安全點退避 (Boundary Fallback)
+- **位置**：[PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) (HandleBoundaryHit 邏輯)
+- **機制**：當偵測到角色靠近地圖邊界時，會自動尋找遠離邊界的「安全」路徑點作為新目標。如果找不到符合條件的安全點，會直接選擇路徑陣列的正中間點 (`middleIndex`) 作為強制避險目標。
+- **目的**：防止角色走入地圖死角被大量怪物圍毆，或者卡在邊界無法轉向。
+
+### 5. 架構組件防呆降級 (Component Initialization Fallback)
+- **位置**：[MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) (L1817 附近)
+- **機制**：在驅動路徑時，如果發現 `_navigationExecutor` 尚未初始化或為 null，不會拋出 Exception，而是退回直接呼叫底層的 `_movementController.MoveToTargetAsync`。
+- **目的**：確保即使上層的複雜策略執行器失效，最基本的「走到附近點」功能依然能運作。類似的設計也出現在 `WindowFinder.TryCreateItemWithFallback`（捕捉機制失效時的備用方案）。
+
+> [!TIP]
+> 這些機制體現了一套成熟的系統思維：「不要假設環境總是完美的，永遠要為最壞的情況準備一條退路」。

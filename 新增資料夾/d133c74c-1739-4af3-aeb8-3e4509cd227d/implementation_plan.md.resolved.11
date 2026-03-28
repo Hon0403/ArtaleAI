@@ -1,0 +1,29 @@
+# 導航精度全鏈條升級計畫 (PointF & 容差統一)
+
+## 核心問題
+1. **數據鏈路捨入 (Pathfinding Rounding)**: [PathPlanningState](file:///d:/Full_end/C%23/ArtaleAI/Models/PathPlanning/PathPlanningState.cs#12-50) 將 `PointF` 節點轉為 `SdPoint` (int)，導致產生的目標座標損失小數精度。
+2. **地圖與物理衝突 (Map-Object Conflict)**: 地圖節點可能位於物理地面下方，導致下爬動作死結。
+3. **容差參數誤用 (Tolerance Misuse)**: [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#33-2158) 與 [NavigationExecutor](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#55-64) 誤將 `LatencyInertiaCompensation` (3.0px) 作為行走終止條件，而路徑追蹤器卻在等待 `ArrivalTolerance` (1.0px)，導致角色停在 3px 外。
+
+## 預計變更
+
+### [導航系統]
+
+#### [MODIFY] [MainForm.cs]
+- 修正 `executionTolerance` 賦值邏輯：不論是 [Walk](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#119-134) 還是其他動作，統一使用 `Config.ArrivalTolerance` 作為 FSM 的執行容差。
+
+#### [MODIFY] [NavigationExecutor.cs]
+- 修正 [ExecuteClimbAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#135-186) 中的 [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#193-287) 呼叫點：將最後一個參數由 `LatencyInertiaCompensation` 改為 `AppConfig.Instance.ArrivalTolerance`。
+
+#### [MODIFY] [CharacterMovementController.cs]
+- 修改 [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#193-287) 簽章，移除 `reachDistance` 的預設值 `5.0`，確保呼叫端明確管控精度。
+- 實施下爬動作的「物理落地穩定判定」。
+
+#### [MODIFY] [PathPlanningState.cs] & [PathPlanningTracker.cs]
+- 完成全量浮點數 (`SdPointF`) 化升級。
+
+## 驗證計畫
+### 自動測試
+- 檢查 Log 中的 `dx` 是否能縮小到 `ArrivalTolerance` (例如 0.x px) 而非停在 3.0px。
+- 驗證下爬落地補償是否生效。
+2. **下爬測試**：確認角色下爬抵達座標後，能因精度對齊成功結束動作。

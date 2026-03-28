@@ -1,0 +1,8 @@
+# 路徑編輯整合
+
+## 實作進度
+- [/] 1. MapEditor.HandleClick 改為 `[x, y, actionCode]` 格式
+- [ ] 2. MapEditor.Render 根據 actionCode 顯示顏色
+- [ ] 3. HandleDeleteAction 支援新格式
+- [ ] 4. 建置測試
+- [ ] 5. 🔔 驗收後提醒刪除舊功能

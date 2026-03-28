@@ -1,0 +1,55 @@
+# 配置模組遷移至 Models 計畫
+
+本計畫旨在優化專案結構，將原位於根目錄的 `Config` 資料夾遷移至 `Models\Config`。
+
+## 遷移原因
+1. **結構精簡**：減少專案根目錄的資料夾數量。
+2. **語義對齊**：配置類別本質上是設定檔的數據模型 (DTOs)，應歸類於 `Models` 下。
+3. **命名空間一致性**：與 `Models\Detection`、`Models\Minimap` 等現有結構保持一致。
+
+## 預計變更
+
+### [Component] Models (Config)
+
+#### [NEW] [Models\Config](file:///d:/Full_end/C%23/ArtaleAI/Models/Config)
+- 建立新目錄以存放配置類別。
+
+#### [MOVE] [Config\*.cs](file:///d:/Full_end/C%23/ArtaleAI/Config) -> [Models\Config\*.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Config)
+- 遷移以下檔案：
+  - `AppConfig.cs`
+  - `GeneralSettings.cs`
+  - `VisionSettings.cs`
+  - `NavigationSettings.cs`
+  - `EditorSettings.cs`
+  - `AppearanceSettings.cs`
+- 將其命名空間從 `ArtaleAI.Config` 更新為 `ArtaleAI.Models.Config`。
+
+### [Component] Cross-Project Using Updates
+
+#### [MODIFY] [Multiple Files]
+- 將所有 `using ArtaleAI.Config;` 替換為 `using ArtaleAI.Models.Config;`。
+- 受影響檔案清單：
+  - `UI\OverlayRenderer.cs`
+  - `UI\MinimapViewer.cs`
+  - `UI\MapEditor.cs`
+  - `UI\MainForm.cs`
+  - `UI\LiveViewManager.cs`
+  - `UI\FloatingMagnifier.cs`
+  - `Services\CharacterMovementController.cs`
+  - `Services\GamePipeline.cs`
+  - `Services\MapFileManager.cs`
+  - `Services\NavigationExecutor.cs`
+  - `Services\WindowFinder.cs`
+  - `Services\PathPlanningManager.cs`
+  - `Core\GameVisionCore.cs`
+  - `Core\PathPlanningTracker.cs`
+  - `Core\Vision\IVisionDetectors.cs`
+  - `API\MonsterImageFetcher.cs`
+
+## 驗證計畫
+
+### 自動化測試
+- 執行 `dotnet build` 確保遷移後專案仍能正確編譯。
+
+### 手動驗證
+- 檢查 `bin` 目錄下的 `config.yaml` 載入路徑是否受影響（理論上不受影響，因為 `AppConfig` 的路徑邏輯通常是相對執行路徑）。

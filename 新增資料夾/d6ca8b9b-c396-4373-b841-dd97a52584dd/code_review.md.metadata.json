@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_WALKTHROUGH",
+  "summary":  "Code review of CharacterMovementController.cs identifying outdated comments (L600, L614), unused constant (VK_SPACE), unreachable code (L593-605), and unused method (WaitForLanding). Overall code is functional with minor cleanup suggestions.",
+  "updatedAt":  "2025-12-27T16:48:10.446220600Z"
+}

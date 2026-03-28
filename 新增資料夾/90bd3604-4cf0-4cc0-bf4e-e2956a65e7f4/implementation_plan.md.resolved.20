@@ -1,0 +1,31 @@
+# 實作計畫 - 調整移動參數解決卡頓
+
+## 問題描述
+使用者反映（並經由 Log 確認）腳色在嘗試進行短距離位移（< 10px）時，雖然有發送「點按」指令，但座標卻完全沒有改變。
+日誌顯示：`[移動] 點按: ←, 距離=9.0 Pos=(68,149) Target=(59,150)` 連續出現且 X 軸卡在 68。
+這表示目前的點按持續時間（80ms）可能不足以克服角色的慣性或啟動移動。
+
+## 解決方案
+調整 `MovementProfile.HorizontalMove` 的參數，增加點按的持續時間，確保角色能確實移動。
+
+## 預計變更
+
+### Services/CharacterMovementController.cs
+
+#### [修改] MovementProfile.HorizontalMove (約第 60-66 行)
+- **TapPressDurationMs**: 從 80ms 增加到 **120ms**。
+- **TapIntervalMs**: 從 20ms 增加到 **50ms**（避免輸入過快被忽略）。
+
+```csharp
+public static readonly MovementProfile HorizontalMove = new()
+{
+    DecelerationDistance = 10.0f,
+    TapPressDurationMs = 120, // 80 -> 120
+    TapIntervalMs = 50        // 20 -> 50
+};
+```
+
+## 驗證計畫
+- **手動驗證**：
+  - 觀察腳色在微調位置時（例如接近繩索口）是否能順利移動。
+  - 日誌中的 [Pos](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#83-100) 應該隨著每次 `點按` 而改變，不應卡死在同一個數值。

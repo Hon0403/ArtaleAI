@@ -1,0 +1,50 @@
+# 舊架構掃除與代碼潔癖計畫 (Ruthless Purge)
+
+## 目的
+徹底清除專案中遺留的「舊架構殘骸（Ghost Architecture）」，包含重複定義的模型、已廢棄的介面以及未使用的數據結構，實現代碼的高度內聚。
+
+## 診斷結果：殭屍代碼清單
+經過全局掃描，以下檔案目前處於 **「零引用」** 狀態，僅作為歷史遺蹟存在，必須予以殲滅：
+
+1.  **重複/無用模型**：
+    -   [Core/Domain/Navigation/PlatformSegment.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/PlatformSegment.cs): 被 [NavigationGraph](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs#14-287) 的 A* 正式取代。
+    -   [Models/PathPlanning/PlatformSegment.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/PathPlanning/PlatformSegment.cs): 命名空間衝突且無人使用。
+    -   [Models/PathPlanning/PlatformBounds.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/PathPlanning/PlatformBounds.cs): 歷史路徑邊界遺蹟。
+    -   [Core/Domain/Navigation/RopeData.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/RopeData.cs): 目前系統統一使用 `Models/Map/MapData` 中的 `List<float[]>`。
+#### [DELETE] [PathPlanningLogger.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningLogger.cs) (Dead Code)
+#### [DELETE] [MainForm_MinimapControl.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm_MinimapControl.cs) (Merged)
+#### [DELETE] [MainForm.Detection.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.Detection.cs) (Zombie Logic)
+#### [DELETE] [MainForm.Rendering.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.Rendering.cs) (Zombie Logic)
+#### [DELETE] [MainForm.Events.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.Events.cs) (Merged)
+#### [DELETE] [MainForm.PathPlanning.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.PathPlanning.cs) (Merged)
+#### [DELETE] [GameVisionCore.Minimap.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.Minimap.cs)
+#### [DELETE] [RouteRecorderService.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/RouteRecorderService.cs)
+#### [DELETE] [RopeAlignmentController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/RopeAlignmentController.cs)
+#### [DELETE] [RenderingService.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/RenderingService.cs)
+
+2.  **廢棄介面與實作**：
+    -   [Core/Domain/Navigation/IPathPlanner.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/IPathPlanner.cs): 已廢棄。
+    -   [Core/Domain/Navigation/ShortestPathPlanner.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/ShortestPathPlanner.cs): 邏輯已搬遷至 `NavigationGraph.FindPath` (內嵌 A*)。
+
+## 擬定變更
+
+### 1. 殲滅殭屍檔案 (DELETE)
+- **[DELETE] [PlatformSegment.cs](file:///d:/Full_end/C#/ArtaleAI/Core/Domain/Navigation/PlatformSegment.cs)**
+- **[DELETE] [PlatformSegment.cs](file:///d:/Full_end/C#/ArtaleAI/Models/PathPlanning/PlatformSegment.cs)**
+- **[DELETE] [PlatformBounds.cs](file:///d:/Full_end/C#/ArtaleAI/Models/PathPlanning/PlatformBounds.cs)**
+- **[DELETE] [RopeData.cs](file:///d:/Full_end/C#/ArtaleAI/Core/Domain/Navigation/RopeData.cs)**
+- **[DELETE] [IPathPlanner.cs](file:///d:/Full_end/C#/ArtaleAI/Core/Domain/Navigation/IPathPlanner.cs)**
+- **[DELETE] [ShortestPathPlanner.cs](file:///d:/Full_end/C#/ArtaleAI/Core/Domain/Navigation/ShortestPathPlanner.cs)**
+
+### 2. 模型空間整併 (Refactor)
+- **[MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C#/ArtaleAI/Core/PathPlanningTracker.cs)**: 
+    - 刪除所有 `[Obsolete]` 標記的舊版方法（如舊版 `StartTracking`）。
+    - 移除對已刪除模型（如 `PlatformSegment`）的所有隱形引用或註解說明。
+
+## 驗證計畫
+### 編譯驗證
+- 執行 `dotnet build`。若上述檔案確實為零引用，編譯應維持 0 錯誤。
+- **若出現編譯錯誤**：代表該「殭屍」其實還有隱形調用，將根據錯誤訊息進行「職責歸位」重構，而非保留舊檔案。
+
+### 運行驗證
+- 啟動路徑規劃，確認 A* 導航與 H 拓撲生成依舊精準。

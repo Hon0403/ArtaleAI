@@ -1,0 +1,49 @@
+```mermaid
+flowchart TD
+    Start([Start Main Loop]) --> GetTarget{Get Target}
+    GetTarget -->|Target is Rope Top| MoveToRope[Align X with Rope]
+    MoveToRope --> CheckAlign{Aligned?}
+    CheckAlign -->|Not Aligned| MoveToRope
+    CheckAlign -->|Aligned| StartClimb[Start Climb]
+
+    subgraph Climbing Loop [Hold UP Loop]
+        CheckHeight{Reach Target Y?}
+        CheckHeight -->|Yes| StopClimb[Release Keys]
+        StopClimb --> Complete([Task Complete])
+        
+        CheckHeight -->|No| CheckDrift{Drift Detected?}
+        
+        CheckDrift -->|No| ContinueClimbing[Keep Holding UP]
+        ContinueClimbing --> CheckHeight
+        
+        CheckDrift -->|Yes Monster Hit| EmergencyStop[STOP CLIMBING]
+    end
+
+    EmergencyStop --> ReleaseKeys[Release Keys]
+    ReleaseKeys --> LoopRestart([End Action])
+    
+    LoopRestart --> GetTargetAgain{Main Loop Get Target}
+    GetTargetAgain -->|Target is Rope Top| MoveToRope
+    
+    style EmergencyStop fill:#f96,stroke:#333
+    style LoopRestart fill:#bbf,stroke:#333
+    style StartClimb fill:#9f9,stroke:#333
+```
+
+### Potential Bug Analysis (Where it could fail):
+1. **Infinite Knockback Loop**:
+   - If a monster **Camp** (stays) at the rope bottom.
+   - You Align -> Grab Rope -> Monster Hits you (Drift > 5px) -> Emergency Stop.
+   - Main Loop Restarts -> Align -> Grab Rope -> Monster Hits you...
+   - **Result**: Character gets stuck in an infinite "Grab-Hit-Drop" loop until the monster moves or dies. *(This is standard game behavior, hard to fix without killing the monster)*.
+
+2. **Knockback onto "Wrong Platform"**:
+   - If the monster hits you HARD and you land on a *different* platform (e.g., above or far below).
+   - "Get Target" might still point to the OLD Rope Top.
+   - If you are now closer to a *different* path node, the [PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#86-96) needs to be smart enough to **Re-Calculate** (Recalculate Path).
+   - **Current Logic**: [PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#86-96) usually recalculates if "Off Path". If valid, it recovers.
+
+3. **Drift Sensor Malfunction**:
+   - If Vision is laggy and reports "Fake Drift".
+   - Character stops climbing for no reason.
+   - **Result**: "Stuttering" climb (Start-Stop-Start-Stop). Inefficient but eventually succeeds.

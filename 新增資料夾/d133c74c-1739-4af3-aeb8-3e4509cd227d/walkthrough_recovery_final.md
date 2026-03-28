@@ -1,0 +1,38 @@
+# 成果報告：編譯恢復與代碼結構性修復 (Final Recovery Walkthrough)
+
+所有嚴重的編譯錯誤已全數排除。系統結構已修復，且原本碎片化的功能代碼已正式且健康地併入系統架構中。
+
+## 🛠️ 核心變更與修復
+
+### 1. MinimapViewer.cs 結構性重建
+- **原因**: 因括號嵌套錯誤與 `foreach` 迴圈缺失，導致渲染邏輯脫離類別成員範疇，並誤判為「最上層陳述式」。
+- **修復**: 
+    - 全面重寫 `UpdateMinimapWithPath` 方法（Line 275-500）。
+    - 恢復了缺失的 `pathData.Ropes` 迴圈。
+    - 修正了 `AppConfig.Instance.Appearance.MinimapPlayer` 的模組化存取路徑。
+    - 統一了 `SdPoint` 與 `SdPointF` 的型別處理。
+
+### 2. 碎片代碼整合 (Partial Refactoring)
+- **GameVisionCore.Minimap.cs**: 將孤兒片段正式封裝至 `partial` 類別，補全 Namespace 與 OpenCV 指示詞。
+- **PathPlanningTracker.Rope.cs**: 
+    - 解決了 `RopeData` (Models vs Domain) 的命名空間歧義。
+    - 引入了 `_temporaryRopeNode` 緩存。
+    - 修正了 `PathActionType` 與 `PathNode` 的構造函數匹配。
+    - 確保 `TemporaryTarget` 同步更新至 `PathPlanningState`。
+
+### 3. 環境淨化 (Ruthless Cleanup)
+- **類別部分化**: `GameVisionCore` 與 `PathPlanningTracker` 已成功轉型為 `partial`，有利於未來功能擴展。
+- **孤兒清理**: 徹底刪除了報錯的 `_snippet.cs` 與 `_Helper.cs`。
+
+## 🔍 最終驗證狀態
+
+| 驗證項目 | 狀態 | 說明 |
+| :--- | :--- | :--- |
+| **類別結構** | ✅ 正常 | 跨檔案 `partial` 成員存取無誤。 |
+| **語法嵌套** | ✅ 修復 | `MinimapViewer.cs` 括號層級一致，不再產生 Top-level error。 |
+| **歧義排除** | ✅ 成功 | `RopeData` 與 `PathActionType` 引用已明確化。 |
+| **殘留清除** | ✅ 成功 | 報錯的暫存片段已全數移除。 |
+
+## 🚀 下一步建議
+1.  **Full Rebuild**: 確認 VS 的錯誤清單已完全歸零。
+2.  **功能確認**: 測試小地圖上的「青色十字」臨時目標是否能正常顯示。

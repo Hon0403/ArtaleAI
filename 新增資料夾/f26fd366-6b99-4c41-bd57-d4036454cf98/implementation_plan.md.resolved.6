@@ -1,0 +1,249 @@
+# 路徑標記角色控制規劃
+
+## 📊 現有標記類型分析
+
+### 1. WaypointPaths (路徑點)
+```json
+// 格式：[x, y] 或 [x, y, actionCode]
+"WaypointPaths": [[23.0, 167.0, 1], [45.0, 167.0], [67.0, 150.0, 6]]
+```
+
+| ActionCode | 名稱 | 動作描述 |
+|------------|------|----------|
+| 0 | None | 普通移動（走過去） |
+| 1 | Left | 強制向左移動 |
+| 2 | Right | 強制向右移動 |
+| 3 | Up | 向上（爬繩/梯子） |
+| 4 | Down | 向下（下繩/下梯） |
+| 5 | LeftJump | 向左跳躍 |
+| 6 | RightJump | 向右跳躍 |
+| 7 | DownJump | 向下跳（穿透平台） |
+| 8 | Jump | 原地跳躍 |
+| 9-12 | Teleport | 傳送（需特定技能） |
+| 13 | Goal | 目標點（到達後停止） |
+
+**現狀**：`actionCode` 已定義但**未實作**
+
+---
+
+### 2. SafeZones (安全區)
+```json
+"SafeZones": [[30.0, 165.0], [80.0, 170.0]]
+```
+- **用途**：標記安全區域（不會被攻擊/可補血）
+- **現狀**：**僅用於繪製**，沒有行為邏輯
+
+---
+
+### 3. Ropes (繩索)
+```json
+"Ropes": [[45.0, 140.0], [45.0, 170.0]]
+```
+- **用途**：標記繩索/梯子位置
+- **現狀**：**僅用於繪製**，沒有爬繩邏輯
+
+---
+
+### 4. RestrictedZones (限制區/邊界)
+```json
+"RestrictedZones": [[26.9, 166.2], [107.6, 166.7]]
+```
+- **用途**：標記平台邊界
+- **現狀**：✅ **已實作** - 用於三重邊界防護
+
+---
+
+## 🎯 控制邏輯規劃
+
+### 優先級順序
+```
+1. 邊界檢查 (RestrictedZones) → 防止掉落
+2. 動作檢查 (actionCode) → 執行特殊動作
+3. 繩索檢查 (Ropes) → 需要爬繩時使用
+4. 安全區檢查 (SafeZones) → 低血量時優先前往
+5. 普通移動 → 走向下一個路徑點
+```
+
+---
+
+## 📋 實作計劃
+
+### Phase 1: ActionCode 動作執行 (高優先)
+
+#### 修改 [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+```csharp
+public enum MovementAction
+{
+    None = 0,
+    Left = 1, Right = 2, Up = 3, Down = 4,
+    LeftJump = 5, RightJump = 6, DownJump = 7, Jump = 8,
+    LeftTeleport = 9, RightTeleport = 10, 
+    UpTeleport = 11, DownTeleport = 12,
+    Goal = 13
+}
+
+public async Task ExecuteActionAsync(MovementAction action)
+{
+    switch (action)
+    {
+        case MovementAction.Jump:
+            await PressKeyAsync(VK_SPACE, 100);
+            break;
+        case MovementAction.LeftJump:
+            await HoldKeyAsync(VK_LEFT, 50);
+            await PressKeyAsync(VK_SPACE, 100);
+            break;
+        case MovementAction.RightJump:
+            await HoldKeyAsync(VK_RIGHT, 50);
+            await PressKeyAsync(VK_SPACE, 100);
+            break;
+        case MovementAction.DownJump:
+            await HoldKeyAsync(VK_DOWN, 50);
+            await PressKeyAsync(VK_SPACE, 100);
+            break;
+        case MovementAction.Up:
+            await HoldKeyAsync(VK_UP, 500); // 爬繩
+            break;
+        // ... 其他動作
+    }
+}
+```
+
+#### 修改 [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+```csharp
+// 當到達路徑點時，檢查是否有動作要執行
+private void OnWaypointReached(SdPoint waypoint, int waypointIndex)
+{
+    var path = CurrentPathState.PlannedPath;
+    if (waypointIndex < path.Count)
+    {
+        var waypointData = _mapData.WaypointPaths[waypointIndex];
+        if (waypointData.Length >= 3)
+        {
+            var actionCode = (int)waypointData[2];
+            if (actionCode > 0)
+            {
+                OnActionRequired?.Invoke((MovementAction)actionCode);
+            }
+        }
+    }
+}
+```
+
+---
+
+### Phase 2: 繩索處理 (中優先)
+
+#### 新增 `RopeManager.cs`
+```csharp
+public class RopeManager
+{
+    private List<PointF> _ropePositions;
+    
+    public bool IsNearRope(PointF playerPos, out PointF? ropePos)
+    {
+        foreach (var rope in _ropePositions)
+        {
+            if (Math.Abs(playerPos.X - rope.X) < 5 && 
+                playerPos.Y >= rope.Y - 30)
+            {
+                ropePos = rope;
+                return true;
+            }
+        }
+        ropePos = null;
+        return false;
+    }
+    
+    public async Task ClimbRopeAsync(PointF targetY)
+    {
+        // 1. 按住 ↑ 直到 Y 座標達到目標
+        // 2. 或按住 ↓ 直到 Y 座標達到目標
+    }
+}
+```
+
+---
+
+### Phase 3: 安全區處理 (低優先)
+
+#### 修改 [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+```csharp
+public PointF? GetNearestSafeZone(PointF playerPos)
+{
+    if (_safeZones == null || _safeZones.Count == 0)
+        return null;
+    
+    return _safeZones
+        .OrderBy(z => Distance(playerPos, z))
+        .FirstOrDefault();
+}
+
+// 當血量低時，優先前往安全區
+public void OnLowHealth()
+{
+    var safeZone = GetNearestSafeZone(CurrentPlayerPosition);
+    if (safeZone.HasValue)
+    {
+        SetTemporaryTarget(safeZone.Value, priority: high);
+    }
+}
+```
+
+---
+
+## 🔧 JSON 範例（完整標記）
+
+```json
+{
+  "WaypointPaths": [
+    [30.0, 167.0, 0],
+    [45.0, 167.0, 3],
+    [45.0, 140.0, 0],
+    [60.0, 140.0, 6],
+    [80.0, 130.0, 0],
+    [95.0, 130.0, 7],
+    [95.0, 167.0, 0]
+  ],
+  "SafeZones": [
+    [30.0, 165.0, 35.0, 170.0]
+  ],
+  "Ropes": [
+    [45.0, 140.0],
+    [45.0, 167.0]
+  ],
+  "RestrictedZones": [
+    [25.0, 167.0],
+    [100.0, 167.0]
+  ]
+}
+```
+
+**路徑說明**：
+1. 從 (30, 167) 開始
+2. 走到 (45, 167)，執行 [Up](file:///d:/Full_end/C%23/ArtaleAI/Core/SharedGameState.cs#30-48)（爬繩）
+3. 爬到 (45, 140)，往右走
+4. 到 (60, 140)，執行 `RightJump`
+5. 跳到 (80, 130)，往右走
+6. 到 (95, 130)，執行 `DownJump`
+7. 落到 (95, 167)
+
+---
+
+## ⏱️ 建議實作順序
+
+| 階段 | 功能 | 預估時間 | 優先級 |
+|------|------|----------|--------|
+| **Phase 1a** | ActionCode 解析 | 30 分鐘 | ⭐⭐⭐⭐⭐ |
+| **Phase 1b** | 基礎動作執行 (Jump, DownJump) | 1 小時 | ⭐⭐⭐⭐⭐ |
+| **Phase 2** | 繩索爬行邏輯 | 2 小時 | ⭐⭐⭐⭐ |
+| **Phase 3** | 安全區血量聯動 | 1 小時 | ⭐⭐⭐ |
+
+---
+
+## ❓ 需要確認的問題
+
+1. **跳躍按鍵**：遊戲中跳躍是按 `Alt` 還是 `Space`？
+2. **傳送技能**：是否需要實作傳送？按哪個鍵？
+3. **血量偵測**：目前有血量偵測功能嗎？（用於安全區觸發）
+4. **動作延遲**：跳躍後需要等待多久才能繼續移動？

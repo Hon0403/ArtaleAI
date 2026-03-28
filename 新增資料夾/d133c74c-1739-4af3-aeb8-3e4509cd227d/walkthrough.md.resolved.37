@@ -1,0 +1,26 @@
+# 導航系統加固驗證紀錄
+
+## 🛠️ 已完成變更 (Current Changes)
+
+### 1. 視覺防抖與起步緩衝 (Vision Debounce & Startup Buffer)
+- **起步優化**：將初始位置獲取的重試次數提升至 30 次（約 600ms），解決啟動瞬間因視覺系統尚未就緒導致的 Fail。
+- **盲飛機制**：引入 1.5 秒視覺盲區計時器。當發生微秒級閃爍時，角色會保持原有的移動慣性，不再發生「恐慌性急煞」。
+- **安全性**：超過 1.5 秒盲區後，系統仍會執行緊急救災 ([StopMovement](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#276-296)) 以防非法移動或撞牆。
+
+### 2. 運動物理時序與精度 (Movement Physics Tuning)
+- **爬繩對齊**：實作 `ROPE_ALIGN_TOLERANCE = 2.0f`，達成極致的 X 軸鎖定。
+- **跳躍動量**：優化助跑 (80ms) 與空中推力長按 (350ms)，確保 2D 物理引擎動量完整。
+
+### 3. 前瞻語意路徑淨化 (Semantic SimplifyPath)
+- **邏輯**：淨化時預視特殊動作邊，保護 `ClimbUp`/[Jump](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#292-310) 的起點節點。
+
+---
+
+## 🚦 驗證結果 (Validation)
+
+### 建置測試 (Build Test)
+- **狀態**：`dotnet build` 成功。
+- **警告數**：維持 77 個（均與本次修改無關，為 MainForm 遺留問題）。
+
+> [!IMPORTANT]
+> **可靠性說明**：現在系統對「小地圖閃爍」具備極強的抗性，不會再因為微秒級的視覺丟失而導致導航大面積崩潰。

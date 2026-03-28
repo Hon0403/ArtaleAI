@@ -1,0 +1,35 @@
+# Serilog 導入計劃 - 任務追蹤
+
+## 階段 0: 建立 Logger 基礎設施 ✅
+- [x] 安裝 NuGet 套件 (Serilog, Sinks.File, Sinks.Async, Sinks.Console)
+- [x] 建立 [Utils/Logger.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs)
+- [x] MainForm.cs 初始化測試
+- [x] 驗證 Log 檔案生成
+
+## 階段 1: MainForm.cs
+- [ ] 系統初始化 & 生命週期
+- [ ] 路徑載入 & 地圖操作
+- [ ] 路徑規劃控制
+- [ ] 錯誤處理
+
+## 階段 2: CharacterMovementController.cs
+- [ ] 邊界保護
+- [ ] Y 軸鎖死
+- [ ] 移動控制
+- [ ] 錯誤處理
+
+## 階段 3: PathPlanningTracker.cs
+- [ ] 邊界檢測
+- [ ] 路徑點到達
+- [ ] 隨機選點
+- [ ] 系統生命週期
+
+## 階段 4: Services
+- [ ] PathPlanningManager.cs
+- [ ] MapFileManager.cs
+- [ ] RouteRecorderService.cs
+- [ ] WindowFinder.cs
+
+## 階段 5: Core
+- [ ] GameVisionCore.cs 關鍵邏輯
+- [ ] 輔助類 (DrawingHelper, CoordinateHelper)

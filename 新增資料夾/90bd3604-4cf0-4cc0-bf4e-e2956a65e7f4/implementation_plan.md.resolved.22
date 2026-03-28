@@ -1,0 +1,46 @@
+# 實作計畫 - 修復爬繩按鍵卡住與移動卡頓
+
+## 問題 1：意外抓繩（按鍵卡住）
+使用者觀察到角色在結束一段爬繩後，移動時會意外抓住旁邊的繩索。
+**原因**：程式在 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#641-872) 判斷到達目標後直接 `break` 離開迴圈，但**忘記釋放爬繩按鍵**（UP 或 DOWN）。導致按鍵一直處於按壓狀態，當角色經過其他繩索時就會自動抓住。
+
+## 問題 2：移動卡頓
+日誌顯示角色在微調位置時（點按模式），座標完全沒有改變。
+**原因**：預設的點按時間（80ms）太短，無法推動靜止的角色。
+
+## 解決方案
+
+### 1. 強制釋放爬繩按鍵
+確保 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#641-872) 結束時一定會釋放按鍵。
+
+### 2. 調整移動參數
+增加水平移動的力道。
+
+## 預計變更
+
+### Services/CharacterMovementController.cs
+
+#### [修改] ClimbRopeAsync (約第 815 行附近)
+- 在 `while` 迴圈結束後，加入釋放按鍵的程式碼：
+  ```csharp
+  // 迴圈結束，確保釋放爬繩按鍵
+  SendKeyInput(climbKey, true);
+  Logger.Debug($"[爬繩] 動作結束，釋放按鍵: {GetKeyName(climbKey)}");
+  ```
+
+#### [修改] MovementProfile.HorizontalMove (約第 60-66 行)
+- **TapPressDurationMs**: 80ms -> **120ms**
+- **TapIntervalMs**: 20ms -> **50ms**
+
+```csharp
+public static readonly MovementProfile HorizontalMove = new()
+{
+    DecelerationDistance = 10.0f,
+    TapPressDurationMs = 120, // 80 -> 120
+    TapIntervalMs = 50        // 20 -> 50
+};
+```
+
+## 驗證計畫
+- **按鍵卡住**：觀察日誌，爬繩結束後應出現「釋放按鍵」訊息。角色經過其他繩索時應不會再被吸過去。
+- **移動卡頓**：觀察日誌，點按指令應能造成座標改變。

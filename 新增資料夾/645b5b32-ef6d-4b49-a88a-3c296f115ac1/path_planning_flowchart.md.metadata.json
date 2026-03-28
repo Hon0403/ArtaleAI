@@ -1,0 +1,6 @@
+{
+  "artifactType": "ARTIFACT_TYPE_WALKTHROUGH",
+  "summary": "更新後的路徑規劃系統流程圖，修正了7個問題：太近跳過閾值(8px)、循環重置機制、Y軸鎖死區分dy正負、邊界過濾保底機制、Index推進說明等。包含完整的UpdatePathState核心流程和移動控制流程。",
+  "updatedAt": "2025-12-13T14:19:46.905615800Z",
+  "version": "1"
+}

@@ -1,0 +1,35 @@
+# 全專案註解無情清理計畫
+
+## 核心動機
+遵循首席架構師「死碼殲滅」原則，移除專案中所有冗餘、過時或僅具描述性的非必要註解，提升代碼純度。
+
+## 待清理目標
+1.  **範圍**：涵蓋全專案 **65 個 [.cs](file:///d:/Full_end/C%23/ArtaleAI/Program.cs) 檔案**。
+2.  **開發標記**：移除所有 `🔧`、`🎯`、`🧠` 等表情符號標記與隨後的備忘內容。
+3.  **冗餘說明**：移除僅重申代碼邏輯的內聯註解（如 `// 切換狀態`、`// 初始化變數`）。
+4.  **歷史補丁記錄**：移除類似 `// 2025-02: 修復...` 或 `// 使用者要求...` 的過時背景說明。
+5.  **殭屍代碼**：移除所有註釋掉的代碼塊（// /* */）。
+
+## 分階段執行計畫 (Phased Execution)
+
+### 🟢 第一階段：UI 與 編輯器層 (UI & Editor)
+*   **目標**：[MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs), [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs), [LiveViewManager.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/LiveViewManager.cs), [FloatingMagnifier.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/FloatingMagnifier.cs), [OverlayRenderer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/OverlayRenderer.cs)。
+*   **重點**：掃除所有開發標記 (🚀, 🎯, 🔧) 與冗餘的 UI 狀態說明。
+
+### 🟡 第二階段：Core 導航與視覺核心 (Core Navigation & Vision)
+*   **目標**：[GameVisionCore.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs), [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs), [ShortestPathPlanner.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/ShortestPathPlanner.cs), [NavigationGraph.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs) 等。
+*   **重點**：移除算法節點調試筆記。
+
+### 🟠 第三階段：Services 執行服務層 (Services & Pipeline)
+*   **目標**：[NavigationStateMachine.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationStateMachine.cs), [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs), [GamePipeline.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/GamePipeline.cs), [ScreenCapture.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/ScreenCapture.cs) 等。
+*   **重點**：淨化非同步流程說明。
+
+### 🔴 第四階段：Models 與 Config 資料層 (Models & Configuration)
+*   **目標**：[MapData.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Map/MapData.cs), [AppConfig.cs](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs), [ApiConfig.cs](file:///d:/Full_end/C%23/ArtaleAI/API/Config/ApiConfig.cs), [DetectionResult.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Detection/DetectionResult.cs) 等。
+*   **重點**：移除屬性定義旁的重複註釋。
+
+## 驗證計畫
+### 1. 每階段編譯驗證
+*   每處理完一個階段，立即進行跨類別編譯核對，確保無語法損壞。
+### 2. 最終代碼審計
+*   確認專案中已不再存留任何非 XML Documentation 的冗餘註解。

@@ -1,0 +1,206 @@
+# Boundary Handling Implementation Plan
+
+## Background
+
+目前程式載入 JSON 檔案中的 `RestrictedZones` 資料（表示邊界點），但是沒有任何邏輯來處理這些邊界。根據之前的對話，需要實作邊界處理功能，避免角色移動超出平台邊界。
+
+### 現狀分析
+- **資料來源**：JSON 檔案的 `RestrictedZones` 陣列包含兩個點 `[左邊界X, Y]` 和 `[右邊界X, Y]`
+- **現有類別**：[PlatformBounds](file:///d:/Full_end/C%23/ArtaleAI/Data/DataModels.cs#142-176) 類別已有 [IsWithinBounds()](file:///d:/Full_end/C%23/ArtaleAI/Data/DataModels.cs#156-163) 和 [IsNearBoundary()](file:///d:/Full_end/C%23/ArtaleAI/Data/DataModels.cs#164-172) 方法
+- **Config 設定**：[config.yaml](file:///d:/Full_end/C%23/ArtaleAI/Data/config.yaml) 已有 `platformBounds` 區段（bufferZone、emergencyZone、cooldownMs）
+- **問題**：[PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#15-235) 隨機選擇路徑點時不考慮邊界
+
+---
+
+## Proposed Changes
+
+### Core/PathPlanningTracker.cs
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+
+新增以下功能：
+
+1. **新增欄位**
+   - `PlatformBounds? _platformBounds` - 儲存當前地圖邊界
+   - `DateTime _lastBoundaryEventTime` - 邊界事件冷卻計時
+   - `bool _isNearBoundary` - 追蹤是否接近邊界
+
+2. **新增事件**
+   - `event Action<SdPointF, string>? OnBoundaryHit` - 當角色接近或碰撞邊界時觸發
+
+3. **新增方法**
+   - `SetBoundaries(float minX, float maxX, float minY, float maxY)` - 設定邊界
+   - `CheckBoundaryProximity(SdPointF playerPos)` - 檢查玩家是否接近邊界
+   - `SelectSafeRandomTarget(int currentIndex)` - 選擇不接近邊界的隨機目標點
+
+4. **修改 [UpdatePathState()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#145-192) 方法**
+   - 加入邊界檢測邏輯
+   - 當玩家接近邊界時觸發 `OnBoundaryHit` 事件
+   - 自動選擇遠離邊界的新目標點
+
+---
+
+### Services/PathPlanningManager.cs
+
+#### [MODIFY] [PathPlanningManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs)
+
+1. **新增事件**
+   - `event Action<SdPointF, string>? OnBoundaryHit` - 轉發邊界事件
+
+2. **新增方法**
+   - `SetBoundaries(float minX, float maxX, float minY, float maxY)` - 轉發至 Tracker
+
+3. **修改 [StartAsync()](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs#60-100) 方法**
+   - 訂閱 `_tracker.OnBoundaryHit` 事件
+
+---
+
+### UI/MainForm.cs
+
+#### [MODIFY] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+
+1. **修改 [cbo_LoadPathFile_SelectedIndexChanged()](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1713-1760) 方法**（約 1713 行）
+   - 在載入路徑點後，解析 `RestrictedZones` 為 [PlatformBounds](file:///d:/Full_end/C%23/ArtaleAI/Data/DataModels.cs#142-176)
+   - 呼叫 `_pathPlanningManager.SetBoundaries()` 設定邊界
+
+2. **訂閱 `OnBoundaryHit` 事件**
+   - 顯示邊界警告訊息
+   - 可選：自動停止移動
+
+---
+
+## Code Changes Preview
+
+### PathPlanningTracker.cs - 新增邊界欄位和事件
+
+```diff
++ // 邊界處理相關欄位
++ private PlatformBounds? _platformBounds;
++ private DateTime _lastBoundaryEventTime = DateTime.MinValue;
++ private bool _isNearBoundary = false;
+
++ /// <summary>
++ /// 邊界碰撞事件 - 當角色接近或碰撞邊界時觸發
++ /// 參數：(玩家位置, 邊界方向 "Left"/"Right")
++ /// </summary>
++ public event Action<SdPointF, string>? OnBoundaryHit;
+```
+
+### PathPlanningTracker.cs - 新增 SetBoundaries 方法
+
+```diff
++ /// <summary>
++ /// 設定地圖邊界
++ /// </summary>
++ public void SetBoundaries(float minX, float maxX, float minY, float maxY)
++ {
++     _platformBounds = new PlatformBounds
++     {
++         MinX = minX,
++         MaxX = maxX,
++         MinY = minY,
++         MaxY = maxY
++     };
++     Debug.WriteLine($"[PathPlanningTracker] 已設定邊界: {_platformBounds}");
++ }
+```
+
+### PathPlanningTracker.cs - 修改 UpdatePathState 加入邊界檢測
+
+```diff
+  private void UpdatePathState(MinimapTrackingResult trackingResult)
+  {
+      if (CurrentPathState == null || CurrentPathState.IsPathCompleted) return;
+
+      var playerPos = trackingResult.PlayerPosition;
+      if (!playerPos.HasValue || playerPos.Value == SdPointF.Empty) return;
+
++     // 邊界檢測
++     CheckBoundaryProximity(playerPos.Value);
+
+      var nextWaypoint = CurrentPathState.NextWaypoint;
+      // ... 其餘邏輯
+  }
+```
+
+### PathPlanningTracker.cs - 新增安全選點方法
+
+```diff
++ private int SelectSafeRandomTarget(int currentIndex)
++ {
++     var availableIndices = Enumerable.Range(0, CurrentPathState.PlannedPath.Count)
++         .Where(i => i != currentIndex)
++         .Where(i => {
++             if (_platformBounds == null) return true;
++             var point = CurrentPathState.PlannedPath[i];
++             var bufferZone = AppConfig.Instance.PlatformBounds.BufferZone;
++             return !_platformBounds.IsNearBoundary(point.X, point.Y, bufferZone);
++         })
++         .ToList();
++
++     if (availableIndices.Count == 0)
++     {
++         // 找不到安全點，使用所有可用點
++         availableIndices = Enumerable.Range(0, CurrentPathState.PlannedPath.Count)
++             .Where(i => i != currentIndex)
++             .ToList();
++     }
++
++     lock (_randomLock)
++     {
++         return availableIndices[_random.Next(availableIndices.Count)];
++     }
++ }
+```
+
+### MainForm.cs - 修改路徑載入加入邊界解析
+
+```diff
+  private void cbo_LoadPathFile_SelectedIndexChanged(object sender, EventArgs e)
+  {
+      // ... 現有程式碼 ...
+
+      if (waypoints.Count >= 2)
+      {
+          _pathPlanningManager?.LoadPlannedPath(waypoints);
+          MsgLog.ShowStatus(textBox1, $"已載入 {waypoints.Count} 個路徑點到路徑規劃系統（隨機模式）");
+
++         // 解析 RestrictedZones 為邊界
++         if (loadedPathData.RestrictedZones?.Count >= 2)
++         {
++             var zones = loadedPathData.RestrictedZones;
++             float minX = zones.Min(z => z[0]);
++             float maxX = zones.Max(z => z[0]);
++             float minY = zones.Min(z => z[1]);
++             float maxY = zones.Max(z => z[1]);
++             _pathPlanningManager?.SetBoundaries(minX, maxX, minY, maxY);
++             MsgLog.ShowStatus(textBox1, $"已設定邊界: X=[{minX:F1}, {maxX:F1}]");
++         }
+      }
+  }
+```
+
+---
+
+## Verification Plan
+
+### Manual Verification
+
+由於此專案沒有現有的單元測試，驗證將通過手動測試進行：
+
+1. **載入測試**
+   - 啟動程式
+   - 選擇包含 `RestrictedZones` 的路徑檔（如 [fddsfds.json](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/MapData/fddsfds.json)）
+   - 確認主控台顯示「已設定邊界」訊息
+
+2. **邊界事件測試**
+   - 啟動路徑規劃
+   - 手動將角色移動到邊界附近
+   - 確認主控台顯示邊界警告
+
+3. **安全選點測試**
+   - 觀察路徑規劃選擇的目標點
+   - 確認目標點不會過於接近邊界（距離邊界 > bufferZone）
+
+> [!IMPORTANT]
+> 請在遊戲中手動測試並確認角色不會超出邊界區域

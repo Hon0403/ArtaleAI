@@ -1,0 +1,38 @@
+# 深度架構清理與編譯修復計畫 (V2)
+
+本次修復旨在解決重構過程中遺留的嚴重冗餘。系統目前存在大量的方法重複（在 `MainForm.cs` 與其分頁檔案中）以及模型定義歧義。
+
+## 待解決問題
+1.  **MainForm.cs 方法重複 (CS0111)**：邏輯已遷移至 `MainForm.Detection.cs`、`MainForm.Events.cs` 等檔案，但原 `MainForm.cs` 未刪除重複方法。
+2.  **型別歧義 (CS0104)**：`Core/Domain/Navigation` 與 `Models/PathPlanning` 存在同名的 `PathPlanningState` 與 `MapData`。
+3.  **型別缺失 (CS0246)**：`MinimapViewerStyle`、`MinimapTrackingResult` 等模型未能在組態類別中被正確引用。
+4.  **介面實作不相符 (CS0535)**：`NavigationStateMachine` 未能對齊最新介面。
+
+## 擬定變更
+
+### 1. 模型統一與歧義排除
+- **[DELETE] `Core/Domain/Navigation/PathPlanningState.cs`**: 統一使用 `Models/PathPlanning/PathPlanningState.cs`。
+- **[DELETE] `Core/Domain/Navigation/MapData.cs`**: 統一使用 `Models/Map/MapData.cs`。
+- **[MODIFY] [MinimapStyles.cs](file:///d:/Full_end/C#/ArtaleAI/Models/Minimap/MinimapStyles.cs)**: 新增缺失的 `MinimapViewerStyle` 類別。
+
+### 2. MainForm.cs 冗餘掃除 (Ruthless Refactoring)
+- **[MODIFY] [MainForm.cs](file:///d:/Full_end/C#/ArtaleAI/UI/MainForm.cs)**: 
+    - 徹底刪除所有已在分頁（`.Detection.cs`, `.Events.cs`, `.PathPlanning.cs`, `.Rendering.cs`）中實現的方法。
+    - 包含：`OnMonsterSelectionChanged`、`InitializeDetectionModeDropdown`、各類 `Click` 事件與 `PictureBox` 繪圖邏輯。
+
+### 3. 介面與服務修正
+- **[MODIFY] [NavigationStateMachine.cs](file:///d:/Full_end/C#/ArtaleAI/Services/NavigationStateMachine.cs)**: 
+    - 依照 `INavigationStateMachine` 介面修正 `TryStartNavigation` 與 `NotifyTargetReached` 的實作。
+- **[MODIFY] [DetectionService.cs](file:///d:/Full_end/C#/ArtaleAI/Services/DetectionService.cs)**: 
+    - 修正 `using` 指示詞，將 `ArtaleAI.Engine` 替換為正確的 `ArtaleAI.Core`。
+
+### 4. 輔助元件復原
+- **[NEW] [FloatingMagnifier.cs](file:///d:/Full_end/C#/ArtaleAI/UI/FloatingMagnifier.cs)**: 若確實缺失，將重新實作一個輕量化的浮動放大器元件。
+
+## 驗證計畫
+### 編譯驗證
+- 執行 `dotnet build` 直至錯誤歸零。
+
+### 結構檢查
+- 確認 `MainForm.cs` 不再包含邏輯實作，僅保留介面初始化與全域欄位。
+- 確認全域僅存在唯一的 `PathPlanningState` 模型空間。

@@ -1,0 +1,24 @@
+# 重構：刪除廢棄程式碼（路線 A）
+
+## Phase 1: PathNode → 純 DTO
+- [ ] 刪除 [GetPriority()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs#123-188), [MarkVisited()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs#106-114), [MarkFailed()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs#115-122), [Reset()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs#97-105)
+- [ ] 刪除 `LastVisitTime`, `FailedAttempts`, `IsBlacklisted`
+
+## Phase 2: PathPlanningTracker 清理
+- [ ] 刪除 `_ropeNavigator`, `_triggeredActionIndices`
+- [ ] 刪除 [GetNodePriorities()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1730-1748), [FindClosestPathNodeIndex()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#2013-2038)
+- [ ] 刪除 [SetPlannedPath(List<SdPoint>)](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#365-384) (確認無外部呼叫)
+- [ ] 清理建構子、[Dispose()](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs#218-238)、[ForceAdvanceTarget()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1769-1995) 中的舊引用
+
+## Phase 3: 刪除 SmartRopeNavigator.cs
+- [ ] 確認無呼叫後刪除整個檔案
+
+## Phase 4: 更新下游消費者
+- [ ] 更新 [PathPlanningManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs)
+- [ ] 更新 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) 熱力圖邏輯
+- [ ] 更新 [MinimapViewer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs) 渲染邏輯
+- [ ] 更新 [PathVisualizationModels.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Visualization/PathVisualizationModels.cs)
+
+## Phase 5: 驗證
+- [ ] `dotnet build` 編譯通過
+- [ ] 手動測試路徑導航功能正常

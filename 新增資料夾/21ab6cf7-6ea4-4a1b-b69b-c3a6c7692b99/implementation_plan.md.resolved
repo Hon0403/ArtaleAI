@@ -1,0 +1,23 @@
+# 移除繩索合併機制 (Remove Rope Lookahead)
+
+使用者指出繩索合併機制導致目標點直接跳到繩索頂端，造成中間的連接點（例如二樓連接三樓的繩索底部）被略過，進而引發對齊錯誤。因此，我們將移除此優化機制，讓角色嚴格按照錄製的路徑點逐一執行。
+
+## 擬定變更
+
+### 核心 (Core)
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C#/ArtaleAI/Core/PathPlanningTracker.cs)
+- **移除/註解掉** [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#804-945) 方法中的「繩索路徑優化 (Rope Lookahead)」區塊（約第 866-903 行）。
+- **效果**：系統將不再嘗試尋找並合併連續的 `ClimbUp` 或 `ClimbDown` 節點。它將嚴格將 `_currentTarget` 設定為下一個索引 (`_currentPathIndex + 1`) 的節點。
+
+## 預期影響
+- **優點**：角色將精確執行每一個錄製的點，確保不會錯過任何轉折點或新的繩索起點，解決二樓爬三樓時的對齊問題。
+- **缺點**：爬繩過程可能會因為頻繁到達中間點而出現輕微的停頓（視 [HasReachedWaypoint](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1018-1039) 的判定而定），但這能保證路徑的正確性。
+
+## 驗證計畫
+
+### 手動驗證
+1.  **載入測試地圖**：使用發生問題的 [test.json](file:///d:/Full_end/C%23/ArtaleAI/MapData/test.json)。
+2.  **執行路徑**：讓角色開始執行路徑。
+3.  **觀察行為**：
+    - 確認角色爬完第一段繩索（1F -> 2F）後，會正確將目標設定為二樓平台上的過渡點，或是三樓繩索的底部起點。
+    - 確認角色成功對齊並抓住三樓的繩索。

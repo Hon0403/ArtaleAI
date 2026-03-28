@@ -1,0 +1,30 @@
+# 實作計畫 - 爬繩完成判定優化
+
+## 目標說明
+修改爬繩動作的完成判定邏輯。不再單純依賴 Y 軸高度比較，而是改用「角色位置」與「目標繩索節點」之間的歐幾里得距離來判斷是否到達。這樣能更精確地確認角色是否真正到達了目的地。
+
+## 用戶注意事項
+> [!NOTE]
+> 系統現在會檢查角色與目標點的直線距離。如果距離小於設定閾值（預設 5.0 像素），就會視為爬繩完成。這能避免角色雖然高度到了但位置偏掉的情況（雖然在繩子上 X 通常是固定的）。
+
+## 預計修改
+
+### 核心程式碼
+#### [MODIFY] [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **修改 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#519-754) 方法**：
+    - **輸入變更**：現有參數已經包含 `ropeX` 和 `targetY`，這兩者組成了目標點 `TargetPoint(ropeX, targetY)`。
+    - **邏輯變更**：
+        - 計算 `currentPos` 與 `TargetPoint` 的距離 `dist`。
+        - 將判定條件從 `hasReachedHeight` 改為 `dist <= CompletionThreshold` (5.0f)。
+        - 保留原本的「穩定檢測」作為輔助（防止卡死），但主要的成功判定改為距離檢查。
+
+- [x] 優化路徑初始化 (等待角色定位)
+- [x] 修復爬繩中斷問題 (新增自動重試機制)
+- [x] 優化爬繩判定 (改用距離檢測 + 6px 容錯)
+- [ ] 確保目標點最小距離 (防止目標過近導致不移動)
+- [ ] 用戶驗證 (等待回報)
+
+## 修復項目：確保目標點有效距離 (Ensure Minimum Target Distance)
+### [MODIFY] Core/PathPlanningTracker.cs
+- **問題**：如果「下一個目標點」距離角色太近 (< 6.0px)，[CharacterMovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#18-811) 會直接判定已到達而不移動，導致角色卡住或略過該點。
+- **解法**：在 [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#795-879) 或 [SelectRandomNearbyIndex](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#885-931) 中，過濾掉距離角色 < 10.0px 的點。若下一個點太近，直接跳過選再下一個，確保產生的目標都在有效移動範圍外。

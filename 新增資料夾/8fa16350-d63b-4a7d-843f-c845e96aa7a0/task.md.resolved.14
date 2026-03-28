@@ -1,0 +1,26 @@
+# 跳躍動作修復任務清單 (Phase 2)
+
+- [x] Analyze logs to confirm jump failure cause (Break Node skipped) <!-- id: 4 -->
+- [x] Fix Break Node handling logic in [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) (Phase 2) <!-- id: 5 -->
+    - [x] Force advancement logic update <!-- id: 6 -->
+    - [x] Verify "Break Node with Action" execution <!-- id: 7 -->
+- [x] Refine Jump Action Consistency (Phase 3) <!-- id: 8 -->
+    - [x] Diagnose "Wrong Order" issue in user path data
+    - [x] Implement "Proximity Action Trigger" to scan for nearby action nodes
+    - [x] Update scan logic to cover ENTIRE path list (global scan)
+    - [x] **Fix Ping-Pong Issue**: Implement `_executedActionNodeIndices` to prevent re-triggering visited nodes <!-- id: 10 -->
+    - [x] Implement "Proximity Action Trigger" to scan for nearby action nodes
+    - [x] Update scan logic to cover ENTIRE path list (global scan)
+    - [x] **Fix Ping-Pong Issue**: Implement `_executedActionNodeIndices` to prevent re-triggering visited nodes <!-- id: 10 -->
+    - [x] **Fix Action Cancellation**: Prioritize current action node over proximity trigger if player is nearby <!-- id: 11 -->
+    - [x] **Fix Jump Alignment Deadlock**: Relax jump trigger distance in [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) from 1.5f to 4.5f <!-- id: 12 -->
+    - [ ] Verify Proximity Trigger with user test <!-- id: 9 -->
+- [x] Phase 1: 基礎跳躍優化
+    - [x] 統一精確度閾值
+    - [x] 優化導航覆蓋 (Y軸檢查)
+    - [x] 增加著陸穩定延遲
+- [ ] 驗證修復
+    - [x] 編譯並測試 (編譯成功)
+    - [ ] 監測日誌中的 `執行 Break Node 動作` 訊息
+    - [ ] 確認 [ForceAdvanceTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1478-1571) 不再導致墜落
+- [ ] 建立說明文件 (Walkthrough Phase 2)

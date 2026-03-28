@@ -1,0 +1,31 @@
+# 實作計畫 - 修復繩索 X 軸對齊邏輯
+
+## 問題描述
+使用者反映角色有時未能對齊繩索的攀爬範圍，懷疑程式未檢查 X 軸座標是否一致。
+經分析發現，[MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) 中的邏輯是：只有當角色距離繩索 **2.0 像素**以內時，才會將控制權交給精確的爬繩對齊邏輯 ([ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#631-834))。
+當距離大於 2.0 像素時，程式使用的是「通用移動 ([MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#200-329))」。
+通用移動主要用於長距離奔跑，因慣性或速度原因，很難可靠地停在 2.0 像素這麼小的範圍內，容易導致角色來回修正、衝過頭，甚至在爬繩邏輯啟動前就掉出平台。
+
+## 解決方案
+將 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) 中的切換門檻從 **2.0f** 提高到 **10.0f**。
+這意味著：
+- 如果距離 > 10.0f：使用通用移動（快速接近）。
+- 如果距離 <= 10.0f：從通用移動切換到 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#631-834)。
+  - [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#631-834) 內部已包含精確對齊邏輯：
+    - 如果距離 > 1.5f：呼叫 `RopeAlignmentController` 進行**精確對齊**（使用短暫的點按操作）直到進入 1.5f 範圍。
+    - 如果距離 <= 1.5f：執行 上+跳。
+
+這能確保最後一段接近過程（10px -> 1.5px）是由專門的對齊控制器處理，既安全又有檢查機制，而不是依賴通用移動。
+
+## 預計變更
+
+### UI/MainForm.cs
+
+#### [修改] OnFrameAvailable / ProcessPathPlanning
+- 第 2073 行：將 `if (distanceToRopeX > 2.0f)` 改為 `if (distanceToRopeX > 10.0f)`。
+- 更新相關日誌訊息，以反映新的邏輯。
+
+## 驗證計畫
+- **手動驗證**：
+  - 使用者應觀察到當角色接近繩索（進入 10px 範圍）時，會切換到「對齊」階段（角色會進行細微的左右點按修正），而不是直接跑過去。
+  - 日誌應顯示來自 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#631-834) 的 `[爬繩] 需要對齊繩索` 訊息（當距離介於 1.5 到 10.0 之間時）。

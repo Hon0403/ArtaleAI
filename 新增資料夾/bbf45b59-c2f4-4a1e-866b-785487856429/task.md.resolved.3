@@ -1,0 +1,25 @@
+# 優先級 2 重構：GamePipeline + MapFileManager 解耦
+
+## Phase 1：前置研究
+- [x] 閱讀 `MainForm.OnFrameAvailable` 完整邏輯
+- [x] 確認 MapFileManager 所有 UI 引用點
+
+## Phase 2：建立 GamePipeline
+- [x] 定義 GamePipeline 事件介面
+- [x] 建立 [Services/GamePipeline.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/GamePipeline.cs)（546 行）
+- [x] 從 MainForm 遷移偵測/追蹤/攻擊協調邏輯
+
+## Phase 3：OverlayRenderer + 重構 MapFileManager
+- [x] 建立 [UI/OverlayRenderer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/OverlayRenderer.cs)（110 行）
+- [x] 移除 MapFileManager 建構子的 ComboBox/MainForm 引用
+- [x] 改為公開事件通知（MapSaved, MapLoaded, StatusMessage, ErrorMessage, FileListChanged）
+- [x] 新增 [GetAvailableMapFiles()](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs#69-94) + [SaveMapToPath()](file:///d:/Full_end/C%23/ArtaleAI/Services/MapFileManager.cs#163-187)
+
+## Phase 4：修改 MainForm
+- [x] 初始化 GamePipeline + OverlayRenderer 並訂閱事件
+- [x] MainForm 訂閱 MapFileManager 事件更新 UI
+- [x] OnFrameAvailable 替換為 GamePipeline.ProcessFrame 委派（195行→35行）
+- [x] 刪除已遷移方法（ProcessMonsters, CheckAutoAttackCondition, PerformAutoAttackAsync, RenderAndDisplayOverlays, PerformAutoAttack, ProcessPathPlanning）
+
+## Phase 5：驗證
+- [x] 確認專案可編譯（零錯誤、85 個警告）

@@ -1,0 +1,14 @@
+# 跳躍動作修復任務清單 (Phase 2)
+
+- [x] 修復 Break Node 被忽略導致的動作遺失
+    - [x] 修改 `PathPlanningTracker.ForceAdvanceTarget` 以偵測帶動作的 Break Node
+    - [x] 實現臨時目標邏輯：使用前一點座標 + Break Node 動作
+- [x] Phase 1: 基礎跳躍優化
+    - [x] 統一精確度閾值
+    - [x] 優化導航覆蓋 (Y軸檢查)
+    - [x] 增加著陸穩定延遲
+- [ ] 驗證修復
+    - [x] 編譯並測試 (編譯成功)
+    - [ ] 監測日誌中的 `執行 Break Node 動作` 訊息
+    - [ ] 確認 [ForceAdvanceTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1383-1471) 不再導致墜落
+- [ ] 建立說明文件 (Walkthrough Phase 2)

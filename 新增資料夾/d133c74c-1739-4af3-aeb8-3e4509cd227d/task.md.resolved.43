@@ -1,0 +1,17 @@
+# 智慧側跳 (Smart Jump) 實作任務清單
+
+## 🗑️ 階段 1：列舉與 UI 介面層淨化
+- [x] 修改 [Enums.cs](file:///d:/Full_end/C%23/ArtaleAI/Data/Enums.cs)：移除 `JumpLeft`/`JumpRight` (若存在)，新增 `SmartJump`。
+- [x] 修改 [MainForm.Designer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.Designer.cs)：移除舊跳躍控制項，新增 `rdo_SmartJump`。
+- [x] 修改 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)：映射 `rdo_SmartJump` 到 `EditMode.SmartJump`。
+
+## 🗑️ 階段 2：地圖編輯器死碼清理
+- [x] 修改 [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)：更新 [HandleClick](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#367-673) 處理 `SmartJump` (actionCode 9)。
+- [x] 修改 [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)：統一跳躍連線的繪圖顏色。
+
+## 🧠 階段 3：升級大腦編譯器
+- [x] 修改 [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs) (GetCurrentMapData)：實作動態物理判定方向邏輯。
+
+## 🧪 階段 4：驗證
+- [x] 執行 `dotnet build`。
+- [x] 驗證地圖導出數據正確性。

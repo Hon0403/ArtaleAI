@@ -1,0 +1,7 @@
+- [x] 修改 `MainWindow.xaml.cs` (基本修復已完成)
+- [x] 優化啟動與渲染速度
+    - [x] 在 `OnLoaded` 中設定 FFmpeg 環境變數 (`OPENCV_FFMPEG_CAPTURE_OPTIONS`)
+    - [x] 修改 `CaptureLoop` 使用 `VideoCaptureAPIs.FFMPEG` 並設定 `BufferSize`
+- [x] 驗證
+    - [x] 執行 `dotnet build`
+    - [x] 執行 `dotnet run` 驗證優化後的啟動表現，秒開效果顯著

@@ -1,0 +1,62 @@
+# Refactor Pathfinding to Sequential Navigation
+
+## Goal Description
+Switch from "Weighted Random Selection" (which causes erratic behavior and skipping waypoints) to "Sequential Navigation" (Strict Path Following). This ensures the character follows the recorded path exactly, including all necessary intermediate steps like climbing ropes.
+
+## Proposed Changes
+
+### [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+
+Refactor the target selection logic to be index-based.
+
+#### Key Logic Changes:
+1.  **State Tracking**: Add `_currentPathIndex` to track progress along the path.
+2.  **Initialization**: When starting, find the closest point in the path to snap to the timeline (`FindClosestPathNodeIndex`).
+3.  **Target Selection**: Always select `_pathNodes[_currentPathIndex + 1]`.
+4.  **Progression**: When the character reaches the current target, increment `_currentPathIndex`.
+5.  **Recovery**: If the character falls or deviates significantly, re-scan for the closest point to "re-sync" the timeline.
+
+#### Code Structure:
+
+```csharp
+private int _currentPathIndex = 0;
+
+public void SelectNextTarget(bool forceNewTarget = false)
+{
+    // 1. Initialization / Re-sync
+    if (_currentTarget == null || forceNewTarget)
+    {
+        _currentPathIndex = FindClosestPathNodeIndex(_lastKnownPosition);
+    }
+    
+    // 2. Progression
+    // If we are close to the current target, move to next
+    if (HasReachedTarget(_currentTarget))
+    {
+        _currentPathIndex++;
+    }
+    
+    // 3. Selection
+    if (_currentPathIndex < _pathNodes.Count)
+    {
+        _currentTarget = _pathNodes[_currentPathIndex];
+    }
+    else
+    {
+        // End of path, loop or stop
+        _currentPathIndex = 0; // Loop for now
+        _currentTarget = _pathNodes[_currentPathIndex];
+    }
+}
+```
+
+## Verification Plan
+
+1.  **Test 1: Normal Flow**
+    - Start recording at 1F.
+    - Path should strictly follow 1F -> Rope Bottom -> Rope Top -> 2F.
+    - Verify no skipping of the rope bottom point.
+
+2.  **Test 2: Recovery**
+    - Manually jump off 2F to 1F.
+    - System should detect position change, re-sync to 1F index, and walk back to the rope to climb again.

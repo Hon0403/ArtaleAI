@@ -1,0 +1,65 @@
+# Implementation Plan - Active Rope Exit Check (Wiggle Test)
+
+## Problem
+The user reports that the character sometimes continues climbing (pressing Up) even after reaching the top of the rope, because the program strictly checks for a specific Y coordinate that might not be met due to animation/positioning differences. Passive "stuck detection" might be slow or unreliable.
+
+## Solution (User Suggested)
+Implement an **Active Wiggle Test**:
+In MapleStory/Metroidvania games, lateral movement (Left/Right) is impossible while on a rope but possible once standing on the top platform.
+We can leverage this mechanics:
+1. When the character is **near the target height** (e.g., within 15 pixels), initiate a check.
+2. Momentarily stop climbing.
+3. Press **Right** (or Left) key for a short duration (e.g., 100ms).
+4. Check if the **X coordinate** has changed significantly (> 2px).
+   - **X Changed**: Character is on the platform -> **Success (Break Loop)**.
+   - **X Unchanged**: Character is still on the rope -> **Continue Climbing**.
+
+This confirms "Off Rope" status definitively without relying on exact Y coordinates.
+
+## Proposed Changes
+
+### Services/CharacterMovementController.cs
+
+#### [MODIFY] ClimbRopeAsync (Lines ~768-819)
+- Introduce logic inside the loop:
+  ```csharp
+  // Check if close to target height (e.g., within 15px)
+  if (Math.Abs(currentPos.Y - targetY) < 15.0f)
+  {
+      Logger.Info("[爬繩] 接近目標，執行左右移動測試 (Wiggle Test)...");
+      
+      // Stop climbing momentarily
+      SendKeyInput(climbKey, true);
+      await Task.Delay(50, ct);
+      
+      // Measure X before
+      float startX = getPlayerPosition().X;
+      
+      // Try moving Right
+      SendKeyInput(VK_RIGHT, false);
+      await Task.Delay(100, ct); 
+      SendKeyInput(VK_RIGHT, true);
+      await Task.Delay(50, ct);
+      
+      // Measure X after
+      float endX = getPlayerPosition().X;
+      
+      if (Math.Abs(endX - startX) > 2.0f)
+      {
+          Logger.Info($"[爬繩] X軸發生位移 (Delta={Math.Abs(endX - startX):F1})，確認已離開繩索 -> 完成");
+          break; // Exit loop
+      }
+      else
+      {
+          Logger.Info("[爬繩] X軸未位移，仍在繩索上 -> 繼續爬");
+      }
+  }
+  ```
+- Note: To avoid spamming the test, use a timer or counter to perform it only once every few seconds or when progress stalls. Or, since we are "close", perform it immediately? Best to perform active check *instead* of waiting if passive check fails?
+- Refinement: Only perform test if `hasReachedHeight` is FALSE.
+
+## Verification Plan
+- **Manual Verification**:
+  - Observe logs when character nears the top of a rope.
+  - Verify "Wiggle Test" is triggered.
+  - Verify loop exits immediately upon successful lateral movement.

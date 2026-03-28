@@ -1,0 +1,29 @@
+# 導航系統終極加固驗證紀錄
+
+## 🛠️ 已完成變更 (Current Changes)
+
+### 1. 前瞻語意路徑淨化 (Semantic Path Simplification)
+- **變更**：升級 [SimplifyPath](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#398-441) 邏輯。
+- **核心邏輯**：在剔除距離 < 15px 的節點前，先預視下一段路徑的 [ActionType](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1110-1118)。
+- **保護機制**：若下一段動作為 [Jump](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#290-308)、`ClimbUp` 等特殊動作，則強制保留當前節點。
+- **成果**：徹底修復了攀爬起點被誤刪導致的導航斷鏈 Bug。
+
+### 2. 跨樓層救援熔斷 (Rescue Height Defense)
+- **實作**：在 [TryRescuePath](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#459-515) 內建落差防禦。
+- **邏輯**：若玩家位置與原始目標 Y 軸落差 > 5px，則拒絕直線救援。
+- **效果**：切斷了「救援 -> 誤判 Walk -> 墜落熔斷」的無限循環，將複雜尋路職責交還給 A*。
+
+### 3. AABB 唯一真理架構 (AABB-Only Architecture)
+- **清理**：徹底殲滅所有像素級回退邏輯與舊常數。
+- **介面**：維持與現有 FSM 介面 100% 相容。
+
+---
+
+## 🚦 驗證結果 (Validation)
+
+### 建置測試 (Build Test)
+- **狀態**：`dotnet build` 成功。
+- **代碼庫一致性**：無介面不匹配風險。
+
+> [!IMPORTANT]
+> **架構安全聲明**：所有變更均被物理隔離在 [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) 內部，符合微步迭代 (Micro-Iteration) 規範。

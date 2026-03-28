@@ -1,0 +1,87 @@
+# 繩索爬升系統衝突機制完整分析
+
+## 🔴 衝突 1: 閾值定義分散且不一致
+
+| 位置 | 閾值 | 用途 |
+|------|------|------|
+| [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#519-763) L664 | **6px** | 爬繩「到達目標」判定 |
+| [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#519-763) L714 | **15px** | 爬繩「穩定後近距離完成」判定 |
+| [GetDynamicReachDistance()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1159-1180) | **平台寬度/5** 或設定值 | 路徑點到達判定 |
+| [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#166-341) 呼叫 | **2.0f** | 繩索 X 對齊閾值 |
+
+**問題**: 沒有統一的閾值來源（Single Source of Truth），每個模組自己定義，容易互相矛盾。
+
+---
+
+## 🔴 衝突 2: 爬繩內部的雙重重試機制（已移除）
+
+在 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#519-763) L728-733，原本有「穩定但未達標，重新跳躍抓繩」的邏輯，但註解說已被移除。現在直接視為完成：
+```csharp
+Logger.Warning($"[爬繩] Y 穩定在 {currentPos.Y:F1} 但未達標...視為完成 (跳過重試)");
+break;
+```
+
+**狀態**: ✅ 已經被簡化，不再是衝突來源。
+
+---
+
+## 🔴 衝突 3: RopeAligner 精準對齊 vs 主邏輯的對齊
+
+[ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#519-763) 中有兩層對齊邏輯：
+1. **Phase 1: RopeAlignmentController** (L544-573) - 精準對齊繩索
+2. **Phase 2: dx 檢查** (L578-620) - 根據 dx 選擇不同的按鍵組合
+
+如果 `RopeAligner` 對齊失敗，Phase 2 仍會繼續嘗試。但這兩層的 dx 閾值不同：
+- `RopeAligner` 使用 `1.5px`
+- Phase 2 的「完美對齊」也是 `<= 1.5px`
+- Phase 2 的「垂直繩索」是 `<= 5px`
+
+**問題**: 如果對齊失敗但 dx 仍在 5px 內，會使用「垂直繩索」模式，但這其實是對齊不良的狀態。
+
+---
+
+## 🔴 衝突 4: 狀態機冷卻時間過長
+
+[MovementStateMachine.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/MovementStateMachine.cs) L37:
+```csharp
+{ MovementState.ClimbingRope, 1500 },
+```
+
+爬繩冷卻時間是 1500ms，但實際爬繩可能只需要 500ms。這可能導致：
+- 連續爬繩之間有不必要的延遲
+- 狀態機阻擋下一次爬繩嘗試
+
+---
+
+## 🟡 潛在問題: RopeData 與 PathNode 的繩索資訊互相獨立
+
+系統有兩套繩索資料：
+1. `RopeData` - 獨立的繩索列表 (X, TopY, BottomY)
+2. [PathNode](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1034-1057) 的 `ClimbUp/ClimbDown` 動作 - 路徑點中的爬繩標記
+
+這兩者可能不同步，導致 [FindNearbyRope](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#240-332) 找到的繩索與路徑規劃的爬繩點不一致。
+
+**現狀**: 我們剛剛移除了 [FindNearbyClimbPoint](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1181-1238) 備用路徑，所以這個衝突已經被迴避。
+
+---
+
+## 📋 可進一步簡化的地方
+
+### 1. 統一閾值常數
+建議在 `AppConfig` 中定義：
+- `RopeClimbReachDistance` = 10px (爬繩到達判定)
+- `WaypointReachDistance` = 現有值 (一般路徑點)
+
+### 2. 降低狀態機爬繩冷卻
+從 1500ms 降到 500ms 或更低。
+
+### 3. 移除 RopeAligner 的雙重對齊
+既然 Phase 2 本身就有 dx 檢查，可以考慮簡化 Phase 1。
+
+---
+
+## ❓ 需要決定
+
+1. 是否要統一閾值常數？
+2. 是否要降低狀態機冷卻時間？
+3. 是否要簡化 RopeAligner 邏輯？

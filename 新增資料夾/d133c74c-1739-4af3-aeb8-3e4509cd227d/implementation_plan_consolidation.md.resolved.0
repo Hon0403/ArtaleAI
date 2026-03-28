@@ -1,0 +1,29 @@
+# 命名空間與檔案合併計畫 (Namespace & File Consolidation Plan)
+
+專案目前存在大量重複的類別定義與命名空間衝突，導致編譯器無法判斷應使用哪個版本。
+
+## 待解決核心問題
+1. **重複定義 (CS0101/CS0229)**: `AppConfig`, [Logger](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs#10-130), `DetectionModeConfig` 在多個檔案中被定義。
+2. **參考歧義 (CS0104)**: `MinimapTrackingResult`, [DetectionResult](file:///d:/Full_end/C%23/ArtaleAI/Models/Detection/DetectionResult.cs#11-18) 等模型同時存在於 `ArtaleAI.Config` 與 `ArtaleAI.Models.*` 命名空間。
+3. **缺失方法 (CS0117)**: [Logger](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs#10-130) 類別缺少 [Info](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs#87-95), [Warning](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs#78-86), [Error](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs#66-77) 等靜態方法。
+4. **命名空間缺失 (CS0234)**: `ArtaleAI.API.Config` 路徑不正確。
+
+## 執行步驟
+
+### 第一階段：清理重複檔案 (Deduplication)
+- [ ] 檢查並刪除 `d:/Full_end/C#/ArtaleAI/Data/AppConfig.cs` (保留 [Config/AppConfig.cs](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs))。
+- [ ] 檢查並刪除 `d:/Full_end/C#/ArtaleAI/Services/Logger.cs` (保留 [Utils/Logger.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs))。
+- [ ] 檢查 `d:/Full_end/C#/ArtaleAI/Data/DataModels.cs` 是否與 `Models/` 下的檔案內容重複。
+
+### 第二階段：修復 Logger 類別
+- [ ] 確保 [Utils/Logger.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs) 包含 [Info](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs#87-95), [Warning](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs#78-86), [Error](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs#66-77), [Debug](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs#96-104) 的靜態方法。
+
+### 第三階段：解決模型歧義
+- [ ] 找出定義在 `ArtaleAI.Config` 命名空間下的舊模型類別（通常在 `AppConfig.cs` 檔案內或其附屬檔案）。
+- [ ] 移除這些舊類別，統一使用 `ArtaleAI.Models.*`。
+
+### 第四階段：修正 API 引用
+- [ ] 統一 `MonsterImageFetcher` 及其它檔案的 `using` 指示詞。
+
+## 驗證計畫
+- [ ] 執行 `dotnet build` 或檢查 Lint 列表以確認 CS0101, CS0104 消失。

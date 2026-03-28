@@ -1,0 +1,40 @@
+- [/] **Phase 7: Rope Climbing Logic Optimization**
+    - [x] Analyze log to identify "Climb Dead Zone" (2.6px stuck).
+    - [x] Remove "Drift Protection" (Anti-Sway) to allow side-jump grabs.
+    - [x] Fix "Infinite Up Press": Implement "Smart Stuck Detection" (<5.0px && Stall).
+    - [ ] Verify "Wiggle Test" triggers correctly in dead zone.
+    - [x] **Down-Climb Ground Check**: Implemented logic. Verification blocked by missing SDK environment error.
+
+- [ ] **Phase 8: UI Clean Up**
+    - [x] Remove "Nearest Node Highlight" in MinimapViewer (green box user requested to delete).
+    - [x] **Simplify Rope Coloring**: Remove distance-based colors. Ropes only change color when active (Target=Yellow, OnRope=Cyan). Other ropes show as Green (Lime).
+    - [x] **High Contrast Player Cursor**: Change player crosshair to Magenta to avoid blending with Cyan ropes.
+
+- [x] Analyze logs to confirm jump failure cause (Break Node skipped) <!-- id: 4 -->
+- [x] Fix Break Node handling logic in `PathPlanningTracker.cs` (Phase 2) <!-- id: 5 -->
+    - [x] Force advancement logic update <!-- id: 6 -->
+    - [x] Verify "Break Node with Action" execution <!-- id: 7 -->
+- [x] Refine Jump Action Consistency (Phase 3) <!-- id: 8 -->
+    - [x] Diagnose "Wrong Order" issue in user path data
+    - [x] Implement "Proximity Action Trigger" to scan for nearby action nodes
+    - [x] Update scan logic to cover ENTIRE path list (global scan)
+    - [x] **Fix Ping-Pong Issue**: Implement `_executedActionNodeIndices` to prevent re-triggering visited nodes <!-- id: 10 -->
+    - [x] Implement "Proximity Action Trigger" to scan for nearby action nodes
+    - [x] Update scan logic to cover ENTIRE path list (global scan)
+    - [x] **Fix Ping-Pong Issue**: Implement `_executedActionNodeIndices` to prevent re-triggering visited nodes <!-- id: 10 -->
+    - [x] **Fix Action Cancellation**: Prioritize current action node over proximity trigger if player is nearby <!-- id: 11 -->
+    - [x] **Fix Jump Alignment Deadlock**: Relax jump trigger distance in `MainForm.cs` from 1.5f to 4.5f <!-- id: 12 -->
+    - [x] **Fix Infinite Loop**: Add completed action nodes to `_triggeredActionIndices` in `ForceAdvanceTarget` <!-- id: 13 -->
+    - [x] **Fix Jump Back Logic (Air Control)**: Improve `WaitForLanding` to detect takeoff before checking landing <!-- id: 14 -->
+    - [x] **Fix Bidirectional Loop (Smart Skip)**: Auto-skip "Reverse Actions" (e.g. Left Jump -> Right Jump) in `ForceAdvanceTarget` to allow bidirectional path recording <!-- id: 15 -->
+    - [x] **Phase 5: Remove Unused PathGraph**
+        - [x] Delete `PathGraph.cs`.
+        - [x] Remove A* logic from `PathPlanningTracker.cs`.
+        - [x] Remove visualization code from `MainForm.cs` and `MinimapViewer.cs`.
+    - [/] **Phase 6: Remove Route Recorder** <!-- id: 6 -->
+        - [x] Delete `RouteRecorderService.cs`. <!-- id: 6.1 -->
+        - [x] Remove `RouteRecorder` references in `MainForm.cs` (Fields, Methods, Drawing, Hotkeys). <!-- id: 6.2 -->
+        - [x] Remove UI elements in `MainForm.Designer.cs` (Buttons, GroupBox). <!-- id: 6.5 -->
+        - [x] Remove `RouteRecorder` references in other files (MapEditor comment). <!-- id: 6.3 -->
+        - [x] Verify build. <!-- id: 6.4 -->
+- [ ] 建立說明文件 (Walkthrough Phase 2)

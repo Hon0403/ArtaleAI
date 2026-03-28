@@ -1,0 +1,34 @@
+# AppConfig 模組化重構計畫
+
+## 目的
+`AppConfig.cs` 目前扮演了「上帝類別 (God Class)」的角色，承載了全域設定、模組特定設定以及不屬於它的地圖檔案 I/O 邏輯。本計畫旨在按領域 (Domain) 拆分設定項，提升代碼內聚性與可維護性。
+
+## 重點變更
+
+### 1. 職責分離 (SoC)
+- **搬遷地圖 I/O**：將 `LoadMapFromFile` 與 `SaveMapToFile` 從 `AppConfig` 移除，併入導航服務層或專用的 `MapFileManager`。
+- **配置分群**：將扁平的設定項歸納為以下子類別：
+  - `VisionSettings`：包含檢測閾值、HSV 範圍、偵測間隔、模板路徑。
+  - `NavigationSettings`：包含到達容差、追蹤歷史、自動尋路開關。
+  - `EditorSettings`：包含編輯器半徑、小地圖固定位置設定。
+  - `AppearanceSettings`：包含所有 Style 樣式物件（Monster, Minimap 等）。
+  - `GeneralSettings`：包含視窗標題、縮放倍率等基礎資訊。
+
+### 2. 結構調整
+- **保持 YAML 兼容**：為了不破壞現有的 `config.yaml`，將使用 `[YamlMember]` 標籤將舊有的扁平名稱對應到新的嵌套結構（或採納一次性的破壞性更新以追求最純淨的架構）。
+- **保留單例模式**：維持 `AppConfig.Instance` 作為全局訪問點，但改為訪問子屬性（例如：`AppConfig.Instance.Vision.Threshold`）。
+
+## 預計受影響檔案
+- `Config\AppConfig.cs` [MODIFY] [DELETE/EXTRACT]
+- [NEW] `Config\VisionSettings.cs`
+- [NEW] `Config\NavigationSettings.cs`
+- [NEW] `Config\EditorSettings.cs`
+- `UI\MainForm.cs` [MODIFY] (更新設定調用路徑)
+- `Core\GameVisionCore.cs` [MODIFY]
+- `Services\GamePipeline.cs` [MODIFY]
+- `Services\PathPlanningManager.cs` [MODIFY]
+
+## 驗證計畫
+1. **序列化測試**：確保 `Save()` 產生的 YAML 檔案結構正確。
+2. **反序列化測試**：確保舊版 `config.yaml` 能正確加載或提供平滑遷移路徑。
+3. **全域編譯**：確保所有引用處均已更新為新的巢狀屬性存取模式。

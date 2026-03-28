@@ -1,0 +1,28 @@
+# 優化怪物偵測：全域 NMS 與數量限制
+
+## [目標]
+解決使用者回報「辨識框過多」的問題。原因可能為：
+1. **多模板重複偵測**：多個模板（例如不同動作幀）偵測到同一隻怪物，但目前的 NMS 僅在 [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#112-123) 簡單處理，且可能因為閾值或重疊度計算問題未能完全合併。
+2. **背景誤判**：`CCorrNormed` 模式下，背景可能產生大量分數接近閾值 (0.7-0.8) 的誤判。
+3. **數量未限制**：[FindMonsters](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#413-489) 目前對每個模板回傳最多 10 個結果，若有 6 個模板則可能回傳 60 個結果。
+
+## [解決方案]
+在 [Core/GameVisionCore.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs) 的 [FindMonsters](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#413-489) 方法中加入後處理邏輯：
+1. **收集所有結果**：將所有模板的匹配結果收集到同一個列表 `allResults`。
+2. **全域 NMS**：在回傳前，直接呼叫內部的 [ApplyNMS](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#982-1024) 對 `allResults` 進行去重。這樣可以確保不同模板偵測到的同一目標被合併。
+3. **數量限制 (Top-K)**：去重後，依照分數排序，只保留分數最高的 **5** 個結果。這能有效過濾掉大量低分雜訊，並避免畫面雜亂。
+
+## [變更計畫]
+
+### Core/GameVisionCore.cs
+
+#### [修改] FindMonsters 方法
+- 在迴圈結束後，對 `allResults` 進行 NMS 處理。
+- 對 NMS 後的結果進行排序 (Score Descending)。
+- 限制回傳數量 (例如 `results.Take(5).ToList()`)。
+
+## [驗證計畫]
+- **手動驗證**：
+    - 啟動程式，觀察偵測框數量是否大幅減少。
+    - 確認留下的偵測框是分數最高的（即真正的怪物）。
+    - 檢查 Log，確認 "發現怪物" 的數量不超過限制值。

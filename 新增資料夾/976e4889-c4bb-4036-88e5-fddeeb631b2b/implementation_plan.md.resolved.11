@@ -1,0 +1,26 @@
+# 將移動機制應用於繩索 (Rope Logic)
+
+## 目標描述
+目前的「穿越檢測 (Crossing Detection)」和「接近減速 (Proximity Deceleration)」機制僅應用於一般的水平移動。使用者希望在爬繩邏輯 ([ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#519-730)) 中也加入這些機制，以提高爬繩的穩定性與精準度。
+
+## 需要使用者審閱
+> [!NOTE]
+> 這將改變爬繩的行為模式：接近繩索頂端/底端目標時會自動減速（點按），且若因速度過快「滑過頭」也會自動判定到達。
+
+## 建議變更
+
+### Services
+#### [修改] [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- 修改 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#519-730) 方法：
+    - **加入減速機制**：當距離目標 Y 軸 < 10px 時，將長按改為點按 (Tap)，避免過頭。
+    - **加入穿越檢測**：記錄上一幀 Y 座標，若發生 Y 軸穿越（例如從目標下方穿到上方），視為到達。
+
+### Core
+#### [修改] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- 在 [HasReachedWaypoint](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1109-1134) 中為爬繩動作確認是否需要特殊的穿越支援（目前看起來是由 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#519-730) 自主控制到達，所以重點在 [CharacterMovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#18-787)）。
+
+## 驗證計畫
+### 手動驗證
+1. 找一個長繩索路徑。
+2. 觀察機器人接近繩索頂端時，是否會從「一直按著上」變成「斷斷續續按上」(減速)。
+3. 觀察如果機器人稍微滑過頭，是否能正確判定到達並繼續下一步。

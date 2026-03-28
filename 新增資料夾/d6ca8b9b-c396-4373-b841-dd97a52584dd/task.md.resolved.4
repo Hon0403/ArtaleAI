@@ -1,0 +1,14 @@
+# 循序導航與移動修復任務
+
+## 主要功能實作
+- [x] 修改 [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) 實作智慧混合導航
+  - [x] [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#802-877) 判斷動作類型，走路用隨機、精準動作用循序
+  - [x] 新增 [SelectRandomNearbyIndex](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#878-924) 方法
+
+## 錯誤修正
+- [x] 修復爬繩停止問題 (嚴格垂直容忍)
+- [x] 修復接近目標停止問題 (點按延長)
+
+## 驗證
+- [x] 建置成功
+- [ ] 用戶驗證 (等待回報)

@@ -1,0 +1,278 @@
+<current_dom_explanation>
+This is a temporary snapshot of the current page's DOM structure. The DOM will change if you navigate to or interact with another page. Use a tool like browser_get_dom to capture and preserve the DOM in your trajectory if needed for later reference.
+</current_dom_explanation>
+<current_dom>
+Skip to content
+Navigation Menu
+[0] (42,35)<button aria-label='Toggle navigation' class='js-details-target js-nav-padding-recalculate js-header-menu-toggle Button--link Button--medium Button d-lg-none color-fg-inherit p-1' />
+	[1] (42,35)<span  />
+		[2] (42,35)<span  />
+			[3] (42,28)<div  />
+			[4] (42,35)<div  />
+			[5] (42,41)<div  />
+[6] (500,36)<a aria-label='Homepage' class='tmp-mr-lg-3 color-fg-inherit flex-order-2 js-prevent-focus-on-mobile-nav' href='/' />
+[7] (894,36)<a class='HeaderMenu-link HeaderMenu-button d-inline-flex f5 no-underline border color-border-default rounded-2 px-2 py-1 color-fg-inherit js-prevent-focus-on-mobile-nav' href='/login?return_to=https%3A%2F%2Fgithub.com%2FKenYu910645%2FMapleStoryAutoLevelUp%2Ftree%2Fmain%2Fsrc%2Fengine'>Sign in />
+[8] (957,36)<button class='Button Button--iconOnly Button--invisible Button--medium AppHeader-button HeaderMenu-link border' id='icon-button-76aa33d6-cf16-4504-988c-789575198a44' />
+[9] (108,105)<a class='url fn' href='/KenYu910645'>KenYu910645 />
+/
+[10] (308,105)<a href='/KenYu910645/MapleStoryAutoLevelUp'>MapleStoryAutoLevelUp />
+Public
+[11] (658,105)<a aria-label='You must be signed in to change notification settings' class='btn-sm btn' href='/login?return_to=%2FKenYu910645%2FMapleStoryAutoLevelUp' id='repository-details-watch-button'>Notifications />
+[12] (792,105)<a class='btn-sm btn' href='/login?return_to=%2FKenYu910645%2FMapleStoryAutoLevelUp' id='fork-button'>Fork />
+	[13] (820,105)<span >124 />
+[14] (921,105)<a aria-label='You must be signed in to star a repository' class='tooltipped tooltipped-sw btn-sm btn' href='/login?return_to=%2FKenYu910645%2FMapleStoryAutoLevelUp' />
+	[15] (915,105)<span >Star />
+	[16] (950,105)<span >265 />
+[17] (65,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item selected' href='/KenYu910645/MapleStoryAutoLevelUp' id='code-tab' />
+	[18] (78,166)<span >Code />
+[19] (174,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/issues' id='issues-tab' />
+	[20] (168,166)<span >Issues />
+	[21] (212,166)<span >43 />
+[22] (324,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/pulls' id='pull-requests-tab' />
+	[23] (322,166)<span >Pull requests />
+	[24] (385,166)<span >3 />
+[25] (474,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/discussions' id='discussions-tab' />
+	[26] (487,166)<span >Discussions />
+[27] (591,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/actions' id='actions-tab' />
+	[28] (603,166)<span >Actions />
+[29] (695,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/projects' id='projects-tab' />
+	[30] (708,166)<span >Projects />
+[31] (801,166)<a class='UnderlineNav-item no-wrap js-responsive-underlinenav-item js-selected-navigation-item' href='/KenYu910645/MapleStoryAutoLevelUp/security' id='security-tab' />
+	[32] (814,166)<span >Security />
+[33] (957,166)<button class='Button Button--iconOnly Button--secondary Button--medium UnderlineNav-item' id='action-menu-7a2c5eb6-e46e-4589-8878-a2e4c90680a0-button' />
+[34] (34,227)<button class='prc-Button-ButtonBase-9n-Xk react-tree-toggle-button-with-indicator position-relative ExpandFileTreeButton-module__expandButton__hDOcv ExpandFileTreeButton-module__filesButtonBreakpoint__zEvz3 fgColor-muted prc-Button-IconButton-fyge7' />
+[35] (117,227)<button aria-label='main branch' class='prc-Button-ButtonBase-9n-Xk ref-selector-class RefSelectorAnchoredOverlay-module__RefSelectorOverlayBtn__a3WK3' id='ref-picker-repos-header-ref-selector-wide' />
+	[36] (117,227)<span  />
+		[37] (104,227)<span  />
+			[38] (104,227)<div  />
+				[39] (83,227)<div  />
+				[40] (115,227)<div  />
+					[41] (115,227)<span >main />
+Breadcrumbs
+[42] (286,222)<a class='Breadcrumb-module__repoLink__O2Nbs prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/tree/main'>MapleStoryAutoLevelUp />
+/
+[43] (416,222)<a class='Breadcrumb-module__directoryLink__kQy_t prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/tree/main/src'>src />
+/
+[44] (476,222)<a class='Breadcrumb-module__directoryLink__kQy_t prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/tree/main/src/engine'>engine />
+/
+MapleStoryAutoLevelUp.py
+[45] (452,251)<button class='prc-Button-ButtonBase-9n-Xk ml-2 prc-Button-IconButton-fyge7' />
+[46] (835,227)<span  />
+	[47] (752,227)<span  />
+	[48] (843,227)<input aria-label='Go to file' class='prc-components-Input-IwWrt' placeholder='Go to file' role='combobox' />
+[49] (966,227)<button class='prc-Button-ButtonBase-9n-Xk js-blob-dropdown-click NavigationMenu-module__IconButton__HpX3G prc-Button-IconButton-fyge7' id='_r_4p_' />
+Latest commit
+[50] (47,309)<a class='Link__StyledLink-sc-1syctfj-0 prc-Link-Link-9ZwDx' href='/RookieEnginee' />
+	[51] (43,310)<img  />
+[52] (113,309)<a aria-label='commits by RookieEnginee' class='Link__StyledLink-sc-1syctfj-0 iIGVMW AuthorAvatar-module__authorHoverableLink__MHTT8 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/commits?author=RookieEnginee'>RookieEnginee />
+[53] (416,309)<a class='Link--secondary' href='/KenYu910645/MapleStoryAutoLevelUp/commit/ec05f996fba79276d8c63114cb071c63ee7f595e'>[Refactor] Replace resize_game_window with resize_window for consiste… />
+[54] (683,309)<button class='prc-Button-ButtonBase-9n-Xk LatestCommit-module__IconButton__mkJr_ prc-Button-IconButton-fyge7' />
+[55] (817,309)<a aria-label='Commit ec05f99' class='Link--secondary prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/commit/ec05f996fba79276d8c63114cb071c63ee7f595e'>ec05f99 />
+·
+History
+[56] (955,309)<a aria-label='View commit history for this file.' class='prc-Button-ButtonBase-9n-Xk LinkButton-module__linkButton__nFnov flex-items-center fgColor-default' href='/KenYu910645/MapleStoryAutoLevelUp/commits/main/src/engine/MapleStoryAutoLevelUp.py' />
+	[57] (955,309)<span  />
+1925 lines (1679 loc) · 77.6 KB
+File metadata and controls
+[58] (59,420)<button class='prc-SegmentedControl-Button-E48xz' />
+	[59] (59,420)<span  />
+		[60] (59,420)<div >Code />
+[61] (127,420)<button class='prc-SegmentedControl-Button-E48xz' />
+	[62] (127,420)<span  />
+		[63] (127,420)<div >Blame />
+[64] (427,420)<a class='prc-Button-ButtonBase-9n-Xk LinkButton-module__linkButton__nFnov BlobViewHeader-module__LinkButton__X9kx2' href='https://github.com/KenYu910645/MapleStoryAutoLevelUp/raw/refs/heads/main/src/engine/MapleStoryAutoLevelUp.py' />
+	[65] (427,420)<span  />
+		[66] (427,420)<span >Raw />
+[67] (463,420)<button class='prc-Button-ButtonBase-9n-Xk prc-Button-IconButton-fyge7' />
+[68] (492,420)<button class='prc-Button-ButtonBase-9n-Xk BlobViewHeader-module__downloadButton__ef459 prc-Button-IconButton-fyge7' />
+[69] (559,420)<button class='prc-Button-ButtonBase-9n-Xk prc-Button-IconButton-fyge7' id='_r_5l_' />
+[70] (596,420)<button class='prc-Button-ButtonBase-9n-Xk BlobViewHeader-module__IconButton_2__RyjZg prc-Button-IconButton-fyge7' id='symbols-button' />
+[71] (319,21455)<textarea aria-label='file content' class='react-blob-textarea react-blob-print-hide focus-visible' id='read-only-cursor-text-area' scrollable='true' />
+[72] (319,21446)<div class='react-code-line-container CodeLines-module__scrollContainerHidden__g7TeZ' scrollable='true' />
+	[73] (75,465)<div >1 />
+	[74] (75,486)<div >2 />
+	[75] (75,508)<div >3 />
+	[76] (75,530)<div >4 />
+	[77] (75,552)<div >5 />
+	[78] (75,574)<div >6 />
+	[79] (75,595)<div >7 />
+	[80] (75,617)<div >8 />
+	[81] (75,639)<div >9 />
+	[82] (71,661)<div >10 />
+	[83] (71,683)<div >11 />
+	[84] (71,704)<div >12 />
+	[85] (71,726)<div >13 />
+	[86] (71,748)<div >14 />
+	[87] (71,770)<div >15 />
+	[88] (71,792)<div >16 />
+	[89] (71,814)<div >17 />
+	[90] (71,835)<div >18 />
+	[91] (71,857)<div >19 />
+	[92] (71,879)<div >20 />
+	[93] (71,901)<div >21 />
+	[94] (71,923)<div >22 />
+	[95] (71,944)<div >23 />
+	[96] (71,966)<div >24 />
+	25
+	'''
+	Execute this script:
+	python mapleStoryAutoLevelUp.py --map cloud_balcony --monster brown_windup_bear,pink_windup_bear
+	'''
+	# Standard import
+	import
+	time
+	import
+	random
+	import
+	argparse
+	import
+	glob
+	import
+	sys
+	import
+	logging
+	import
+	os
+	import
+	datetime
+	import
+	threading
+	# Library import
+	import
+	numpy
+	as
+	np
+	import
+	cv2
+	import
+	yaml
+	# Local import
+	from
+	src
+	.
+	utils
+	.
+	global_var
+	import
+	WINDOW_WORKING_SIZE
+	from
+	src
+	.
+	utils
+	.
+	logger
+	import
+	logger
+	from
+	src
+	.
+	utils
+	.
+	common
+	import
+	(
+	find_pattern_sqdiff
+	,
+	draw_rectangle
+	,
+	screenshot
+	,
+	nms
+	,
+	load_image
+	,
+	get_mask
+	,
+	get_minimap_loc_size
+	,
+	get_player_location_on_minimap
+	,
+[97] (319,991)<div class='CodeLines-module__scrollBarContainer__fsxaw' scrollable='true' />
+[98] (710,421)<button aria-label='Back to All Symbols' class='prc-Button-ButtonBase-9n-Xk CodeNavSymbolDetails-module__backButton__yBhw6' id='back-to-all-symbols' />
+	[99] (701,421)<span  />
+		[100] (701,421)<span  />
+			[101] (701,421)<div  />
+				[102] (712,421)<span >All Symbols />
+[103] (956,421)<button class='prc-Button-ButtonBase-9n-Xk CodeNavSymbolDetails-module__closeButton__dXzAF prc-Button-IconButton-fyge7' />
+[104] (669,463)<span class='CodeNavSymbolDetails-module__symbolSegment__b_jlq' role='button'>''' />
+68 References
+Search
+[105] (917,512)<button aria-label='Previous reference' class='prc-Button-ButtonBase-9n-Xk CodeNavSymbolDetails-module__navButtonPrev__bD7DD prc-Button-IconButton-fyge7' />
+[106] (956,512)<button aria-label='Next reference' class='prc-Button-ButtonBase-9n-Xk CodeNavSymbolDetails-module__navButtonNext__KcvEh prc-Button-IconButton-fyge7' />
+[107] (811,550)<div class='CodeNavFileInformation-module__fileHeader__doFlu CodeNavFileInformation-module__fileHeaderExpandable__a4Bxh' role='button' />
+	[108] (811,551)<div  />
+		[109] (811,551)<button class='CodeNavFileInformation-module__expandButton__eMckM' />
+			[110] (819,551)<div  />
+				[111] (819,551)<div >In this file />
+[112] (811,586)<a class='CodeNavCell-module__cellLink__OR2j1 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/blob/main/src/engine/MapleStoryAutoLevelUp.py#L1' id='find-in-file-item-0' />
+	[113] (811,586)<div  />
+		[114] (811,586)<div  />
+			[115] (658,586)<div >1 />
+			[116] (683,586)<div  />
+				[117] (683,586)<div  />
+					[118] (683,586)<span  />
+						[119] (683,586)<span >''' />
+[120] (811,618)<a class='CodeNavCell-module__cellLink__OR2j1 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/blob/main/src/engine/MapleStoryAutoLevelUp.py#L4' id='find-in-file-item-1' />
+	[121] (811,618)<div  />
+		[122] (811,618)<div  />
+			[123] (658,618)<div >4 />
+			[124] (683,618)<div  />
+				[125] (683,618)<div  />
+					[126] (683,618)<span  />
+						[127] (683,618)<span >''' />
+[128] (811,651)<a class='CodeNavCell-module__cellLink__OR2j1 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/blob/main/src/engine/MapleStoryAutoLevelUp.py#L48' id='find-in-file-item-2' />
+	[129] (811,651)<div  />
+		[130] (811,651)<div  />
+			[131] (662,651)<div >48 />
+			[132] (690,651)<div  />
+				[133] (690,651)<span >''' />
+[134] (811,684)<a class='CodeNavCell-module__cellLink__OR2j1 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/blob/main/src/engine/MapleStoryAutoLevelUp.py#L50' id='find-in-file-item-3' />
+	[135] (811,684)<div  />
+		[136] (811,684)<div  />
+			[137] (662,684)<div >50 />
+			[138] (690,684)<div  />
+				'''
+[139] (811,716)<a class='CodeNavCell-module__cellLink__OR2j1 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/blob/main/src/engine/MapleStoryAutoLevelUp.py#L52' id='find-in-file-item-4' />
+	[140] (811,716)<div  />
+		[141] (811,716)<div  />
+			[142] (662,716)<div >52 />
+			[143] (690,716)<div  />
+				[144] (690,716)<span >''' />
+[145] (811,749)<a class='CodeNavCell-module__cellLink__OR2j1 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/blob/main/src/engine/MapleStoryAutoLevelUp.py#L54' id='find-in-file-item-5' />
+	[146] (811,749)<div  />
+		[147] (811,749)<div  />
+			[148] (662,749)<div >54 />
+			[149] (690,749)<div  />
+				'''
+[150] (811,782)<a class='CodeNavCell-module__cellLink__OR2j1 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/blob/main/src/engine/MapleStoryAutoLevelUp.py#L141' id='find-in-file-item-6' />
+	[151] (811,782)<div  />
+		[152] (811,782)<div  />
+			[153] (665,782)<div >141 />
+			[154] (697,782)<div  />
+				[155] (697,782)<span >''' />
+[156] (811,815)<a class='CodeNavCell-module__cellLink__OR2j1 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/blob/main/src/engine/MapleStoryAutoLevelUp.py#L144' id='find-in-file-item-7' />
+	[157] (811,815)<div  />
+		[158] (811,815)<div  />
+			[159] (665,815)<div >144 />
+			[160] (697,815)<div  />
+				'''
+[161] (811,847)<a class='CodeNavCell-module__cellLink__OR2j1 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/blob/main/src/engine/MapleStoryAutoLevelUp.py#L149' id='find-in-file-item-8' />
+	[162] (811,847)<div  />
+		[163] (811,847)<div  />
+			[164] (665,847)<div >149 />
+			[165] (697,847)<div  />
+				[166] (697,847)<span >''' />
+[167] (811,880)<a class='CodeNavCell-module__cellLink__OR2j1 prc-Link-Link-9ZwDx' href='/KenYu910645/MapleStoryAutoLevelUp/blob/main/src/engine/MapleStoryAutoLevelUp.py#L151' id='find-in-file-item-9' />
+	[168] (811,880)<div  />
+		[169] (811,880)<div  />
+			[170] (665,880)<div >151 />
+			[171] (697,880)<div  />
+				'''
+[172] (710,916)<button class='prc-Button-ButtonBase-9n-Xk CodeNavFileInformation-module__showMoreButton__goaIx' />
+	[173] (710,916)<span  />
+		[174] (721,916)<span >Show more />
+[175] (734,965)<a class='prc-Button-ButtonBase-9n-Xk CodeNavSymbolDetails-module__searchButton__EuX7P prc-Link-Link-9ZwDx' href='/search?q=repo%3AKenYu910645/MapleStoryAutoLevelUp%20'''&type=code' />
+	[176] (734,965)<span  />
+		[177] (744,965)<span >Search for this symbol />
+
+</current_dom>

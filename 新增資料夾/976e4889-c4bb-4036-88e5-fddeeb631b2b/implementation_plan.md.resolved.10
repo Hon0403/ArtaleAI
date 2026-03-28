@@ -1,0 +1,25 @@
+# 修復初始目標點選擇邏輯
+
+## 目標描述
+確保路徑規劃系統在首次偵測到角色位置時，能夠正確選擇「最近的目標點」，而不是預設選擇起點（Index 0）。這可以防止角色在初始化時被強迫走回起點。
+
+## 需要使用者審閱
+> [!NOTE]
+> 此變更引入了「首次同步」機制。當您啟動外掛時，它現在會立即鎖定最近的節點，而不是第 0 個節點。
+
+## 建議變更
+
+### 核心邏輯
+#### [修改] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- 新增 `private bool _hasInitializedTarget` 旗標。
+- 在 [InitializePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#452-476) 中，重置 `_hasInitializedTarget = false`。
+- 在 [ProcessTrackingResult](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#477-501) 或 [UpdatePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#521-595) 中，檢查 `if (!_hasInitializedTarget && result.PlayerPosition.HasValue)`。
+  - 呼叫 [FindClosestPathNodeIndex](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1075-1098) 和 [SelectNextTarget(true)](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#845-990)。
+  - 設定 `_hasInitializedTarget = true`。
+
+## 驗證計畫
+### 手動驗證
+1. 載入路徑檔案。
+2. 將角色移動到地圖中間（遠離起點）。
+3. 啟動外掛。
+4. 驗證角色是否直接走向「最近的點」，而不是起點。

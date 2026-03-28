@@ -1,0 +1,57 @@
+# 深度淨化：撤除安全區任務
+
+## 階段 1：基礎定義清理 (Data & Enums)
+- [x] 修改 [MapData.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Map/MapData.cs)：移除 `SafeZones` 屬性。
+- [x] 修改 [Enums.cs](file:///d:/Full_end/C%23/ArtaleAI/Data/Enums.cs)：移除 `EditMode.SafeZone`。
+
+## 階段 2：UI 層清理 (MainForm)
+- [x] 修改 [MainForm.Designer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.Designer.cs)：移除 `rdo_SafeZone` 控制項。
+- [x] 修改 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)：移除編輯模式切換邏輯。
+
+## 階段 3：核心邏輯清理 (MapEditor)
+- [x] 修改 [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)：
+    - [x] 移除 [HandleClick](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#333-622) 與 [InterpolatePoints](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#658-675)。
+    - [x] 移除 [DrawCompletedShapes](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#687-840) 中的繪製邏輯。
+    - [x] 移除 [HandleDeleteAction](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#886-980) 中的刪除目標。
+
+## 階段 4：驗證
+- [x] 確認專案編譯成功。
+- [x] 啟動程式確認 UI 點選正常。
+- [x] 驗證舊版地圖載入容錯（JsonSerializer 會自動忽略未匹配欄位）。
+
+## 階段 5：路徑編輯器優化 (截斷功能)
+- [x] 修改 [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)：
+    - [x] 優化右鍵點擊：強制清空 `_waypointAnchorIndex` 與 `_startPoint`。
+    - [x] 優化左鍵點擊：新增或選取節點時同步更新 `_startPoint` 以維持預覽。
+- [x] 驗證路徑截斷行為。
+
+## 階段 6：儲存與新建功能修復 (已完成，待驗證)
+- [x] 修改 [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)：在 [LoadMapData](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#104-116) 中重置內部狀態。
+- [x] 修改 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)：重建 [OnMapSaved](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#453-473) 方法並更新窗體狀態。
+- [x] 清理殘留：刪除 [config.yaml](file:///d:/Full_end/C%23/ArtaleAI/Data/config.yaml)、[README.md](file:///d:/Full_end/C%23/ArtaleAI/README.md) 等文件中的棄用欄位。
+
+## 階段 7：強化 UI 反饋與另存新檔邏輯 (已完成)
+- [x] 修改 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)：在 [btn_SaveMap_Click](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1391-1422) 中加入 `SaveFileDialog` 支持。
+- [x] 修改 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)：在 [btn_New_Click](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1423-1441) 與 [OnMapFileLoaded](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#947-967) 中增加 `MessageBox` 反饋。
+- [x] 清理死代碼：從 [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) 中移除 `_isAttacking` 欄位。
+- [x] 驗證多分頁狀態下的儲存與新建流程。
+
+## 階段 8：實作智慧型雙向邊自動生成 (已完成)
+- [x] 修改 [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)：在 [GetCurrentMapData](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#117-316) 中實作雙向邊與動作反轉。
+- [x] 驗證 A* 尋路在同高度平台間的雙向移動能力。
+- [x] 進行最終編譯與清理。
+
+## 階段 9：恢復與優化玩家座標偏移 (已完成)
+- [x] 修改 [MinimapStyles.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Minimap/MinimapStyles.cs)：加入 `OffsetY` 屬性。
+- [x] 修改 [GameVisionCore.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs)：在計算玩家質心後套用 `OffsetY`。
+- [x] 修改 [config.yaml](file:///d:/Full_end/C%23/ArtaleAI/Data/config.yaml)：設定預設偏移量（+5.0f）。
+- [x] 驗證座標偏移與編譯狀態。
+
+## 階段 10：同步玩家十字標記 (已完成)
+- [x] 修改 [OverlayRenderer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/OverlayRenderer.cs)：將主視窗玩家標記改為十字準心。
+- [x] 驗證視覺一致性與編譯狀態。
+
+## 階段 11：修正爬繩到達判定 (進行中)
+- [/] 修改 [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)：將硬編碼 0.5px 容差改為動態容差。
+- [ ] 修改 [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)：加入向上爬繩的穩定性判定。
+- [ ] 驗證爬繩任務在目標點的正確結束。

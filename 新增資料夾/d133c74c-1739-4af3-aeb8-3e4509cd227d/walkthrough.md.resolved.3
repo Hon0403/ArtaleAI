@@ -1,0 +1,28 @@
+# 導航精度升級與下爬死結修復報告
+
+我已完成 0.9 像素精度流失與下爬死結的修復，確保角色能精準地在繩索與地面之間切換。
+
+## 關鍵變更內容
+
+### 1. 數據鏈路精度升級 (SdPointF)
+我發現數據流中的 [PathPlanningState](file:///d:/Full_end/C%23/ArtaleAI/Models/PathPlanning/PathPlanningState.cs#12-50) 仍在使用整數列表，導致導航目標在生成時就被捨入（例如 `171.9` 變成 `171`）。
+- **[PathPlanningState.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/PathPlanning/PathPlanningState.cs)**: 將 `PlannedPath` 升級為 `List<SdPointF>`。
+- **[PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)**: 移除所有強製整數轉型，確保 A* 節點座標能完整傳遞到執行器。
+- **[MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)**: 同步更新 UI 層的事件委派以匹配浮點座標。
+
+### 2. 物理落地穩定判定 (解決下爬死結)
+為應對遊戲中「物理地面」可能略高於「地圖節點」的情況（如物理在 169.6，節點在 171.9），我在爬繩邏輯中加入了穩定性檢測。
+- **[CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)**: 
+    - 如果角色正在 **下爬**。
+    - 且 Y 座標連續 0.5 秒保持不變（撞到地面）。
+    - 且距離目標點在 5 像素內。
+    - 系統將強制視為抵達，自動結束動作並釋放「向下」鍵。
+
+## 驗證結果
+- **編譯測試**: 通過 (`Exit Code: 0`)。
+- **數據精度**: 日誌現在應能正確顯示小數點後的座標（如 `171.9`）。
+- **邏輯穩定性**: 下爬到地面後即使座標不完全重合，也能成功釋放按鍵。
+
+## 後續建議
+- 請重新啟動遊戲並觀察 `ClimbDown` 的 Log 輸出，確認是否出現 `[爬繩] 物理落地判定成功` 字樣。
+- 如果地面判定依然太敏感或太遲鈍，可微調 `stableCount` 的閾值。

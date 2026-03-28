@@ -1,0 +1,28 @@
+# 導航圖生成引擎重構計畫 (H型拓撲打樁法)
+
+## 核心問題
+目前的導航圖生成依賴「繩索與 Edge 相交」來生成虛擬節點，這在邊緣地帶或複雜拓撲下極度不穩定，導致繩索端點與平台節點之間出現 X 軸斜拉誤差 (如 4.9px)，在 0.1px 容差測試下直接導致死結。
+
+## 預計變更
+
+### [地圖編輯器/生成引擎]
+
+#### [MODIFY] [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)
+- 重構 [GetCurrentMapData()](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#113-396) 關於 Ropes 的處理邏輯：
+    - **端點打樁**：對每根繩索強制在 [(ropeX, topY)](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs#245-258) 和 [(ropeX, bottomY)](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs#245-258) 生成虛擬節點。若 1.0px 內有實體節點則複用。
+    - **垂直通道**：建立 `Bot <-> Top` 的 `ClimbUp/ClimbDown` Edges，X 座標絕對垂直。
+    - **橫向接軌**：針對每個虛擬節點，自動尋找同高度 (Y<10px) 最近的**實體 Platform 節點**，建立雙向 [Walk](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#119-134) Edges。
+
+### [路徑追蹤與執行]
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- 配合 H 型拓撲，將 `ClimbUp/ClimbDown` 的到達判定改為「穿過式判定」：
+    - 上爬：`CurrentY <= TargetY + 1.0`。
+    - 下爬：`CurrentY >= TargetY - 1.0`。
+    - 由於拓撲已保證 X 軸對齊，此處可維持 1.0px 以內的 X 軸容差。
+
+## 驗證計畫
+### 自動測試
+- 檢查 [test.json](file:///d:/Full_end/C%23/ArtaleAI/bin/Debug/net6.0-windows10.0.19041.0/MapData/test.json) 確認右側繩索端點生成了 `n_virtual_...`。
+- 確認導航路徑中出現 `n52 (Platform) -> n_v_bot (Walk) -> n_v_top (ClimbUp) -> n40 (Walk)` 結構。
+- 驗證 0.1px 容差下，爬繩動作是否能流暢結束並轉換至平移動作。

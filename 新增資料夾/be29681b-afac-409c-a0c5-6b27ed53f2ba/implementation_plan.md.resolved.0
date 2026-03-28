@@ -1,0 +1,66 @@
+# 修復繩索爬下功能
+
+## 問題描述
+用戶報告角色可以爬上繩索，但無法爬下繩索。
+
+## 問題分析
+
+經過詳細分析，發現現有程式碼**已經支援爬下繩索**：
+
+1. **ActionCodeToKeys 映射正確**（[PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#L466-L467)）：
+   - 11 → `["up"]` = ClimbUp
+   - 12 → `["down"]` = ClimbDown
+
+2. **PathNode.DetermineAction 判斷正確**（[PathNode.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs#L89-L90)）：
+   - `hasUp` → `PathActionType.ClimbUp`
+   - `hasDown` → `PathActionType.ClimbDown`
+
+3. **MainForm.cs 有處理 ClimbDown**（[MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#L2142-L2197)）：
+   - `case PathActionType.ClimbDown:` 會呼叫 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#684-936) 並設定 `isClimbUp = false`
+
+4. **ClimbRopeAsync 有爬下邏輯**（[CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#L750-L756)）：
+   ```csharp
+   if (!climbUp)
+   {
+       // 往下爬：按 ↓ 穿過平台並持續按住爬繩
+       Logger.Info($"[爬繩] 往下爬，使用 ↓");
+       SendKeyInput(VK_DOWN, false);
+       await Task.Delay(150, ct);  // 給時間穿過平台
+   }
+   ```
+
+## 可能的問題點
+
+從日誌和程式碼分析，爬下繩索的功能應該已經實現，但需要確認：
+
+1. **路徑檔案是否包含 ClimbDown 節點**？
+   - 需要確認地圖編輯器生成的路徑是否有 ActionCode=12 的節點
+
+2. **繩索爬下的觸發時機**
+   - 目前爬繩邏輯依賴 `TemporaryTarget` 和繩索入口偵測
+   - 如果角色已經在繩索上方，是否能正確識別需要爬下？
+
+## 用戶需確認
+
+> [!IMPORTANT]
+> 請您確認以下問題以便我們進一步診斷：
+
+1. **您的路徑檔案是否有 ClimbDown（ActionCode=12）的節點？**
+   - 請在地圖編輯器中檢查，確認有使用「爬繩下」(↓) 動作標記的節點
+
+2. **當角色嘗試爬下繩索時，日誌顯示什麼訊息？**
+   - 如果有，請分享相關的 `[爬繩]` 日誌訊息
+
+3. **您期望的爬下繩索場景是什麼？**
+   - A) 從平台上往下穿過並抓住繩索往下爬
+   - B) 已經在繩索上，想往下爬
+   - C) 其他場景
+
+## 驗證計畫
+
+### 手動驗證
+
+1. 在地圖編輯器中新增一個 ClimbDown 節點（使用 ActionCode=12）
+2. 儲存路徑檔案並重新載入
+3. 執行路徑規劃，觀察角色是否能爬下繩索
+4. 查看日誌檔案中的 `[爬繩]` 相關訊息確認執行狀態

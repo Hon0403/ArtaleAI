@@ -1,0 +1,36 @@
+# Implementation Plan - Jump Reliability & Gap Crossing
+
+## Goal Description
+Enhance the pathfinding system to:
+1.  **Guarantee Jump Execution**: Ensure directional jumps (Node 11) are triggered reliably, even if the character arrival is slightly imprecise.
+2.  **Smart Gap Crossing**: Automatically detect when a customized "Walk" path between platforms (e.g., Left Platform <-> Right Platform) is actually a "Gap" that requires a Jump.
+
+## User Review Required
+> [!IMPORTANT]
+> This change modifies how "Walk" edges are interpreted. If two points are far apart horizontally but on similar Y levels, the system might now force a "Jump" action instead of "Walk". This assumes the user *intends* to jump gaps.
+
+## Proposed Changes
+
+### Core Logic (PathPlanningTracker.cs)
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+1.  **Refine [ResolveSmartAction](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#773-822)**:
+    -   Add logic to detect "Gaps" based on platform segment analysis (if available) or simple heuristics (X distance > threshold AND no intermediate ground).
+    -   If a gap is detected, force `NavigationActionType.JumpLeft` or `JumpRight` even if the input `actionCode` was 0 (Walk).
+2.  **Relax Arrival Threshold for Jumps**:
+    -   In `CheckWaypointArrival`, if the *current target* is a Jump node, increase the `checkDistance` (e.g., from dynamic calculated value to a fixed minimum of 8.0f or 10.0f) to ensure the jump triggers before the character walks past it.
+    -   Alternatively, implement a "Stop & Jump" logic: if within X range but Y is correct, stop movement and execute jump.
+
+### Execution Logic (MainForm.cs)
+
+#### [MODIFY] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+1.  **Jump Execution Robustness**:
+    -   In [OnPathTrackingUpdated](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#2003-2360), when handling `LeftJump`/`RightJump`:
+        -   Ensure the character has **stopped moving** (velocity check or forced stop) before sending jump keys to prevent inertial drift.
+        -   Add a small "Pre-Jump Delay" (e.g., 50ms) to ensure key inputs register cleanly.
+
+## Verification Plan
+
+### Manual Verification
+1.  **Reliability Test**: Run the bot through Node 11 multiple times. It should jump *every time*.
+2.  **Gap Test**: Place a waypoint on Left Platform and one on Right Platform (without explicit Jump action). The bot should now automatically jump across the gap instead of walking off the edge.

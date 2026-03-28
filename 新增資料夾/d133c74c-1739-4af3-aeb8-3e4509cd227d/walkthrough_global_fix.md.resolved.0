@@ -1,0 +1,29 @@
+# AppConfig 全域引用修復紀錄
+
+本文件記錄了針對 AppConfig 模組化重構後，剩餘全域引用的遷移與修復。
+
+## 已修復檔案與變更內容
+
+### 1. [Services\GamePipeline.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/GamePipeline.cs)
+- 將所有視覺偵測參數（`BloodBarDetectIntervalMs`, `MonsterDetectIntervalMs` 等）遷移至 `config.Vision` 下。
+
+### 2. [Services\NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs)
+- 更新 `GlobalArrivalTolerance` 引用至 `AppConfig.Instance.Navigation.ArrivalTolerance`。
+
+### 3. [Services\WindowFinder.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/WindowFinder.cs)
+- 將 `LastSelectedWindowName` 遷移至 [General](file:///d:/Full_end/C%23/ArtaleAI/Config/GeneralSettings.cs#5-19) 模組。
+
+### 4. [UI\LiveViewManager.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/LiveViewManager.cs)
+- 將 `CaptureFrameRate` 遷移至 [Vision](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#25-1158) 模組。
+
+### 5. [UI\MinimapViewer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs)
+- 更新樣式引用路徑。
+- **重要修復**：修正 `ZoomFactor` 從 [int](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#494-566) 改為 `double` 後引發的所有型別轉型錯誤與繪圖計算誤差。
+- 加入了 [RenderPathData](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs#263-331) 的 Null 檢查，強化程式穩定性。
+
+### 6. [UI\OverlayRenderer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/OverlayRenderer.cs)
+- 更新所有 [Appearance](file:///d:/Full_end/C%23/ArtaleAI/Config/AppearanceSettings.cs#7-17) 相關樣式（`PartyRedBar`, `DetectionBox`, `AttackRange`, [Minimap](file:///d:/Full_end/C%23/ArtaleAI/Models/Minimap/MinimapStyles.cs#7-27), [Monster](file:///d:/Full_end/C%23/ArtaleAI/Core/GameVisionCore.cs#449-573), [MinimapPlayer](file:///d:/Full_end/C%23/ArtaleAI/Models/Minimap/MinimapStyles.cs#32-64)）的引用路徑。
+
+## 驗證結果
+- [x] 所有相關的 `CS1061` 與 `CS0117` 編譯錯誤均已消除。
+- [x] [MinimapViewer](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs#16-435) 全面的顯式轉型確保了在 `double` 縮放倍率下的繪圖正確性。

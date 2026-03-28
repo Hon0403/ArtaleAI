@@ -1,0 +1,36 @@
+# 智慧路徑隨機化 (Smart Path Randomization) 實作報告
+
+## 功能總覽
+為了解決移動過於機械化、容易被反外掛偵測的問題，我們實作了三層式的仿生移動機制。這些功能共同作用，讓角色的移動軌跡充滿不確定性與人性化的猶豫感。
+
+### 1. 模糊目標 (Fuzzy Destination)
+每次走向一個目標點時，終點都會加入隨機的「微小誤差」，模擬人類點擊地圖時的不精準。
+*   **機制**：[GetFuzzyTargetPosition()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#67-80) 在基礎座標上疊加 `±8.0px` 的 X 軸隨機偏移。
+*   **安全**：僅對「走路 (Walk/Idle)」節點生效。跳躍與爬繩點必須精準，偏移量自動設為 0。
+
+### 2. 動態中間點 (Dynamic Intermediate Waypoints)
+針對地圖中直線距離過長的路段，自動切割成多個短程目標，製造出「走走停停」或「分段移動」的效果。
+*   **機制**：當目標距離 > `20px` 時，遞迴生成臨時中間點。中間點座標也會加入 `±5.0px` 的隨機抖動。
+*   **效果**：原本單調的長距離移動 (A -> B)，變成了豐富的多段移動 (A -> M1 -> M2 -> B)。
+
+### 3. 擬人化微停頓 (Micro-Pause)
+為了解決「路徑切換太快導致視覺上像滑行」的問題，我們加入了隨機的時間延遲，模擬人類操作時的反應時間與確認動作。
+*   **機制**：在到達任意「走路節點」時，強制插入 `50ms ~ 150ms` 的隨機等待時間 (`_waitEndTime`)。
+*   **視覺**：角色在每個節點轉換時會有極短暫的停頓，產生明顯的節奏感與猶豫感，徹底打破機械式的連續滑行。
+
+## 變更項目
+### [Core/PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+*   **新增欄位**：
+    *   `_currentFuzzyOffset`: 存儲當前目標的隨機偏移。
+    *   `_waitEndTime`: 管理擬人化停頓的計時器。
+*   **修改 [SelectNextTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1057-1391)**：加入偏移量計算邏輯與動態中間點生成邏輯。
+*   **修改 [ProcessTrackingResult](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs#211-220) / [UpdatePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#673-785)**：
+    *   加入 [CheckNearbyActionNodes](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#786-873) 鄰近觸發邏輯，防止在隨機移動中錯過關鍵動作點。
+    *   **關鍵修正**：在到達目標判斷後，加入 `Micro-Pause` 阻擋邏輯，暫停目標切換 50~150ms。
+
+## 驗證結果
+*   ✅ **編譯測試**：Build 成功，無錯誤。
+*   ✅ **邏輯測試**：
+    *   **跳躍/爬繩**：不受隨機化影響，保持精準操作 (Log 無偏移記錄)。
+    *   **長距離移動**：Log 顯示 `[路徑規劃] 🎲 動態生成中間點`，路徑被有效分割。
+    *   **視覺效果**：Log 顯示 `[路徑規劃] 🛑 隨機擬人停頓: 128ms`，確認停頓邏輯已生效，預期將產生可見的移動節奏變化。

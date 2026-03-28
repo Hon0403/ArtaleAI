@@ -1,0 +1,32 @@
+# 全專案功能重建計畫 (Full Functional Restoration)
+
+本計畫旨在透過歷史補丁與架構推論，將專案恢復至可編譯且功能完備的狀態。
+
+## 恢復策略
+
+1.  **環境收斂**：清理重複定義的設定檔，並補齊 `Newtonsoft.Json` 與 `WinRT` 支援。
+2.  **基礎建設重建**：補全所有遺失的介面 (`IKeyboardService`, `INavigationStateMachine` 等)。
+3.  **API 與數據層還原**：重建 `ArtaleAI.API` 下的所有下載與影像處理 DTO。
+4.  **UI 自動修復**：重建 `MainForm.Designer.cs`，還原所有控制項宣告，讓 `MainForm.cs` 恢復連結。
+
+## 擬定變更細節
+
+### Phase 1: 環境與清理
+- **[DELETE]** `Config/*.cs`（統一移往 `Models/Config/`）。
+- **[MODIFY]** `ArtaleAI.csproj`：加入 `Newtonsoft.Json` 與 SDK 參考。
+
+### Phase 2: 核心介面與 DTO
+- **[NEW]** `Services/IKeyboardService.cs`
+- **[NEW]** `Services/INavigationStateMachine.cs`
+- **[NEW]** `Core/Vision/IPlayerPositionProvider.cs`
+- **[NEW]** `API/Models/ArtaleMonster.cs`, `DownloadResult.cs`, `MonsterDownloadSettings.cs`, `ImageProcessingSettings.cs`
+- **[NEW]** `API/MsgLog.cs`: 狀態列輸出工具。
+- **[NEW]** `API/PathManager.cs`: 路徑管理工具。
+
+### Phase 3: UI 設計器還原
+- **[NEW]** `UI/MainForm.Designer.cs`: 根據 `MainForm.cs` 的引用，定義所有控制項與事件綁定。
+
+## 驗證計畫
+
+1.  **編譯驗證**：在 VS 指向 `Build Solution`，確認無 Error 產生。
+2.  **執行驗證**：啟動程式，檢查 `textBox1` 是否能正確顯示 Logger 訊息，且 UI 各組件（地圖編輯器、即時預覽）能正常初始化。

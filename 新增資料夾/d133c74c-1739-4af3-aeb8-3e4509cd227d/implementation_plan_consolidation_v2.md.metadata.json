@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary": "Deep architecture cleanup to resolve duplicate method definitions (CS0111), ambiguous model references (CS0104), and missing type definitions in ArtaleAI. Includes ruthless refactoring of MainForm.cs and model unification.",
+  "updatedAt": "2026-03-23T08:59:46.549782800Z"
+}

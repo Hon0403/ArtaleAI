@@ -1,0 +1,31 @@
+# Implementation Plan - Fix Rope X-Alignment Logic
+
+## Problem
+The user reports that the character sometimes fails to be in the correct climbing range because the program might not be checking for precise X-alignment.
+Analysis reveals that [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) only hands off control to the precise [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#631-834) method when the character is *already* within 2.0 pixels of the rope.
+For distances > 2.0px, it uses generic [MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#200-329).
+Generic movement may not reliably stop within 2.0px (due to speed/inertia), leading to oscillation, overshooting, or falling off platforms before the climbing logic engages.
+
+## Solution
+Increase the hand-off threshold in [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs) from **2.0f** to **10.0f**.
+This means:
+- If `distance > 10.0f`: Use generic movement (fast, efficient for long distances).
+- If `distance <= 10.0f`: Call [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#631-834) immediately.
+  - [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#631-834) internally checks logic:
+    - If `distance > 1.5f`: Call `RopeAlignmentController` to **precisely align** (tap keys) until within range.
+    - If `distance <= 1.5f`: Execute Jump+Up.
+
+This ensures that the final approach (10px -> 1.5px) is handled by the dedicated alignment controller, which is safer and checked, rather than generic movement.
+
+## Proposed Changes
+
+### UI/MainForm.cs
+
+#### [MODIFY] OnFrameAvailable / ProcessPathPlanning
+- L2073: Change `if (distanceToRopeX > 2.0f)` to `if (distanceToRopeX > 10.0f)`.
+- Update logging messages if necessary to reflect the change.
+
+## Verification Plan
+- **Manual Verification**:
+  - The user should observe that when the character approaches a rope (within 10px), it switches to the "Alignment" phase (short taps) instead of running past it.
+  - The log should show `[爬繩] 需要對齊繩索` messages coming from [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#631-834) when the distance is between 1.5 and 10.0.

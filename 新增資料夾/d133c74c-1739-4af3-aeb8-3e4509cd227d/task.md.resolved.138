@@ -1,0 +1,10 @@
+# Navigation Stability Verification
+
+- [/] Verify Navigation Originalism (No SimplifyPath)
+    - [ ] Check `PathPlanningTracker.cs`
+    - [ ] Check `AStarPlanner.cs`
+- [ ] Verify Predictive Braking Implementation
+    - [ ] Check `CharacterMovementController.cs` for `Vx * Latency` logic
+- [ ] Verify Rope Alignment & Micro-Taps
+    - [ ] Confirm [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs) constants and retry loops
+- [ ] Final Report on Differences

@@ -1,0 +1,9 @@
+- [ ] **物理導航還原 (Phase 1)**
+    - [ ] 收緊繩索對位容差：2.5px -> 2.0px [NavigationExecutor.cs]
+    - [ ] 恢復助跑動量時序：80ms 助跑延遲 [NavigationExecutor.cs]
+- [ ] **執行服務校準 (Phase 2)**
+    - [ ] 校對預測煞車係數：0.055 -> 0.066 [CharacterMovementController.cs]
+    - [ ] 強化 ABS 反向點按穩定度 [CharacterMovementController.cs]
+- [ ] **最終驗證 (Phase 3)**
+    - [ ] 全專案建置驗證
+    - [ ] 產出最終穩定性紀錄 (Walkthrough)

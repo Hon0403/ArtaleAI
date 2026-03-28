@@ -1,0 +1,24 @@
+# Task: 跨平台路由與可視化 (Cross-Platform Routing & Visualization)
+
+- [x] **跨平台動作路由 (PathPlanningTracker)**
+    - [x] 新增 `FindNearestJumpNode()` 方法
+    - [x] 修改 [SelectNextTarget()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1125-1487) 加入跨平台檢測
+    - [x] 修正插值基準點 (從 PlayerPos 改為 RecordedNode)
+    - [x] 移除隨機抖動並鎖定 Y 軸至路徑資料
+
+- [x] **可視化更新 (MinimapViewer)**
+    - [x] [PathVisualizationData](file:///d:/Full_end/C%23/ArtaleAI/Models/Visualization/PathVisualizationModels.cs#9-35) 新增 `TemporaryTarget` 與 [IntermediatePoints](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#2023-2061)
+    - [x] 統一臨時目標與插值點尺寸 (與路徑點一致)
+    - [x] 更新繩索樣式 (目標/正在爬 加光圈)
+
+- [x] **驗證與修正 (Verification & Fix)**
+    - [x] Build 成功
+    - [x] 修正 MainForm 座標偏置 (移除 minimapBounds 減法)
+    - [x] 驗證可視化座標精確度
+
+- [ ] **架構重設計 (Architectural Redesign)**
+    - [x] Phase 1: 建立領域模型 (NavigationNode, Edge, Graph)
+    - [x] Phase 2: 實作規劃器 (IPathPlanner, SequentialPathPlanner)
+    - [x] Phase 3: 整合進 PathPlanningTracker
+        - [x] BuildNavigationGraph 方法
+        - [x] SelectNextTarget 邏輯替換為 Graph Lookup

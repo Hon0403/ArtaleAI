@@ -1,0 +1,5 @@
+- [x] 分析並解決 `waypointReachDistance` 設定未生效的問題
+- [x] 修復繩索下爬停擺 (精度死結修復)
+    - [x] 將 [INavigationStateMachine](file:///d:/Full_end/C%23/ArtaleAI/Services/INavigationStateMachine.cs#13-49) / [NavigationExecutor](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#55-64) 升級為 `SdPointF` (浮點精度)
+    - [x] 修正 [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#125-136) 呼叫端，避免整數重鑄導致的 0.9 像素誤差
+    - [x] 驗證角色下爬抵達座標後能準確結束動作

@@ -1,0 +1,42 @@
+# 導航抵達判定與設定持久化修復計畫
+
+## 目的
+解決腳色在終點「來回觸碰」且不更新目標的問題，並修復設定旗標在重啟後被還原的架構漏洞。
+
+## 核心問題分析
+1. **抵達判定衝突 (Critical)**：
+   - [CharacterMovementController](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#19-534) 使用動態容差（例如 10px）。
+   - [NavigationExecutor](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#42-51) 在 [MoveToTargetWithCorrectionAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#115-181) 中會迴圈檢查 `isReached()`。
+   - `isReached()` 目前綁定到 `PathPlanningTracker.IsPlayerAtTarget()`，後者使用固定的 **3x3 像素 Hitbox**。
+   - **結果**：當角色停在離目標 5px 處時，控制器判定 Success，但 Executor 判定未進入 Hitbox，導致進入無限重試迴圈，產生「來回觸碰」現象。
+
+2. **設定持久化缺失**：
+   - [AppConfig](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs#18-114) 修改後未自動 [Save()](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs#78-100)，且 [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.PathPlanning.cs#12-67) 關閉時未儲存。
+   - **結果**：重啟後，UI 上精調的容差（如 2.0px）會被還原成 YAML 中的預設值（10.0px），加劇了上述判定衝突。
+
+3. **ID 隨機化債務**：
+   - 虛擬節點使用 `Guid.NewGuid()`，造成每次建圖 ID 都不同，不利於穩定追蹤。
+
+## 擬定變動
+
+### 1. 統一判定邏輯 (SoC)
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C#/ArtaleAI/Core/PathPlanningTracker.cs)
+- 修改 [IsPlayerAtTarget()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#56-74)：改為接收一個 `tolerance` 參數，不再死守 3px Hitbox。
+- 只有在沒有提供 `tolerance` 時（如舊代碼相容），才退回到 Hitbox 判定。
+
+### 2. 修復執行器迴圈
+#### [MODIFY] [NavigationExecutor.cs](file:///d:/Full_end/C#/ArtaleAI/Services/NavigationExecutor.cs)
+- 在 [MoveToTargetWithCorrectionAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#115-181) 中，若控制器回傳 `Success`，則應**優先信任**該次移動的結果，直接返回 `true`，而非再次調用嚴格的 `isReached()`。
+
+### 3. 設定持久化與 ID 決定論化
+#### [MODIFY] [Config/AppConfig.cs](file:///d:/Full_end/C#/ArtaleAI/Config/AppConfig.cs)
+- 新增 `SaveAsync()` 或修改 [Save()](file:///d:/Full_end/C%23/ArtaleAI/Config/AppConfig.cs#78-100) 確保執行續安全。
+#### [MODIFY] [UI/MainForm.cs](file:///d:/Full_end/C#/ArtaleAI/UI/MainForm.cs)
+- 在 `OnFormClosing` 增加 `AppConfig.Instance.Save()`。
+#### [MODIFY] [Core/Domain/Navigation/MapGenerationService.cs](file:///d:/Full_end/C#/ArtaleAI/Core/Domain/Navigation/MapGenerationService.cs)
+- 將 `Guid.NewGuid()` 改為基於座標（X, Y）的雜湊字湊字串，確保生成 ID 具備決定性。
+
+## 驗證計畫
+### 自動測試
+- 模擬偵測：設定容差為 10px，手動將玩家座標設在目標旁 5px 處，確認 FSM 能立即跳轉到 `Reached_Waypoint` 並推進 Index。
+- 持久化測試：在 UI 修改數值，關閉程式，檢查 `config.yaml` 是否已更新。

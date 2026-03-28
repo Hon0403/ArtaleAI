@@ -1,0 +1,21 @@
+# 路徑規劃系統重構任務
+
+## 步驟 1：建立圖結構
+- [/] 建立 `Core/PathGraph.cs` - 圖結構和 A* 演算法
+- [ ] 建立 `Core/GraphEdge.cs` - 邊類別
+
+## 步驟 2：自動偵測連接
+- [ ] 實作 `BuildEdges()` - 偵測走路、跳躍、繩索連接
+
+## 步驟 3：實作 A* 路徑搜尋
+- [ ] 實作 `FindPath()` - A* 演算法
+
+## 步驟 4：可視化
+- [ ] 修改 [MinimapViewer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs) - 繪製連接線
+
+## 步驟 5：整合到現有系統
+- [ ] 修改 [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) - 使用 PathGraph
+
+## 步驟 6：測試
+- [ ] 編譯測試
+- [ ] 驗證可視化

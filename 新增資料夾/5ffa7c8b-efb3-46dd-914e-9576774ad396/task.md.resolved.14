@@ -1,0 +1,32 @@
+# Task: 位置驅動導航 (Position-Driven Navigation)
+
+- [ ] **實作位置驅動選點**
+    - [ ] 新增 `_visitedNodes` HashSet 追蹤已訪問節點
+    - [ ] 實作 `SelectNextTarget_PositionBased()` 方法
+    - [ ] 實作 `CalculateNodeWeight()` 權重計算
+    - [ ] 實作 `WeightedRandomSelect()` 加權隨機選擇
+
+- [ ] **整合與安全機制**
+    - [ ] 動作點 (Jump/Climb) 切換為精準導航
+    - [ ] 繩索導航邏輯保持不變
+    - [ ] 確保每輪循環重置 `_visitedNodes`
+
+- [ ] **驗證**
+    - [ ] Build 成功
+    - [ ] Log 顯示非線性選點
+    - [ ] 動作點正確執行
+
+---
+
+## 已完成項目 (歷史紀錄)
+
+<details>
+<summary>展開查看</summary>
+
+- [x] Feature 1: Smart Waypoint Skipping
+- [x] Feature 2: Fuzzy Destination (已移除)
+- [x] 動態中間點 (Dynamic Intermediate Waypoints)
+- [x] 擬人化微停頓 (Micro-Pause)
+- [x] 隨機路徑分岔 (Randomized Path Branching)
+
+</details>

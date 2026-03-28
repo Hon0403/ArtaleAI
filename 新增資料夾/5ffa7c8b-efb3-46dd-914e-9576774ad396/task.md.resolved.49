@@ -1,0 +1,18 @@
+# Edge-Driven 架構清理重構
+
+## 刪除遺留檔案
+- [x] 刪除 [SequentialPathPlanner.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/SequentialPathPlanner.cs)
+- [x] 修改建構子 → [ShortestPathPlanner](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/ShortestPathPlanner.cs#11-116)
+
+## PathPlanningTracker 方法清理
+- [x] 刪除底部方法 (FindNearbyClimbPoint, SetRecoveryTarget, FindNearestClimbUpNode, GetFinalTargetPosition, IsJumpDirectionValid)
+- [x] 刪除中間方法 (HandleBoundaryHit, CheckBoundaryProximity, CheckNearbyActionNodes, GetCurrentSegmentBounds, GetCurrentPlatformSegment)
+- [x] 刪除頂部方法 (BuildPlatformSegments, InjectRopeNodes, FindNearbyRope)
+- [x] 清理欄位和事件 (_platformSegments, OnBoundaryHit, OnFallDetected)
+- [x] 修改呼叫點 (InitializePathState, UpdatePathState)
+
+## MainForm 清理
+- [x] 移除 OnFallDetected 事件處理器
+
+## 驗證
+- [x] Build 成功 (0 errors)

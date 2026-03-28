@@ -1,0 +1,29 @@
+# 修復爬繩意外下爬問題 (Fix Unexpected Rope Descent)
+
+## 目標描述
+修正角色在爬繩到達頂端後，因為細微的 Y 軸座標差異（例如目標點 Y 比當前位置低 1px），導致 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#519-730) 誤判為「往下爬」並按下方向鍵下，造成角色掉落的問題。
+
+## 需要使用者審閱
+> [!NOTE]
+> 將在 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#519-730) 中加入 `forceClimbUp` 參數。如果路徑動作明確指定是 [ClimbUp](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1163-1187)，即使目標 Y 座標稍微偏低，也會強制執行上爬邏輯（或保持不動），而不是下爬。
+
+## 建議變更
+
+### Services
+#### [修改] [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- 修改 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#519-730) 方法簽名，新增 `bool? forceDirectionIsUp = null` 參數。
+- 在判斷 `bool climbUp` 時，優先使用 `forceDirectionIsUp`。
+  ```csharp
+  bool climbUp = forceDirectionIsUp ?? (targetY < playerPos.Y);
+  ```
+
+### UI
+#### [修改] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- 在呼叫 [ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#519-730) 的地方（[ClimbUp](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1163-1187) 和 `ClimbDown` case），明確傳入方向參數。
+  - `PathActionType.ClimbUp`: 傳入 `true`
+  - `PathActionType.ClimbDown`: 傳入 `false`
+
+## 驗證計畫
+### 手動驗證
+1. 觀察角色爬到繩索頂端後的行為。
+2. 確認即使目標點 Y 稍微大於當前 Y（例如目標 165，當前 163），角色也不會按「下」。

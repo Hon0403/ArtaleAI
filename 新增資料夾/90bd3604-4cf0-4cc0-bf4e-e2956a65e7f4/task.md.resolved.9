@@ -1,0 +1,9 @@
+# 修復 CsWinRT 與 NETSDK1082 建置錯誤
+
+- [x] 限制 RuntimeIdentifier 為 win10-x64 (解決 NETSDK1082) <!-- id: 0 -->
+    - [x] 修改 [ArtaleAI.csproj](file:///d:/Full_end/C%23/ArtaleAI/ArtaleAI.csproj) 加入 `RuntimeIdentifiers` 設定 <!-- id: 1 -->
+- [x] 優化專案配置 (解決隱藏的相容性問題) <!-- id: 2 -->
+    - [x] 啟用 `WindowsAppSDKSelfContained` 與 `WindowsPackageType=None` <!-- id: 3 -->
+    - [x] 移除重複或衝突的 SDK 參照 <!-- id: 4 -->
+- [x] 清理專案 <!-- id: 5 -->
+- [/] 驗證建置 (需重啟 VS 解鎖檔案) <!-- id: 6 -->

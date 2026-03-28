@@ -1,0 +1,36 @@
+# Fix Rope Climbing Logic & Smart Navigation
+
+## Summary
+- **Fixed Rope X-Alignment**: Increased engaging distance to 10px.
+- **Fixed Climb Down**: Correctly selects "Down" key at rope top.
+- **Improved Completion Detection**: Implemented "Wiggle Test" to confirm platform arrival.
+- **Fixed Movement Oscillation**: Implemented Dynamic Tap + Increased Tolerance.
+- **Fixed Rope Deadlock**: 
+    - Allowed small vertical errors (3px) in Movement Controller.
+    - **Synchronized Tolerance**: Updated [PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#18-1338) to accept **6.0px** error, matching Controller's loose tolerance (`sqrt(5^2+3^2) ≈ 5.8px`).
+- **Refined Logging**: Independent log files per session.
+- **Implemented Smart Navigation**: Added multi-floor BFS pathfinding.
+- **Fixed Wiggle Drift**: Tuned Wiggle Test parameters.
+
+## Changes
+
+### 1. Rope Logic & Deadlock Fixes
+**File**: [Services/CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs) & [Core/PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- **Deadlock Cause**: 
+    1. Controller stopped at 3.0px error (correctly).
+    2. Tracker rejected arrival (limit 3.5px). 
+    3. Actual offset [(3.0, 2.0)](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs#244-257) -> Distance `3.6px`. Deadlock.
+- **Fix**: Raised Tracker's minimum tolerance ([GetDynamicReachDistance](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1258-1279)) to **6.0px**.
+- **Result**: Character at rope entry is correctly marked as "Arrived" and immediately proceeds to climb.
+
+### 2. Move Oscillation Fix (Dynamic Tap)
+**File**: [Services/CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **Dynamic Tap**: 30ms (<5px) / 80ms (>5px).
+- **Tolerance**: Horizontal alignment tolerance increased to **5.0px**.
+
+### 3. Logging Improvements
+**File**: [Utils/Logger.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs)
+- Changed to timestamped filenames: `artale-{yyyyMMdd-HHmmss}.log`.
+
+## Verification
+- **Deadlock**: Simulating `dx=3.0, dy=2.0`. Distance 3.6. `3.6 <= 6.0`. Returns True. System advances.

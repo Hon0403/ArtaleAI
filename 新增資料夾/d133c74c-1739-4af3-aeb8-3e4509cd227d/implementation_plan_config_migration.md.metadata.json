@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary": "此計畫旨在將 `Config` 模組遷移至 `Models\\Config` 子目錄中。這包含移動 6 個配置類別檔案、更新其命名空間，以及修正全專案範圍內約 16 個檔案的 `using` 引用。 (This plan aims to migrate the `Config` module to the `Models\\Config` subdirectory. This involves moving 6 configuration class files, updating their namespaces, and fixing `using` references in approximately 16 files across the project.)",
+  "updatedAt": "2026-03-21T14:20:50.915110200Z"
+}

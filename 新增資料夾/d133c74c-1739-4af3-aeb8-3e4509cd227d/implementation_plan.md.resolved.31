@@ -1,0 +1,60 @@
+# 系統架構深度淨化：廢止邊界標記與巡邏最佳化
+
+根據架構決策，我們將徹底廢除「邊界標記 (BoundaryMarkers)」機制。既然地圖上的實體節點 (Platform Nodes) 都是經過人工確認的安全點，系統應直接信任圖資，不再需要額外的安全邊距限制。這也將解決隨機巡邏過於集中的問題。
+
+## 提出變更
+
+### [Data & Models]
+
+#### [MODIFY] [MapData.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Map/MapData.cs)
+- 徹底移除 `public List<float[]> BoundaryMarkers { get; set; }` 屬性。
+
+#### [MODIFY] [Enums.cs](file:///d:/Full_end/C%23/ArtaleAI/Data/Enums.cs)
+- 從 [EditMode](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#291-308) 中移除 `BoundaryMarker` 枚舉值。
+
+---
+
+### [UI Components]
+
+#### [MODIFY] [MainForm.Designer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.Designer.cs)
+- 刪除 `rdo_BoundaryMarker` 控制項及其初始化代碼。
+
+#### [MODIFY] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- 在 [cbo_LoadPathFile_SelectedIndexChanged](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1935-2020) 中，刪除解析 `BoundaryMarkers` 並呼叫 `_movementController.SetPlatformBounds` 的邏輯。
+- 移除 [OnEditModeChanged](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#1079-1105) 中對 `rdo_BoundaryMarker` 的 UI 處理。
+
+---
+
+### [Logic & Map Editor]
+
+#### [MODIFY] [MapEditor.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs)
+- 移除 [SetEditMode](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#291-308) 中對 `BoundaryMarker` 的處理。
+- 在 [HandleClick](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#355-644) 中，刪除處理邊界標記點擊的 `else if` 區塊。
+- 在 [DrawCompletedShapes](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#660-803) 中，刪除繪製邊界標記的邏輯。
+- 在 [HandleDeleteAction](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#886-980) 中，移除對 `BoundaryMarker` 的刪除支援。
+
+---
+
+### [Core Navigation]
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- **移除邊界相依**：
+    - 刪除 [SetBoundaries](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#226-245) 方法。
+    - 移除 `_platformBounds` 欄位與 `BoundarySafetyMargin` 等相關常數。
+    - 刪除 [CheckBoundaryProximity](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#388-410) 與 [HandleBoundaryHit](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#411-452) 方法。
+- **重構隨機巡邏選點**：
+    - 將 [SelectSafeRandomTarget](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#453-492) 更名為 `SelectRandomPhysicalTarget`。
+    - 簡化邏輯：直接過濾掉「虛擬節點 (`n_v_`)」與「當前節點」，然後從其餘實體平台節點中隨機抽取。
+    - 拔除所有 X 座標偏移或安全邊距的過濾。
+
+## 驗證計畫
+
+### 自動化驗證
+- 執行 `dotnet build` 確保專案無編譯錯誤（確認所有引用的 UI 與欄位已清理乾淨）。
+
+### 手動驗證
+1. **地圖編輯驗證**：切換編輯模式，確認「邊界標記」選項已消失，且編輯/儲存流程正常。
+2. **巡邏行為驗證**：啟動自動巡邏，觀察日誌，確認：
+    - 目標節點不再出現 `n_v_` 開頭的虛擬點。
+    - 角色能夠跨越地圖移動到各種實體節點，分佈不再受限於中心區。
+    - 即使載入含有舊版邊界數據的地圖，也不會發生崩潰（Json 處理會自動忽略未知欄位）。

@@ -1,0 +1,33 @@
+# 修復角色越過繩索 (Overshoot) 實作計畫
+
+目前的過衝問題源於程式碼中存在多處硬寫的容差值 (Hardcoded Tolerances)，導致全域設定 `waypointReachDistance` 在攀爬行為中失效。
+
+## 待解決問題
+- [ ] **設定檔路徑混淆**：使用者修改了 [Data\config.yaml](file:///d:/Full_end/C%23/ArtaleAI/Data/config.yaml)，但編譯後的執行檔通常讀取 `bin\Debug\...\Data\config.yaml`。
+- [ ] **導航執行器硬寫值**：`NavigationExecutor.ExecuteClimbAsync` 固定使用 `1.5f` 作為到點判定。
+- [ ] **動作控制器判定區間**：如果到點判定 (10.0) 大於跳躍判定 (3.5)，會導致角色停在原地決定「側跳」而非「直跳」。
+
+## 建議變更
+
+## 建議變更
+
+### [Component] Navigation
+#### [MODIFY] [NavigationExecutor.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs)
+- 移除 [ExecuteClimbAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/NavigationExecutor.cs#134-189) 中硬寫的 `1.5f` X 軸判定，統一使用 `Config.LatencyInertiaCompensation`。
+
+#### [MODIFY] [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **[MoveToTargetAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#193-288)**: 移除硬寫的 `1.5f` 最小容差，讓 `LatencyInertiaCompensation` 能夠被完全應用。
+- **[ClimbRopeAsync](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs#569-697)**: 
+    - 在循環中加入 Y 軸抵達判定。
+    - 當 `Math.Abs(getY() - targetY) <= Config.ArrivalTolerance` 時，自動結束循環。
+    - 這確保了動作能自主完成，不需依賴 CancellationToken，解決與 FSM 的死結問題。
+
+### [Component] Core - PathPlanningTracker
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- **[UpdatePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#286-365)**: 移除水平判定中的 `Math.Max(2.0f, ...)` 與垂直判定中的 `|| Math.Abs(dy) <= 3.0f`。
+- 這樣 `ArrivalTolerance: 0.1` 才能真正產生作用。
+
+## 驗證計畫
+1. **死結測試**：觀察爬繩子到頂端後，是否能順利切換到下一個動作（如向左跳）。
+2. **精度測試**：檢查日誌，確認 `到達路徑點` 的 `dy` 是否嚴格符合 `ArrivalTolerance` (如 0.1 ~ 0.5)。
+3. **煞車測試**：確認水平移動在 X 軸距離 `LatencyInertiaCompensation` 時確實停止按鍵。

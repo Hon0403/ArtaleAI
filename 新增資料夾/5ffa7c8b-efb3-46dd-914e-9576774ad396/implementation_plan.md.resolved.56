@@ -1,0 +1,116 @@
+# 重構計畫：刪除廢棄的舊版導航系統程式碼
+
+> [!IMPORTANT]
+> **策略：路線 A（保留 JSON 格式，刪除行為邏輯）**
+> JSON 地圖檔格式不變動，PathNode 瘦身為純 DTO，移除所有已被 Edge-Driven A* 取代的舊邏輯。
+
+## 預估影響
+
+| 指標 | Before | After |
+|:---|:---|:---|
+| [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs) | ~1390 行 (60KB) | ~950 行 (~40KB) |
+| [PathNode.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs) | ~197 行 | ~95 行 |
+| [SmartRopeNavigator.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/SmartRopeNavigator.cs) | ~150 行 | **刪除整個檔案** |
+| 可刪減總行數 | — | **~500+ 行** |
+
+---
+
+## Phase 1：PathNode.cs → 純 DTO
+
+#### [MODIFY] [PathNode.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs)
+
+**保留（讀 JSON 用）：**
+- [Position](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#132-149), [Index](file:///d:/Full_end/C%23/ArtaleAI/UI/MapEditor.cs#368-392), [Keys](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#553-578), `IsBreak`
+- [Action](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#108-125) (computed property via [DetermineAction()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs#68-96))
+- [DetermineAction()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs#68-96) (private method)
+- [ToString()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs#189-194)
+
+**刪除（舊版行為邏輯）：**
+- `LastVisitTime` 屬性
+- `FailedAttempts` 屬性
+- `IsBlacklisted` 計算屬性
+- [GetPriority()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs#123-188) 方法 (~65 行)
+- [MarkVisited()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs#106-114) 方法
+- [MarkFailed()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs#115-122) 方法
+- [Reset()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs#97-105) 方法
+
+---
+
+## Phase 2：PathPlanningTracker.cs → 移除舊版欄位與方法
+
+#### [MODIFY] [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+
+**刪除欄位：**
+- `_ropeNavigator` (SmartRopeNavigator) — 已被 [InjectRopeEdges()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#280-348) 取代
+- `_triggeredActionIndices` (HashSet) — 舊版循序導航用
+- `_currentPathIndex` — 舊版循序導航索引
+
+**刪除方法：**
+- [GetNodePriorities()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1724-1742) (L1213-1230) — 舊版熱力圖，依賴已刪的 [GetPriority()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathNode.cs#123-188)
+- [FindClosestPathNodeIndex()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1335-1360) (L1335-1359) — 舊版最近點搜尋
+- [SetPlannedPath(List<SdPoint>)](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#365-384) (L365-383) — 純座標版載入（無人呼叫或可由 [LoadMap](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#413-429) 取代）
+
+**清理建構子：**
+- 移除 `_ropeNavigator = new SmartRopeNavigator();`
+
+**清理 [InitializePathState()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#479-522)：**
+- 移除 `_triggeredActionIndices.Clear();`
+
+**清理 [Dispose()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1702-1723)：**
+- 移除 `_triggeredActionIndices.Clear();`
+
+**清理 [SetActiveEdge()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1051-1132)：**
+- 移除 `_currentPathIndex = legacyIndex;`（如果不再被外部使用）
+
+**清理 [ForceAdvanceTarget()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1769-1995)：**
+- 移除 `_currentTarget.MarkVisited();` 呼叫
+
+---
+
+## Phase 3：刪除 SmartRopeNavigator.cs
+
+#### [DELETE] [SmartRopeNavigator.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/SmartRopeNavigator.cs)
+
+已被 `[Obsolete]` 標註，且 `_ropeNavigator` 在 Phase 2 中已刪除。
+
+---
+
+## Phase 4：更新下游消費者
+
+#### [MODIFY] [PathPlanningManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs)
+- 刪除 [GetNodePriorities()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1724-1742) 方法 (L204-207)
+- 刪除 [SetPlannedPath()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#365-384) 轉發方法 (L166 附近，如存在)
+
+#### [MODIFY] [MainForm.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs)
+- 移除呼叫 [GetNodePriorities()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1724-1742) 的熱力圖渲染邏輯 (L1331 附近)
+- 若熱力圖功能仍需要，改為從 [NavigationGraph](file:///d:/Full_end/C%23/ArtaleAI/Core/Domain/Navigation/NavigationGraph.cs#13-256) 讀取節點資料
+
+#### [MODIFY] [MinimapViewer.cs](file:///d:/Full_end/C%23/ArtaleAI/UI/MinimapViewer.cs)
+- 更新 `GetPriorityColor()` 相關邏輯，移除 `IsBlacklisted` 參數
+- 若熱力圖不需要，刪除整段渲染程式
+
+#### [MODIFY] [PathVisualizationModels.cs](file:///d:/Full_end/C%23/ArtaleAI/Models/Visualization/PathVisualizationModels.cs)
+- 移除 `IsBlacklisted` 屬性
+
+---
+
+## Phase 5：建置與驗證
+
+### Automated Tests
+- `dotnet build` 編譯成功
+- 確認無 `CS0xxx` 錯誤（只允許警告）
+
+### Manual Verification
+- 啟動應用程式，載入 [test.json](file:///d:/Full_end/C%23/ArtaleAI/MapData/test.json)，確認路徑規劃正常運作
+- 確認熱力圖（如已移除，確認無 crash）
+- 確認繩索爬行路徑仍可正常規劃
+
+---
+
+## ⚠️ 風險與注意事項
+
+> [!WARNING]
+> [SetPlannedPath(List<SdPoint>)](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#365-384) 和 `PathPlanningManager.SetPlannedPath()` 可能被 [MainForm](file:///d:/Full_end/C%23/ArtaleAI/UI/MainForm.cs#33-2938) 的其他路徑載入流程使用。刪除前需確認所有呼叫端已改用 [LoadMap()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#413-429) 或 [SetPlannedPathWithActions()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#430-480)。
+
+> [!NOTE]
+> `_currentPathIndex` 在 [SetActiveEdge()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1051-1132) 和 [UpdatePathState()](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1835-1851) 中仍有使用。如果 `CurrentPathState.CurrentWaypointIndex` 被 UI 讀取，可能需要改用 `_currentEdgeIndex` 替代。

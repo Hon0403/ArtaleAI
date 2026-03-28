@@ -1,0 +1,33 @@
+# Fix Rope Climbing Logic & Smart Navigation
+
+## Summary
+- **Fixed Rope X-Alignment**: Increased engaging distance to 10px.
+- **Fixed Climb Down**: Correctly selects "Down" key at rope top.
+- **Improved Completion Detection**: Implemented "Wiggle Test" to confirm platform arrival.
+- **Fixed Movement Oscillation**: Implemented Dynamic Tap + Increased Tolerance.
+- **Fixed Rope Deadlock**: 
+    - Allowed small vertical errors (3px) in Movement Controller.
+    - **Synchronized Tolerance**: Updated [PathPlanningTracker](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#86-96) to accept 3.5px error, resolving deadlock.
+- **Refined Logging**: Independent log files per session.
+- **Implemented Smart Navigation**: Added multi-floor BFS pathfinding.
+- **Fixed Wiggle Drift**: Tuned Wiggle Test parameters.
+
+## Changes
+
+### 1. Rope Logic & Deadlock Fixes
+**File**: [Services/CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs) & [Core/PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- **Deadlock Cause**: Movement Controller stopped at 3.0px error (correctly), but Tracker rejected arrival (limit 2.0px).
+- **Fix**: Raised Tracker's minimum tolerance ([GetDynamicReachDistance](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#1258-1279)) to **3.5px**.
+- **Result**: Character at rope entry (error 2-3px) is correctly marked as "Arrived" and immediately proceeds to climb.
+
+### 2. Move Oscillation Fix (Dynamic Tap)
+**File**: [Services/CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- **Dynamic Tap**: 30ms (<5px) / 80ms (>5px).
+- **Tolerance**: Horizontal alignment tolerance increased to **5.0px**.
+
+### 3. Logging Improvements
+**File**: [Utils/Logger.cs](file:///d:/Full_end/C%23/ArtaleAI/Utils/Logger.cs)
+- Changed to timestamped filenames: `artale-{yyyyMMdd-HHmmss}.log`.
+
+## Verification
+- **Deadlock**: Simulating `dy=2.5px`. Controller stops. Tracker check `2.5 <= 3.5`. Returns True. System advances.

@@ -1,0 +1,97 @@
+# 平台邊界處理系統 - 實作完成
+
+## 概要
+
+成功實作了基於 `RestrictedZones` 的平台邊界處理系統，防止角色移動時掉落出平台。
+
+## 核心機制
+
+### 三重防護邊界檢查
+
+在 `CharacterMovementController.MoveToTargetAsync` 中實作：
+
+1. **緊急停止**：角色超出邊界 → 立即停止並觸發事件
+2. **緩衝區預警**：接近邊界 → 觸發邊界事件，讓路徑規劃器選擇反方向目標
+3. **目標驗證**：目標點超出邊界 → 停止移動並選擇新目標
+
+### 事件驅動架構
+
+```mermaid
+graph LR
+    MC[CharacterMovementController] -->|OnBoundaryHit| PM[PathPlanningManager]
+    MC -->|OnTargetOutOfBounds| PM
+    PM -->|轉發| PT[PathPlanningTracker]
+    PT -->|選擇新目標| PM
+```
+
+---
+
+## 修改的檔案
+
+### [DataModels.cs](file:///d:/Full_end/C%23/ArtaleAI/Data/DataModels.cs)
+- 新增 `PlatformBounds` 類別（`MinX`, `MaxX`, `MinY`, `MaxY`）
+- 提供 `IsWithinBounds()` 和 `IsNearBoundary()` 輔助方法
+
+### [AppConfig.cs](file:///d:/Full_end/C%23/ArtaleAI/Data/AppConfig.cs)
+- 新增 `PlatformBoundsConfig` 類別（`BufferZone`, `EmergencyZone`, `CooldownMs`）
+- 新增 `AppConfig.PlatformBounds` 屬性
+
+### [config.yaml](file:///d:/Full_end/C%23/ArtaleAI/Data/config.yaml)
+- 新增 `platformBounds` 配置區塊
+
+```yaml
+platformBounds:
+  bufferZone: 5.0      # 緩衝區像素
+  emergencyZone: 2.0   # 緊急區域像素
+  cooldownMs: 500      # 事件冷卻時間
+```
+
+### [CharacterMovementController.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/CharacterMovementController.cs)
+- 新增 `OnBoundaryHit` 和 `OnTargetOutOfBounds` 事件
+- 新增 `SetPlatformBounds()` 方法
+- 實作三重防護邊界檢查（`MoveToTargetAsync`）
+- 實作防抖動機制（`TriggerBoundaryEvent`）
+
+### [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- 新增 `SetPlatformBounds()` 方法
+- 新增 `OnBoundaryHit()` 處理器 - 接近邊界時選擇反方向目標
+- 新增 `OnTargetOutOfBounds()` 處理器 - 選擇邊界內有效目標
+
+### [PathPlanningManager.cs](file:///d:/Full_end/C%23/ArtaleAI/Services/PathPlanningManager.cs)
+- 新增 `SetMovementController()` 方法
+- 新增 `ParsePlatformBounds()` 方法 - 從 RestrictedZones 或 WaypointPaths 解析邊界
+- 在 `LoadPlannedPath()` 中自動設定邊界
+
+---
+
+## 使用方式
+
+### 1. 在地圖編輯器中設定邊界
+
+在 JSON 路徑檔案中添加 `RestrictedZones`：
+
+```json
+{
+  "WaypointPaths": [[10, 30], [50, 30], [90, 30]],
+  "RestrictedZones": [[5, 25], [95, 35]]
+}
+```
+
+### 2. 將移動控制器連接到路徑管理器
+
+```csharp
+_pathPlanningManager.SetMovementController(_movementController);
+```
+
+### 3. 載入路徑時自動解析邊界
+
+```csharp
+_pathPlanningManager.LoadPlannedPath(waypoints, mapData);
+// 會自動從 RestrictedZones 解析邊界並設定
+```
+
+---
+
+## 驗證結果
+
+✅ 編譯成功（81 個警告，無錯誤）

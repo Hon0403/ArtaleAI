@@ -1,0 +1,10 @@
+# Task Checklist
+
+- [ ] **Implement Static Rope Injection** <!-- id: 0 -->
+    - [x] Create [InjectRopeNodes](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#554-671) method in [PathPlanningTracker.cs](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs)
+- [x] Integrate [InjectRopeNodes](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#554-671) into [InitializePathState](file:///d:/Full_end/C%23/ArtaleAI/Core/PathPlanningTracker.cs#492-534)
+- [x] Fix compilation errors (Action read-only, undefined Walk)
+- [/] Verify injection logic (Automated/Manual test): Detect gaps -> Find Rope -> Insert Nodes (ClimbUp/Down) <!-- id: 3 -->
+- [x] **Verify Injection**
+    - [x] Verified injection logic via code review.
+    - [x] Confirmed user decision to rebuild path for best results (Automatic injection works in theory but runtime alignment is sensitive).
