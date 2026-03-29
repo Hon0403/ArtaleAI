@@ -127,92 +127,7 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>≤0 表示關閉 Walk 幾何微調。</summary>
-        private static float GetWalkGeometricAlignTolerancePx()
-        {
-            try
-            {
-                double d = AppConfig.Instance.Navigation.WalkGeometricAlignTolerancePx;
-                if (d <= 0) return -1f;
-                return (float)Math.Min(d, 8.0);
-            }
-            catch (InvalidOperationException)
-            {
-                return 1.2f;
-            }
-        }
-
-        private static int GetWalkGeometricTrimMaxTaps()
-        {
-            try
-            {
-                int v = AppConfig.Instance.Navigation.WalkGeometricTrimMaxTaps;
-                if (v < 1) return 0;
-                return v > 24 ? 24 : v;
-            }
-            catch (InvalidOperationException)
-            {
-                return 10;
-            }
-        }
-
-        /// <summary>在 Hitbox 內時以短按收斂與 waypoint 的 X 殘差（可關）。</summary>
-        private async Task ApplyGeometricWalkTrimIfNeededAsync(
-            SdPointF targetPos,
-            Func<SdPointF?> getPlayerPosition,
-            Func<bool> isReachedExternally,
-            CancellationToken ct)
-        {
-            float tol = GetWalkGeometricAlignTolerancePx();
-            if (tol < 0) return;
-            int maxTaps = GetWalkGeometricTrimMaxTaps();
-            if (maxTaps < 1) return;
-            if (!isReachedExternally()) return;
-
-            for (int i = 0; i < maxTaps && !ct.IsCancellationRequested; i++)
-            {
-                var p = getPlayerPosition();
-                if (!p.HasValue) break;
-                float dx = targetPos.X - p.Value.X;
-                if (Math.Abs(dx) <= tol)
-                {
-                    if (i > 0)
-                        Logger.Info($"[移動] 幾何微調完成（{i} 次），|殘差|={Math.Abs(dx):F2}px");
-                    return;
-                }
-
-                if (!isReachedExternally()) break;
-
-                ushort towardKey = dx > 0 ? VK_RIGHT : VK_LEFT;
-                float adx = Math.Abs(dx);
-                int tapMs = adx < 1.8f ? 10 : (adx < 3.5f ? 14 : (adx < 7f ? 20 : 26));
-                await TapKeyAsync(towardKey, tapMs, 70, ct);
-                await WaitForNextFrameAsync(ct);
-                await WaitForNextFrameAsync(ct);
-
-                if (!isReachedExternally())
-                {
-                    ushort undoKey = towardKey == VK_RIGHT ? VK_LEFT : VK_RIGHT;
-                    for (int u = 0; u < 2 && !ct.IsCancellationRequested; u++)
-                    {
-                        await TapKeyAsync(undoKey, 11, 65, ct);
-                        await WaitForNextFrameAsync(ct);
-                        await WaitForNextFrameAsync(ct);
-                        if (isReachedExternally())
-                        {
-                            Logger.Info($"[移動] 幾何微調出框後反向細按已拉回 Hitbox（{u + 1} 次）。");
-                            break;
-                        }
-                    }
-
-                    if (!isReachedExternally())
-                        Logger.Warning($"[移動] 幾何微調第 {i + 1} 次後暫離 Hitbox，交由後續越界流程處理。");
-                    break;
-                }
-            }
-        }
-
-        /// <summary>長按走向目標 X；以 <paramref name="isReachedExternally"/> 為到達；越界後由後續反向短按與幾何微調收斂。</summary>
+        /// <summary>長按走向目標 X；以 <paramref name="isReachedExternally"/> 為到達；越界後由 <c>OvershootCorrectionMaxTaps</c> 反向短按回 Hitbox。</summary>
         public async Task<MovementResult> MoveToTargetAsync(SdPointF targetPos, Func<SdPointF?> getPlayerPosition, float fallToleranceY, Func<bool> isReachedExternally, CancellationToken cancellationToken = default)
         {
             if (_isDisposed) return MovementResult.Failed;
@@ -299,7 +214,6 @@ namespace ArtaleAI.Services
 
                 if (await WaitForHitboxAsync(isReachedExternally, 200, cancellationToken))
                 {
-                    await ApplyGeometricWalkTrimIfNeededAsync(targetPos, getPlayerPosition, isReachedExternally, cancellationToken);
                     if (isReachedExternally())
                         return MovementResult.Success;
                 }
@@ -307,11 +221,7 @@ namespace ArtaleAI.Services
                 await WaitForStabilityAsync(getPlayerPosition, cancellationToken);
 
                 if (isReachedExternally())
-                {
-                    await ApplyGeometricWalkTrimIfNeededAsync(targetPos, getPlayerPosition, isReachedExternally, cancellationToken);
-                    if (isReachedExternally())
-                        return MovementResult.Success;
-                }
+                    return MovementResult.Success;
 
                 var finalPos = getPlayerPosition();
                 if (finalPos.HasValue)
@@ -330,20 +240,14 @@ namespace ArtaleAI.Services
                             if (isReachedExternally())
                             {
                                 Logger.Info("[移動] 越界校正成功：重入目標區域。");
-                                await ApplyGeometricWalkTrimIfNeededAsync(targetPos, getPlayerPosition, isReachedExternally, cancellationToken);
-                                if (isReachedExternally())
-                                    return MovementResult.Success;
+                                return MovementResult.Success;
                             }
                         }
                     }
                 }
 
                 if (isReachedExternally())
-                {
-                    await ApplyGeometricWalkTrimIfNeededAsync(targetPos, getPlayerPosition, isReachedExternally, cancellationToken);
-                    if (isReachedExternally())
-                        return MovementResult.Success;
-                }
+                    return MovementResult.Success;
 
                 return MovementResult.NeedsCorrection;
             }

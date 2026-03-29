@@ -99,11 +99,8 @@ navigation:
   # 邊緣側跳前停穩；略增可減少「還沒跳先滑落」
   sideJumpPreJumpSettleMs: 60
   sideJumpLandingTimeoutMs: 2500
-  # 0＝關閉越界反向短按；若常 NeedsCorrection 可改 3～6
+  # 0＝關閉越界反向短按；雪地等易過衝可改 3～6
   overshootCorrectionMaxTaps: 3
-  # 穩定版預設關閉：到達以 Hitbox 為準，不在執行層磨 X。起跳偏時改 1.2～2 並搭配 trim 3～10
-  walkGeometricAlignTolerancePx: 1
-  walkGeometricTrimMaxTaps: 5
   maxTrackingHistory: 100
   enableAutoPathFinding: true
   enableAutoMovement: true

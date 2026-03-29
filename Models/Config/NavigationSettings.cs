@@ -44,14 +44,8 @@ namespace ArtaleAI.Models.Config
         /// <summary>WaitForLanding 逾時（ms），逾時仍做座標驗收。</summary>
         public int SideJumpLandingTimeoutMs { get; set; } = 2500;
 
-        /// <summary>水平移動過衝後反向碎步次數；0＝關閉。預設 0 對齊 Hitbox 優先；易過衝時改 3～6。</summary>
+        /// <summary>水平移動過衝後反向碎步次數；0＝關閉。雪地等易過衝時改 3～6。</summary>
         public int OvershootCorrectionMaxTaps { get; set; } = 0;
-
-        /// <summary>進入 Hitbox 後朝 waypoint X 短按收斂的殘差門檻（px）；≤0 關閉。</summary>
-        public double WalkGeometricAlignTolerancePx { get; set; } = 0;
-
-        /// <summary>幾何微調最多短按次數；預設 0 與上項關閉搭配。</summary>
-        public int WalkGeometricTrimMaxTaps { get; set; } = 0;
 
         /// <summary>最大追蹤歷史記錄數量</summary>
         public int MaxTrackingHistory { get; set; } = 1000;
