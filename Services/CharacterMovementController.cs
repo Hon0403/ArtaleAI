@@ -212,7 +212,7 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>長按走向目標 X；以 <paramref name="isReachedExternally"/> 為到達；可預測煞車、越界反向短按。</summary>
+        /// <summary>長按走向目標 X；以 <paramref name="isReachedExternally"/> 為到達；越界後由後續反向短按與幾何微調收斂。</summary>
         public async Task<MovementResult> MoveToTargetAsync(SdPointF targetPos, Func<SdPointF?> getPlayerPosition, float fallToleranceY, Func<bool> isReachedExternally, CancellationToken cancellationToken = default)
         {
             if (_isDisposed) return MovementResult.Failed;
@@ -247,9 +247,7 @@ namespace ArtaleAI.Services
             ushort reverseKey = expectedSignX > 0 ? VK_LEFT : VK_RIGHT;
 
             var visionLossWatcher = new System.Diagnostics.Stopwatch();
-            float? lastObservedX = initialPos.X;
-            DateTime lastObservedTime = DateTime.UtcNow;
-            
+
             try
             {
                 while (!cancellationToken.IsCancellationRequested)
@@ -270,30 +268,6 @@ namespace ArtaleAI.Services
                     if (visionLossWatcher.IsRunning) visionLossWatcher.Reset();
 
                     var currentPos = currentPosNullable.Value;
-                    float nowX = currentPos.X;
-                    DateTime nowTime = DateTime.UtcNow;
-
-                    if (lastObservedX.HasValue)
-                    {
-                        double dt = (nowTime - lastObservedTime).TotalSeconds;
-                        if (dt > 0)
-                        {
-                            float vx = (nowX - lastObservedX.Value) / (float)dt;
-                            float remainingDist = Math.Abs(targetPos.X - nowX);
-
-                            float predictStopDist = Math.Abs(vx) * 0.066f;
-
-                            if (remainingDist <= predictStopDist + 1.2f)
-                            {
-                                StopMovement();
-                                Logger.Info($"[移動] 預測性煞車：距離 {remainingDist:F1}px(預估滑行:{predictStopDist:F1}px)，提前放鍵。");
-                                break;
-                            }
-                        }
-                    }
-
-                    lastObservedX = nowX;
-                    lastObservedTime = nowTime;
 
                     if (Math.Abs(currentPos.Y - initialY) > fallToleranceY)
                     {

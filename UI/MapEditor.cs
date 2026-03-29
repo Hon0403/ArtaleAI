@@ -544,8 +544,11 @@ namespace ArtaleAI.UI
             {
                 if (button == MouseButtons.Right)
                 {
+                    // 清除錨點：下一筆在空白處新增的節點不再自動連到「Nodes 清單上一筆」，
+                    // 以達成「分段／截斷折線」；若要再接續連線請左鍵點既有節點設為錨點。
                     _waypointAnchorIndex = -1;
                     _startPoint = null;
+                    Logger.Info("[編輯器] 路徑標記：右鍵已截斷鏈條，下一個新節點將獨立（不自動連邊），除非先左鍵選取錨點節點。");
                 }
                 else
                 {
@@ -573,15 +576,9 @@ namespace ArtaleAI.UI
                         _currentMapData.Nodes.Add(newNode);
                         int newIndex = _currentMapData.Nodes.Count - 1;
 
-                        int prevIndex;
-                        if (_waypointAnchorIndex != -1)
-                        {
-                            prevIndex = _waypointAnchorIndex;
-                        }
-                        else
-                        {
-                            prevIndex = FindPreviousValidNodeIndex(newIndex);
-                        }
+                        // 僅在已選錨點（含連續左鍵新增時自動帶入的上一節點）時自動拉邊；
+                        // 右鍵截斷後錨點為 -1，不可再用「清單 index-1」推上一點，否則鏈條永遠不斷。
+                        int prevIndex = _waypointAnchorIndex != -1 ? _waypointAnchorIndex : -1;
 
                         if (prevIndex != -1)
                         {
@@ -903,12 +900,6 @@ namespace ArtaleAI.UI
                screenPoint.Y - minimapBounds.Y);
 
             _hoveredNodeIndex = FindNearestNodeIndex(relativePoint);
-        }
-
-        private int FindPreviousValidNodeIndex(int currentIndex)
-        {
-            if (currentIndex <= 0) return -1;
-            return currentIndex - 1;
         }
 
         private Color GetNodeColor(int action)

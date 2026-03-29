@@ -20,6 +20,7 @@ vision:
   defaultThreshold: 0.7
   maxDetectionResults: 1
   detectionMode: Color
+  nmsIouThreshold: 0.45
   playerMarker: "templates/minimap/player_marker.png"
   otherPlayers: "templates/minimap/other_players.png"
   playerThreshold: 0.7
@@ -29,7 +30,15 @@ vision:
   maxBarHeight: 8
   minBarWidth: 1
   maxBarWidth: 60
+  minFillRate: 0.1
+  smallBarWidthLimit: 50
+  mediumBarWidthLimit: 100
+  minAspectRatio: 2
+  maxAspectRatio: 15
   minBarArea: 8
+  dynamicFillRateSmall: 0.8
+  dynamicFillRateMedium: 0.6
+  playerOffsetY: 20
   uiHeightFromBottom: 200
   dotOffsetY: 50
   detectionBoxWidth: 550
@@ -37,6 +46,17 @@ vision:
   bloodBarDetectIntervalMs: 150
   monsterDetectIntervalMs: 200
   captureFrameRate: 15
+  cornerThreshold: 0.8
+  topLeft: "tl.png"
+  topRight: "tr.png"
+  bottomLeft: "bl.png"
+  bottomRight: "br.png"
+  useFixedMinimapPosition: false
+  fixedMinimapWidth: 250
+  fixedMinimapHeight: 150
+  minimapFrameColorBgr: "255,255,255"
+  minMinimapWidth: 100
+  minMinimapHeight: 80
   defaultMode: "Color"
   displayOrder: ["Basic", "ContourOnly", "Grayscale", "Color", "TemplateFree"]
   detectionModes:
