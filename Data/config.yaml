@@ -45,7 +45,7 @@ vision:
   detectionBoxHeight: 300
   bloodBarDetectIntervalMs: 150
   monsterDetectIntervalMs: 200
-  captureFrameRate: 15
+  captureFrameRate: 30
   cornerThreshold: 0.8
   topLeft: "tl.png"
   topRight: "tr.png"
@@ -84,31 +84,21 @@ navigation:
   playerPositionThreshold: 0.7
   otherPlayersThreshold: 0.5
   enableOtherPlayersDetection: true
-  # 繩索 X 對齊容差、小地圖繩線視覺半寬、側跳驗收與 waypointReachDistance 取大等皆用此值（不再額外 cap 2px）
-  waypointReachDistance: 2
-  # 側跳著陸 X 容許（px）；與 waypointReachDistance 取較大者驗收（略大可吸收落地後小滑動）
-  jumpLandingTolerancePx: 10
-  # Alt 放開後多久放開方向鍵（ms）；0＝等著陸偵測結束才放（易在平台上多滑）。約 80～120 可減少 landDx 壓線失敗
-  sideJumpReleaseDirectionMsAfterAlt: 95
-  # 側跳著陸 Y 容許（px）；0＝使用程式內建 15。整層掉落仍會失敗，僅略放寬測量誤差
-  sideJumpLandingMaxFallYPx: 0
-  # sideJumpWindupMs：按方向鍵「之前」原地等（不揹方向），防薄邊先走出去
-  # sideJumpDirectionLeadMsBeforeAlt：按方向後到按 Alt 的極短間隔；跳不過去可略增 15～22
-  sideJumpWindupMs: 22
-  sideJumpDirectionLeadMsBeforeAlt: 14
-  sideJumpAltHoldMs: 105
-  # 邊緣側跳前停穩；略增可減少「還沒跳先滑落」
-  sideJumpPreJumpSettleMs: 60
-  sideJumpLandingTimeoutMs: 2500
-  # 0＝關閉越界反向短按；雪地等易過衝可改 3～6
-  overshootCorrectionMaxTaps: 3
-  maxTrackingHistory: 100
+  # 到達判定參數 (SSOT)
+  platformHitboxWidth: 3.0
+  platformHitboxHeight: 3.0
+  ropeHitboxWidth: 6.0
+  ropeHitboxHeight: 15.0
+
+  # 動作超時與卡點判定
+  stuckDetectionMs: 3000
+  
+  # 跳躍物理原子參數
+  sideJumpAltHoldMs: 110
+
+  # 自動化控制
   enableAutoPathFinding: true
   enableAutoMovement: true
-  platformBounds:
-    bufferZone: 5.0
-    emergencyZone: 2.0
-    cooldownMs: 300
 
 # ============================================
 # 地圖編輯器設定

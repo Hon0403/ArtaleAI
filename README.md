@@ -105,7 +105,7 @@ dotnet run
      zoomFactor: 15
    
    windowCapture:
-     captureFrameRate: 15
+     captureFrameRate: 30
    
    detectionPerformance:
      monsterDetectIntervalMs: 200
@@ -369,11 +369,15 @@ detectionPerformance:
   enableGPUAcceleration: true      # 啟用 GPU 加速
   maxConcurrentDetections: 3       # 最大併發檢測數
 
-# 路徑規劃設定
+# 導航與路徑規劃設定 (SSOT)
 pathPlanning:
-  waypointReachDistance: 4.0       # 到達路徑點的距離閾值（像素）
+  platformHitboxWidth: 3.0         # 平台到達判定寬度 (像素)
+  platformHitboxHeight: 3.0        # platformHitboxHeight: 3.0        # 平台到達判定高度 (像素)
+  ropeHitboxWidth: 6.0             # 繩索抓取判定寬度 (像素)
+  ropeHitboxHeight: 15.0           # 繩索抓取判定高度 (像素)
+  stuckDetectionMs: 3000           # 卡點判定超時 (毫秒)
+  sideJumpAltHoldMs: 110           # 跳躍按鍵持續時間 (毫秒)
   enableAutoMovement: true         # 啟用自動移動控制
-  continuousDetectionIntervalMs: 100 # 連續檢測間隔（毫秒）
 
 # 模板匹配 NMS (非最大抑制) 參數
 templateMatching:

@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using ArtaleAI.Models.Map;
+using ArtaleAI.Models.Config;
 using ArtaleAI.Utils;
 
 namespace ArtaleAI.Core.Domain.Navigation
@@ -10,10 +11,10 @@ namespace ArtaleAI.Core.Domain.Navigation
     /// <summary>節點、邊與 A* 尋路。</summary>
     public class NavigationGraph
     {
-        private const float PlatformHitboxWidth = 3.0f;
-        private const float PlatformHitboxHeight = 3.0f;
-        private const float RopeHitboxWidth = 6.0f;
-        private const float RopeHitboxHeight = 60.0f;
+        private static float PlatformHitboxWidth => (float)AppConfig.Instance.Navigation.PlatformHitboxWidth;
+        private static float PlatformHitboxHeight => (float)AppConfig.Instance.Navigation.PlatformHitboxHeight;
+        private static float RopeHitboxWidth => (float)AppConfig.Instance.Navigation.RopeHitboxWidth;
+        private static float RopeHitboxHeight => (float)AppConfig.Instance.Navigation.RopeHitboxHeight;
 
         private readonly Dictionary<string, NavigationNode> _nodes = new Dictionary<string, NavigationNode>();
         private readonly Dictionary<string, List<NavigationEdge>> _adjacencyList = new Dictionary<string, List<NavigationEdge>>();

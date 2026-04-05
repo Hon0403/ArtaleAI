@@ -109,34 +109,25 @@ namespace ArtaleAI.Services
             }
         }
 
-        private static int GetOvershootCorrectionMaxTaps()
+        public void ReleaseAllKeys()
+        {
+            StopMovement();
+        }
+
+        /// <summary>由 <see cref="NavigationSettings.RopeHitboxWidth"/> 計算出的半徑，供繩索微調對齊 X。</summary>
+        private static float GetRopeAlignTolerancePx()
         {
             try
             {
-                int v = AppConfig.Instance.Navigation.OvershootCorrectionMaxTaps;
-                if (v < 1) return 0;
-                return v > 20 ? 20 : v;
+                return (float)(AppConfig.Instance.Navigation.RopeHitboxWidth / 2.0);
             }
             catch (InvalidOperationException)
             {
-                return 6;
+                return 3.0f;
             }
         }
 
-        /// <summary>與 <see cref="NavigationSettings.WaypointReachDistance"/> 一致，供繩索微調對齊 X。</summary>
-        private static float GetWaypointReachDistancePx()
-        {
-            try
-            {
-                return (float)AppConfig.Instance.Navigation.WaypointReachDistance;
-            }
-            catch (InvalidOperationException)
-            {
-                return 1.5f;
-            }
-        }
-
-        /// <summary>長按走向目標 X；以 <paramref name="isReachedExternally"/> 為到達；越界後由 <c>OvershootCorrectionMaxTaps</c> 反向短按回 Hitbox。</summary>
+        /// <summary>長按走向目標 X；以 <paramref name="isReachedExternally"/> 為到達。</summary>
         public async Task<MovementResult> MoveToTargetAsync(SdPointF targetPos, Func<SdPointF?> getPlayerPosition, float fallToleranceY, Func<bool> isReachedExternally, CancellationToken cancellationToken = default)
         {
             if (_isDisposed) return MovementResult.Failed;
@@ -168,7 +159,6 @@ namespace ArtaleAI.Services
             float initialDx = targetPos.X - initialPos.X;
             int expectedSignX = Math.Sign(initialDx);
             ushort targetKey = expectedSignX > 0 ? VK_RIGHT : VK_LEFT;
-            ushort reverseKey = expectedSignX > 0 ? VK_LEFT : VK_RIGHT;
 
             var visionLossWatcher = new System.Diagnostics.Stopwatch();
 
@@ -219,24 +209,7 @@ namespace ArtaleAI.Services
                     await WaitForNextFrameAsync(cancellationToken);
                 }
 
-                StopMovement();
-
-                if (isReachedExternally())
-                    return MovementResult.Success;
-
-                int maxTaps = GetOvershootCorrectionMaxTaps();
-                Logger.Info($"[移動] 啟動越界校正：執行反向微調 (鍵:{reverseKey})，最多 {maxTaps} 次。");
-                for (int i = 0; i < maxTaps; i++)
-                {
-                    await TapKeyAsync(reverseKey, 30, 60, cancellationToken);
-                    if (isReachedExternally())
-                    {
-                        Logger.Info("[移動] 越界校正成功：重入目標區域。");
-                        return MovementResult.Success;
-                    }
-                }
-
-                return MovementResult.NeedsCorrection;
+                return MovementResult.Success;
             }
             finally
             {
@@ -244,40 +217,6 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>連續幀位移低於門檻視為停穩，逾時回傳 false。</summary>
-        private async Task<bool> WaitForStabilityAsync(Func<SdPointF?> getPlayerPosition, CancellationToken ct)
-        {
-            const int RequiredStableCount = 3;
-            const float StabilityTolerance = 0.2f;
-
-            int stableFrames = 0;
-            SdPointF? lastPos = getPlayerPosition();
-            
-            var stabilityTimeout = System.Diagnostics.Stopwatch.StartNew();
-            
-            while (stabilityTimeout.ElapsedMilliseconds < 500 && !ct.IsCancellationRequested)
-            {
-                await WaitForNextFrameAsync(ct);
-                var currentPos = getPlayerPosition();
-                
-                if (currentPos.HasValue && lastPos.HasValue)
-                {
-                    float distMoved = (float)Math.Sqrt(Math.Pow(currentPos.Value.X - lastPos.Value.X, 2) + Math.Pow(currentPos.Value.Y - lastPos.Value.Y, 2));
-                    
-                    if (distMoved <= StabilityTolerance)
-                    {
-                        stableFrames++;
-                        if (stableFrames >= RequiredStableCount) return true;
-                    }
-                    else
-                    {
-                        stableFrames = 0;
-                    }
-                    lastPos = currentPos;
-                }
-            }
-            return false;
-        }
 
         private async Task<bool> WaitForHitboxAsync(Func<bool> isReachedExternally, int timeoutMs, CancellationToken ct)
         {
@@ -365,7 +304,7 @@ namespace ArtaleAI.Services
             await Task.Delay(intervalMs, ct);
         }
 
-        private void FocusGameWindow()
+        public void FocusGameWindow()
         {
             if (string.IsNullOrEmpty(_gameWindowTitle)) return;
             try
@@ -414,12 +353,12 @@ namespace ArtaleAI.Services
         {
             FocusGameWindow();
 
-            await WaitForStabilityAsync(() => getPlayerPosition() as PointF?, ct);
+            await Task.Delay(100, ct); // 原子化穩定等待 (固定值)
 
             var pStable = getPlayerPosition();
             float dx = ropeX - pStable.X;
             float adx = Math.Abs(dx);
-            float ropeSnapTol = GetWaypointReachDistancePx();
+            float ropeSnapTol = GetRopeAlignTolerancePx();
             for (int i = 0; i < 6 && adx > ropeSnapTol && adx <= 8.5f && !ct.IsCancellationRequested; i++)
             {
                 ushort k = pStable.X > ropeX ? VK_LEFT : VK_RIGHT;

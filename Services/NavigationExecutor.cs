@@ -81,11 +81,11 @@ namespace ArtaleAI.Services
                 NavigationActionType.JumpDown =>
                     await ExecuteJumpDownAsync(ct),
                 NavigationActionType.JumpLeft =>
-                    await ExecuteDirectionalJumpAsync(-1, currentPos, targetPos, ct),
+                    await ExecuteDirectionalJumpAsync(-1, currentPos, targetPos, isReached, ct),
                 NavigationActionType.JumpRight =>
-                    await ExecuteDirectionalJumpAsync(1, currentPos, targetPos, ct),
+                    await ExecuteDirectionalJumpAsync(1, currentPos, targetPos, isReached, ct),
                 NavigationActionType.Jump =>
-                    await ExecuteDirectionalJumpAsync(0, currentPos, targetPos, ct),
+                    await ExecuteDirectionalJumpAsync(0, currentPos, targetPos, isReached, ct),
                 NavigationActionType.Teleport =>
                     await ExecuteTeleportAsync(ct),
                 _ => await ExecuteWalkAsync(currentPos, targetPos, isReached, ct)
@@ -125,7 +125,7 @@ namespace ArtaleAI.Services
             NavigationEdge edge, SdPointF currentPos, SdPointF targetPos,
             bool isUp, Func<bool> isReached, CancellationToken ct)
         {
-            float ropeAlignTol = (float)AppConfig.Instance.Navigation.WaypointReachDistance;
+            float ropeAlignTol = (float)(AppConfig.Instance.Navigation.RopeHitboxWidth / 2.0);
             float ropeX = ExtractRopeX(edge, targetPos.X);
             float ropeTargetY = targetPos.Y;
             float distanceToRopeX = Math.Abs(currentPos.X - ropeX);
@@ -137,7 +137,7 @@ namespace ArtaleAI.Services
                 bool IsAlignedToRopeX()
                 {
                     var p = _positionProvider.GetCurrentPosition();
-                    return p.HasValue && Math.Abs(p.Value.X - ropeX) <= ropeAlignTol;
+                    return p.HasValue && Math.Abs(p.Value.X - ropeX) <= (float)(AppConfig.Instance.Navigation.RopeHitboxWidth / 2.0);
                 }
 
                 bool moveSuccess = await MoveToTargetWithCorrectionAsync(
@@ -177,7 +177,7 @@ namespace ArtaleAI.Services
         }
 
         private async Task<ExecutionResult> ExecuteDirectionalJumpAsync(
-            int direction, SdPointF currentPos, SdPointF targetPos, CancellationToken ct)
+            int direction, SdPointF currentPos, SdPointF targetPos, Func<bool> isReached, CancellationToken ct)
         {
             int effectiveDirection = direction;
             float dxToTarget = targetPos.X - currentPos.X;
@@ -192,48 +192,36 @@ namespace ArtaleAI.Services
             }
 
             _movementController.StopMovement();
-            float layerDy = Math.Abs(currentPos.Y - targetPos.Y);
-            int preJumpMs = AppConfig.Instance.Navigation.SideJumpPreJumpSettleMs;
-            if (layerDy < 4.0f && preJumpMs > 0)
-                await Task.Delay(preJumpMs, ct);
+            await Task.Delay(50, ct); // 原子化靜止等待 (固定值)
+            
+            ushort targetKey = effectiveDirection < 0 ? VK_LEFT : (effectiveDirection > 0 ? VK_RIGHT : (ushort)0);
+            
+            _movementController.FocusGameWindow();
 
-            // 先原地 plant（不揹方向），避免邊緣側跳時 windup 期間長按方向走出平台（見 n11->n13 落層）。
-            int plantMs = Math.Max(0, AppConfig.Instance.Navigation.SideJumpWindupMs);
-            if (plantMs > 0)
-                await Task.Delay(plantMs, ct);
-            await WaitForNextFrameAsync(ct);
-
-            ushort directionKey = effectiveDirection < 0 ? VK_LEFT : (effectiveDirection > 0 ? VK_RIGHT : (ushort)0);
-            int leadMs = Math.Max(0, AppConfig.Instance.Navigation.SideJumpDirectionLeadMsBeforeAlt);
-            if (directionKey != 0)
+            if (targetKey != 0)
             {
-                _keyboard.SendKey(directionKey, false);
-                if (leadMs > 0)
-                    await Task.Delay(leadMs, ct);
-                else
-                    await WaitForNextFrameAsync(ct);
+                _keyboard.SendKey(targetKey, false);
             }
+            
+            await Task.Delay(45, ct); // 原子化 Direction-Lead (固定值)
 
-            _keyboard.SendKey(VK_LMENU, false);
-            int altHold = Math.Max(15, AppConfig.Instance.Navigation.SideJumpAltHoldMs);
-            await Task.Delay(altHold, ct);
+            _keyboard.SendKey(VK_LMENU, false); // Alt
+            
+            int jumpHold = AppConfig.Instance.Navigation.SideJumpAltHoldMs;
+            await Task.Delay(jumpHold, ct);
+
             _keyboard.SendKey(VK_LMENU, true);
 
-            var releasedDirEarly = false;
-            int releaseDirMs = Math.Max(0, AppConfig.Instance.Navigation.SideJumpReleaseDirectionMsAfterAlt);
-            if (directionKey != 0 && releaseDirMs > 0)
-            {
-                await Task.Delay(releaseDirMs, ct);
-                _keyboard.SendKey(directionKey, true);
-                releasedDirEarly = true;
-            }
+            await Task.Delay(65, ct); // 原子化 Release-Direction (固定值)
+            
+            if (targetKey != 0)
+                _keyboard.SendKey(targetKey, true);
 
-            int landingWaitMs = Math.Max(500, AppConfig.Instance.Navigation.SideJumpLandingTimeoutMs);
+            int landingWaitMs = AppConfig.Instance.Navigation.StuckDetectionMs;
             bool landedByProximity = await WaitForLandingAsync(targetPos.Y, landingWaitMs, ct);
+            
             if (!landedByProximity)
-                Logger.Warning($"[跳躍] WaitForLanding 逾時（{landingWaitMs}ms），將放開方向鍵並進行著陸驗收。targetY={targetPos.Y:F1}");
-            if (directionKey != 0 && !releasedDirEarly)
-                _keyboard.SendKey(directionKey, true);
+                Logger.Warning($"[跳躍] WaitForLanding 逾時（{landingWaitMs}ms），將進行著陸驗收。targetY={targetPos.Y:F1}");
 
             if (SideJumpPostLandingSettleMs > 0)
                 await Task.Delay(SideJumpPostLandingSettleMs, ct);
@@ -241,23 +229,18 @@ namespace ArtaleAI.Services
             var landPos = _positionProvider.GetCurrentPosition();
             if (landPos.HasValue)
             {
-                double configuredFallY = AppConfig.Instance.Navigation.SideJumpLandingMaxFallYPx;
-                float fallYTol = configuredFallY > 0 ? (float)configuredFallY : FALL_Y_TOLERANCE;
-
+                float fallYTol = FALL_Y_TOLERANCE;
                 float landDy = Math.Abs(landPos.Value.Y - targetPos.Y);
+                
                 if (landDy > fallYTol)
                 {
-                    Logger.Warning($"[跳躍] 著地 Y 偏差過大，判定失敗。landDy={landDy:F1}, tol={fallYTol:F1}, landY={landPos.Value.Y:F1}, targetY={targetPos.Y:F1}");
+                    Logger.Warning($"[跳躍] 著地 Y 偏差過大，判定失敗。landDy={landDy:F1}, tol={fallYTol:F1}");
                     return ExecutionResult.Failed;
                 }
 
-                float xTolerance = (float)Math.Max(
-                    AppConfig.Instance.Navigation.WaypointReachDistance,
-                    AppConfig.Instance.Navigation.JumpLandingTolerancePx);
-                float landDx = Math.Abs(landPos.Value.X - targetPos.X);
-                if (landDx > xTolerance)
+                if (!isReached())
                 {
-                    Logger.Warning($"[跳躍] 著地 X 偏差過大，判定失敗。landDx={landDx:F1}, tol={xTolerance:F1}, landX={landPos.Value.X:F1}, targetX={targetPos.X:F1}");
+                    Logger.Warning($"[跳躍] 著地位置不在目標 Hitbox 內，判定失敗。landPos={landPos.Value:F1}, targetPos={targetPos:F1}");
                     return ExecutionResult.Failed;
                 }
             }
@@ -284,7 +267,7 @@ namespace ArtaleAI.Services
             return fallbackX;
         }
 
-        /// <summary>側跳後等待 Y 進入目標帶並穩定；逾時回傳 false，仍由呼叫端做座標驗收。</summary>
+
         private async Task<bool> WaitForLandingAsync(float targetY, int timeoutMs, CancellationToken ct)
         {
             var startTime = DateTime.UtcNow;

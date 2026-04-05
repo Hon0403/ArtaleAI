@@ -920,7 +920,7 @@ namespace ArtaleAI
                         if (!float.IsNaN(ropeX))
                         {
                             pathData.RopeAlignCenterX = ropeX;
-                            pathData.RopeAlignTolerance = (float)AppConfig.Instance.Navigation.WaypointReachDistance;
+                            pathData.RopeAlignTolerance = (float)(AppConfig.Instance.Navigation.RopeHitboxWidth / 2.0);
                         }
                     }
                 }

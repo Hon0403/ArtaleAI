@@ -25,10 +25,9 @@ namespace ArtaleAI.Core
         private readonly GameVisionCore _gameVision;
         private readonly Random _random = new Random();
         private readonly object _randomLock = new object();
-        private readonly List<MinimapTrackingResult> _trackingHistory;
-        private readonly object _historyLock = new object();
-
         private INavigationStateMachine? _fsm;
+        private SdPointF? _lastPosition;
+        private DateTime _lastMovementUtc = DateTime.UtcNow;
 
         /// <summary>目前規劃中的路徑與索引。</summary>
         public PathPlanningState? CurrentPathState { get; private set; }
@@ -129,7 +128,6 @@ namespace ArtaleAI.Core
         public PathPlanningTracker(GameVisionCore gameVision)
         {
             _gameVision = gameVision ?? throw new ArgumentNullException(nameof(gameVision));
-            _trackingHistory = new List<MinimapTrackingResult>();
         }
 
         public void BindStateMachine(INavigationStateMachine fsm)
@@ -224,11 +222,35 @@ namespace ArtaleAI.Core
 
         private void UpdateTrackingHistory(MinimapTrackingResult result)
         {
-            lock (_historyLock)
+            var pos = result.PlayerPosition;
+            if (!pos.HasValue) return;
+
+            if (!_lastPosition.HasValue)
             {
-                _trackingHistory.Add(result);
-                var maxHistory = AppConfig.Instance.Navigation.MaxTrackingHistory;
-                if (_trackingHistory.Count > maxHistory) _trackingHistory.RemoveAt(0);
+                _lastPosition = pos;
+                _lastMovementUtc = DateTime.UtcNow;
+                return;
+            }
+
+            float dx = pos.Value.X - _lastPosition.Value.X;
+            float dy = pos.Value.Y - _lastPosition.Value.Y;
+            float distSq = dx * dx + dy * dy;
+
+            // 如果位移超過微小閾值 (0.5px)，更新最後活動時間
+            if (distSq > 0.25f) 
+            {
+                _lastPosition = pos;
+                _lastMovementUtc = DateTime.UtcNow;
+            }
+            else
+            {
+                var elapsedMs = (DateTime.UtcNow - _lastMovementUtc).TotalMilliseconds;
+                if (elapsedMs > AppConfig.Instance.Navigation.StuckDetectionMs)
+                {
+                    Logger.Warning($"[卡點判定] 角色已在 {pos.Value:F1} 停滯超過 {elapsedMs:F0}ms，觸發救援。");
+                    _lastMovementUtc = DateTime.UtcNow; // 重置計時避免連續救援
+                    TryRescuePath();
+                }
             }
         }
 
@@ -352,7 +374,7 @@ namespace ArtaleAI.Core
 
         public List<MinimapTrackingResult> GetTrackingHistory()
         {
-            lock (_historyLock) return new List<MinimapTrackingResult>(_trackingHistory);
+            return new List<MinimapTrackingResult>(); // 已棄用歷史清單，回傳空值維持相容
         }
 
         public void Dispose()
@@ -362,7 +384,7 @@ namespace ArtaleAI.Core
                 _fsm.OnStateChanged -= OnFsmStateChanged;
                 _fsm = null;
             }
-            lock (_historyLock) _trackingHistory.Clear();
+            _lastPosition = null;
             CurrentPathState = null;
         }
 
