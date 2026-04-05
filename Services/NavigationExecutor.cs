@@ -125,7 +125,7 @@ namespace ArtaleAI.Services
             NavigationEdge edge, SdPointF currentPos, SdPointF targetPos,
             bool isUp, Func<bool> isReached, CancellationToken ct)
         {
-            float ropeAlignTol = Math.Min((float)AppConfig.Instance.Navigation.WaypointReachDistance, 2.0f);
+            float ropeAlignTol = (float)AppConfig.Instance.Navigation.WaypointReachDistance;
             float ropeX = ExtractRopeX(edge, targetPos.X);
             float ropeTargetY = targetPos.Y;
             float distanceToRopeX = Math.Abs(currentPos.X - ropeX);

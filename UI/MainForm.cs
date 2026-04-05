@@ -41,7 +41,7 @@ namespace ArtaleAI
         private AppConfig Config => AppConfig.Instance;
 
         private List<Rectangle> _currentMinimapBoxes = new();
-        private List<Rectangle> _currentMinimapMarkers = new();
+
         private MonsterTemplateStore? _monsterTemplates;
         /// <summary>無模板時供 <see cref="GamePipeline"/> 重複指派，避免每幀配置新 <see cref="List{Mat}"/>。</summary>
         private static readonly List<Mat> s_emptyMonsterTemplates = new();
@@ -74,7 +74,7 @@ namespace ArtaleAI
 
         private volatile bool _visionDataReady = false;
 
-        private float _lastReportedDistance = -1;
+
         private string _lastReportedAction = "";
 
         /// <summary>路徑動作狀態列去重（執行緒安全）。</summary>
@@ -208,10 +208,7 @@ namespace ArtaleAI
                     Directory.CreateDirectory(mapDataDirectory);
                 }
 
-                if (!Directory.Exists(mapDataDirectory))
-                {
-                    Directory.CreateDirectory(mapDataDirectory);
-                }
+
 
                 cbo_LoadPathFile.Items.Add("null");
 
@@ -739,7 +736,7 @@ namespace ArtaleAI
             if (result == null) return;
 
             _currentMinimapBoxes = result.MinimapBoxes;
-            _currentMinimapMarkers = result.MinimapMarkers;
+
         }
 
         /// <summary>由 <see cref="MapFileManager"/> 列舉檔名填入地圖下拉選單。</summary>
@@ -843,30 +840,36 @@ namespace ArtaleAI
                             _pathPlanningManager?.Tracker?.CurrentTarget?.Position.X == n.Position.X && _pathPlanningManager?.Tracker?.CurrentTarget?.Position.Y == n.Position.Y))
                         .ToList();
 
-                    pathData.Ropes = ropeNodes
-                        .Select(n => new RopeWithAccessibility(
-                            n.Position.X,
-                            n.Position.Y - 50,
-                            n.Position.Y + 50,
-                            0f,
-                            false,
-                            false))
-                        .ToList();
+                    var mapRopeSegs = _pathPlanningManager?.Tracker?.MapRopeSegmentsForVisualization;
+                    if (mapRopeSegs != null && mapRopeSegs.Count > 0)
+                    {
+                        pathData.Ropes = mapRopeSegs
+                            .Select(s => new RopeWithAccessibility(s.X, s.TopY, s.BottomY, 0f, false, false))
+                            .ToList();
+                    }
+                    else
+                    {
+                        pathData.Ropes = ropeNodes
+                            .Select(n => new RopeWithAccessibility(
+                                n.Position.X,
+                                n.Position.Y - 50,
+                                n.Position.Y + 50,
+                                0f,
+                                false,
+                                false))
+                            .ToList();
+                    }
                 }
 
-                if (_currentMinimapMarkers.Any() && !minimapBounds.IsEmpty)
+                var playerPosOpt = _pathPlanningManager?.CurrentState?.CurrentPlayerPosition;
+                if (playerPosOpt.HasValue)
                 {
-                    var marker = _currentMinimapMarkers.First();
-                    pathData.PlayerPosition = new SdPointF(
-                        marker.X + marker.Width / 2f - minimapBounds.X,
-                        marker.Y + marker.Height / 2f - minimapBounds.Y);
+                    pathData.PlayerPosition = playerPosOpt.Value;
                 }
                 var nextWp = _pathPlanningManager?.CurrentState?.NextWaypoint;
-                if (nextWp.HasValue && !minimapBounds.IsEmpty)
+                if (nextWp.HasValue)
                 {
-                    pathData.TargetPosition = new SdPointF(
-                        nextWp.Value.X - minimapBounds.X,
-                        nextWp.Value.Y - minimapBounds.Y);
+                    pathData.TargetPosition = nextWp.Value;
                 }
 
 
@@ -878,10 +881,7 @@ namespace ArtaleAI
                         tempTarget.Value.Y);
                 }
 
-                if (nextWp.HasValue)
-                {
-                    pathData.FinalDestination = new SdPointF(nextWp.Value.X, nextWp.Value.Y);
-                }
+
 
                 var tracker = _pathPlanningManager?.Tracker;
                 var currentTargetNode = tracker?.CurrentTarget;
@@ -920,7 +920,7 @@ namespace ArtaleAI
                         if (!float.IsNaN(ropeX))
                         {
                             pathData.RopeAlignCenterX = ropeX;
-                            pathData.RopeAlignTolerance = Math.Min((float)AppConfig.Instance.Navigation.WaypointReachDistance, 2.0f);
+                            pathData.RopeAlignTolerance = (float)AppConfig.Instance.Navigation.WaypointReachDistance;
                         }
                     }
                 }
@@ -1412,7 +1412,7 @@ namespace ArtaleAI
 
                 _monsterTemplates?.Dispose();
 
-                _currentMinimapMarkers.Clear();
+
                 _currentMinimapBoxes.Clear();
                 if (_mapFileManager != null)
                 {
@@ -1605,13 +1605,10 @@ namespace ArtaleAI
 
                         var now = DateTime.UtcNow;
                         var elapsed = (now - _lastStatusUpdate).TotalMilliseconds;
-                        bool distanceChanged = Math.Abs(distance - _lastReportedDistance) > 1.0f;
-
-                        if (elapsed >= StatusUpdateIntervalMs && distanceChanged)
+                        if (elapsed >= StatusUpdateIntervalMs)
                         {
                             MsgLog.ShowStatus(textBox1, $"進度: {progress} 距離: {distance:F1} 目標: ({nextWaypoint.X},{nextWaypoint.Y})");
                             _lastStatusUpdate = now;
-                            _lastReportedDistance = (float)distance;
                         }
 
                         if (Config.Navigation.EnableAutoMovement && _movementController != null && _pathPlanningManager.IsRunning)

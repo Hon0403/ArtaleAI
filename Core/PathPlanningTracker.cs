@@ -19,6 +19,9 @@ namespace ArtaleAI.Core
     {
         private NavigationGraph? _navGraph;
 
+        /// <summary>來自 <see cref="MapData.Ropes"/>，供小地圖視窗畫垂直繩線（與節點 Type 是否為 Rope 無關）。</summary>
+        private readonly List<(float X, float TopY, float BottomY)> _mapRopeSegmentsForVisualization = new();
+
         private readonly GameVisionCore _gameVision;
         private readonly Random _random = new Random();
         private readonly object _randomLock = new object();
@@ -36,6 +39,9 @@ namespace ArtaleAI.Core
 
         public NavigationGraph? NavGraph => _navGraph;
 
+        /// <summary>地圖檔 <c>Ropes</c> 陣列複本（小地圖相對座標），供可視化；導航拓撲仍由 <see cref="NavigationGraph"/> 決定。</summary>
+        public IReadOnlyList<(float X, float TopY, float BottomY)> MapRopeSegmentsForVisualization => _mapRopeSegmentsForVisualization;
+
         /// <summary>目前路徑點之 Hitbox 是否包含玩家位置。</summary>
         public bool IsPlayerAtTarget()
         {
@@ -52,21 +58,22 @@ namespace ArtaleAI.Core
             return targetNode.Hitbox.Value.Contains(playerPos.Value.X, playerPos.Value.Y);
         }
 
+        /// <summary>與 <see cref="IsPlayerAtTarget"/> 相同：以 <see cref="PathPlanningState.PlannedPathNodes"/> 解析，含平台與繩索。</summary>
         public NavigationNode? CurrentTarget
         {
             get
             {
-                if (CurrentPathState != null &&
-                    CurrentPathState.CurrentWaypointIndex >= 0 &&
-                    CurrentPathState.CurrentWaypointIndex < CurrentPathState.PlannedPath.Count)
-                {
-                    var targetPoint = CurrentPathState.PlannedPath[CurrentPathState.CurrentWaypointIndex];
-                    return _navGraph?.GetAllNodes().FirstOrDefault(n =>
-                        n.Type == NavigationNodeType.Platform &&
-                        Math.Abs(n.Position.X - targetPoint.X) < 1.0f &&
-                        Math.Abs(n.Position.Y - targetPoint.Y) < 1.0f);
-                }
-                return null;
+                var state = CurrentPathState;
+                if (state == null || state.IsPathCompleted) return null;
+                if (state.CurrentWaypointIndex < 0) return null;
+                if (state.PlannedPathNodes == null ||
+                    state.CurrentWaypointIndex >= state.PlannedPathNodes.Count)
+                    return null;
+
+                var nodeId = state.PlannedPathNodes[state.CurrentWaypointIndex];
+                if (string.IsNullOrWhiteSpace(nodeId)) return null;
+
+                return _navGraph?.GetNode(nodeId);
             }
         }
 
@@ -177,6 +184,16 @@ namespace ArtaleAI.Core
                     IsPathCompleted = true
                 };
                 return;
+            }
+
+            _mapRopeSegmentsForVisualization.Clear();
+            if (mapData.Ropes != null)
+            {
+                foreach (var r in mapData.Ropes)
+                {
+                    if (r != null && r.Length >= 3)
+                        _mapRopeSegmentsForVisualization.Add((r[0], r[1], r[2]));
+                }
             }
 
             _navGraph = NavigationGraph.FromMapData(mapData);

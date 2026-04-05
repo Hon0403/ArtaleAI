@@ -43,11 +43,7 @@ namespace ArtaleAI.Services
         [DllImport("kernel32.dll")]
         private static extern uint GetLastError();
 
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetForegroundWindow();
 
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
 
         [DllImport("user32.dll")]
         private static extern IntPtr FindWindow(string? lpClassName, string lpWindowName);
@@ -60,7 +56,7 @@ namespace ArtaleAI.Services
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
         private const int SW_RESTORE = 9; 
-        private const int SW_SHOW = 5;    
+
 
         [StructLayout(LayoutKind.Sequential)]
         private struct INPUT
@@ -124,6 +120,19 @@ namespace ArtaleAI.Services
             catch (InvalidOperationException)
             {
                 return 6;
+            }
+        }
+
+        /// <summary>與 <see cref="NavigationSettings.WaypointReachDistance"/> 一致，供繩索微調對齊 X。</summary>
+        private static float GetWaypointReachDistancePx()
+        {
+            try
+            {
+                return (float)AppConfig.Instance.Navigation.WaypointReachDistance;
+            }
+            catch (InvalidOperationException)
+            {
+                return 1.5f;
             }
         }
 
@@ -201,7 +210,7 @@ namespace ArtaleAI.Services
                     if (Math.Sign(currentDx) != expectedSignX && Math.Sign(currentDx) != 0)
                     {
                         StopMovement();
-                        Logger.Warning("[移動] 偵測到越界 (Overshoot)，停止按鍵準備校正。");
+                        Logger.Warning("[移動] 偵測到越界，停止並等待慣性消散...");
                         break;
                     }
 
@@ -212,42 +221,20 @@ namespace ArtaleAI.Services
 
                 StopMovement();
 
-                if (await WaitForHitboxAsync(isReachedExternally, 200, cancellationToken))
-                {
-                    if (isReachedExternally())
-                        return MovementResult.Success;
-                }
-
-                await WaitForStabilityAsync(getPlayerPosition, cancellationToken);
-
                 if (isReachedExternally())
                     return MovementResult.Success;
 
-                var finalPos = getPlayerPosition();
-                if (finalPos.HasValue)
+                int maxTaps = GetOvershootCorrectionMaxTaps();
+                Logger.Info($"[移動] 啟動越界校正：執行反向微調 (鍵:{reverseKey})，最多 {maxTaps} 次。");
+                for (int i = 0; i < maxTaps; i++)
                 {
-                    float finalDx = targetPos.X - finalPos.Value.X;
-                    if (Math.Sign(finalDx) != expectedSignX && Math.Sign(finalDx) != 0)
+                    await TapKeyAsync(reverseKey, 30, 60, cancellationToken);
+                    if (isReachedExternally())
                     {
-                        int maxTaps = GetOvershootCorrectionMaxTaps();
-                        Logger.Info($"[移動] 啟動越界校正：執行反向微調 (鍵:{reverseKey})，最多 {maxTaps} 次。");
-                        for (int i = 0; i < maxTaps; i++)
-                        {
-                            var p = getPlayerPosition();
-                            float dx = p.HasValue ? targetPos.X - p.Value.X : finalDx;
-                            int tapMs = Math.Abs(dx) < 4f ? 22 : 28;
-                            await TapKeyAsync(reverseKey, tapMs, 100, cancellationToken);
-                            if (isReachedExternally())
-                            {
-                                Logger.Info("[移動] 越界校正成功：重入目標區域。");
-                                return MovementResult.Success;
-                            }
-                        }
+                        Logger.Info("[移動] 越界校正成功：重入目標區域。");
+                        return MovementResult.Success;
                     }
                 }
-
-                if (isReachedExternally())
-                    return MovementResult.Success;
 
                 return MovementResult.NeedsCorrection;
             }
@@ -308,16 +295,7 @@ namespace ArtaleAI.Services
             return false;
         }
 
-        private string GetKeyName(ushort vkCode)
-        {
-            return vkCode switch
-            {
-                VK_UP => "↑",
-                VK_DOWN => "↓",
-                VK_LEFT => "←",
-                _ => "未知"
-            };
-        }
+
 
         public void StopMovement()
         {
@@ -415,7 +393,7 @@ namespace ArtaleAI.Services
             int inputSize = _cachedInputSize;
             var input = new INPUT { type = INPUT_KEYBOARD, U = new INPUTUNION { ki = new KEYBDINPUT { wVk = vkCode, dwFlags = keyUp ? KEYEVENTF_KEYUP : 0 } } };
             var inputs = new INPUT[] { input };
-            GetLastError();
+
             var result = SendInput(1, inputs, inputSize);
             return result;
         }
@@ -441,7 +419,7 @@ namespace ArtaleAI.Services
             var pStable = getPlayerPosition();
             float dx = ropeX - pStable.X;
             float adx = Math.Abs(dx);
-            const float ropeSnapTol = 2.0f;
+            float ropeSnapTol = GetWaypointReachDistancePx();
             for (int i = 0; i < 6 && adx > ropeSnapTol && adx <= 8.5f && !ct.IsCancellationRequested; i++)
             {
                 ushort k = pStable.X > ropeX ? VK_LEFT : VK_RIGHT;

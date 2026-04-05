@@ -44,7 +44,7 @@ namespace ArtaleAI.Models.Config
 
         public int BloodBarDetectIntervalMs { get; set; } = 100;
         public int MonsterDetectIntervalMs { get; set; } = 200;
-        public int CaptureFrameRate { get; set; } = 25;
+        public int CaptureFrameRate { get; set; } = 30;
 
         [YamlIgnore]
         public float VisionFps => CaptureFrameRate > 0 ? (float)CaptureFrameRate : 15.0f;

@@ -272,7 +272,7 @@ namespace ArtaleAI.UI
                         foreach (var wp in pathData.WaypointPaths)
                         {
                             if (wp.Position.X < 0 || wp.Position.Y < 0) continue;
-                            var pointColor = GetPriorityColor(wp.Priority, wp.IsBlacklisted, wp.IsCurrentTarget);
+                            var pointColor = GetNodeBaseColor(wp.IsBlacklisted, wp.IsCurrentTarget);
                             float sx = wp.Position.X * _zoomFactor;
                             float sy = wp.Position.Y * _zoomFactor;
                             int size = wp.IsCurrentTarget ? (_baseSize + _zoomFactor + 2) : (_baseSize + _zoomFactor / 2);
@@ -285,7 +285,7 @@ namespace ArtaleAI.UI
                     {
                         foreach (var rope in pathData.Ropes)
                         {
-                            var color = GetRopeAccessibilityColor(rope.DistanceToPlayer, rope.IsPlayerOnRope, rope.IsTargetRope);
+                            var color = GetRopeAccessibilityColor(rope.IsPlayerOnRope);
                             int thick = rope.IsTargetRope ? Math.Max(4, _baseSize + 2) : Math.Max(2, _baseSize);
                             float sx = rope.X * _zoomFactor;
                             float st = rope.TopY * _zoomFactor;
@@ -301,21 +301,6 @@ namespace ArtaleAI.UI
                         }
                     }
 
-                    if (pathData.FinalDestination.HasValue)
-                    {
-                        var fd = pathData.FinalDestination.Value;
-                        float fx = fd.X * _zoomFactor;
-                        float fy = fd.Y * _zoomFactor;
-                        int fSize = _baseSize + _zoomFactor * 2 + 4;
-
-                        using var fillBrush = new SolidBrush(Color.Red);
-                        graphics.FillEllipse(fillBrush, fx - fSize / 2f, fy - fSize / 2f, fSize, fSize);
-
-                        using var ringPen = new Pen(Color.White, 3.5f);
-                        int ringSize = fSize + 10;
-                        graphics.DrawEllipse(ringPen, fx - ringSize / 2f, fy - ringSize / 2f, ringSize, ringSize);
-                    }
-
                     if (pathData.TargetHitbox.HasValue)
                     {
                         var hb = pathData.TargetHitbox.Value;
@@ -325,14 +310,31 @@ namespace ArtaleAI.UI
                             hb.Width * _zoomFactor,
                             hb.Height * _zoomFactor);
 
+                        // 3×3 經 zoom 後常小於 1 個螢幕像素；外框至少給最小可見尺寸（仍以真實 hbRect 填色）
+                        const float minOutlinePx = 10f;
+                        float outlineW = Math.Max(hbRect.Width, minOutlinePx);
+                        float outlineH = Math.Max(hbRect.Height, minOutlinePx);
+                        float cx = hbRect.X + hbRect.Width * 0.5f;
+                        float cy = hbRect.Y + hbRect.Height * 0.5f;
+                        var outlineRect = new RectangleF(cx - outlineW * 0.5f, cy - outlineH * 0.5f, outlineW, outlineH);
+
                         var inside = pathData.IsPlayerInsideTargetHitbox == true;
-                        using var hbFill = new SolidBrush(inside ? Color.FromArgb(60, 0, 200, 120) : Color.FromArgb(40, 220, 30, 30));
-                        using var hbPen = new Pen(inside ? Color.Lime : Color.OrangeRed, 1.6f)
+                        using var hbFill = new SolidBrush(inside
+                            ? Color.FromArgb(185, 0, 95, 58)      // 已抵達: 深綠色
+                            : Color.FromArgb(180, 255, 0, 0));   // 未抵達: 紅色 (180透明度)
+                        using var hbPen = new Pen(inside ? Color.FromArgb(255, 0, 75, 42) : Color.FromArgb(255, 255, 0, 0), 2.6f)
                         {
                             DashStyle = System.Drawing.Drawing2D.DashStyle.Dash
                         };
+                        
+                        // 繪製高亮光暈層 (Glow Effect) - 以 outlineRect 為基準外擴 2px
+                        using (var hbGlow = new SolidBrush(Color.FromArgb(120, Color.White)))
+                        {
+                            graphics.FillRectangle(hbGlow, outlineRect.X - 2f, outlineRect.Y - 2f, outlineRect.Width + 4f, outlineRect.Height + 4f);
+                        }
+
                         graphics.FillRectangle(hbFill, hbRect);
-                        graphics.DrawRectangle(hbPen, hbRect.X, hbRect.Y, hbRect.Width, hbRect.Height);
+                        graphics.DrawRectangle(hbPen, outlineRect.X, outlineRect.Y, outlineRect.Width, outlineRect.Height);
                     }
 
                     if (pathData.RopeAlignCenterX.HasValue && pathData.RopeAlignTolerance.HasValue)
@@ -435,23 +437,20 @@ namespace ArtaleAI.UI
             GC.SuppressFinalize(this);
         }
 
-        private static Color GetPriorityColor(float priority, bool isBlacklisted, bool isCurrentTarget)
+        private static Color GetNodeBaseColor(bool isBlacklisted, bool isCurrentTarget)
         {
             if (isBlacklisted) return Color.Black;
 
-            if (priority < 0.5f) return Color.Red;
-            if (priority < 1.5f) return Color.Orange;
-            if (priority < 3.0f) return Color.Yellow;
-            return Color.Lime;
+            if (isCurrentTarget) return Color.Lime;
+
+            return Color.Red;
         }
 
-        private static Color GetRopeAccessibilityColor(float distance, bool isPlayerOnRope, bool isTargetRope)
+        private static Color GetRopeAccessibilityColor(bool isPlayerOnRope)
         {
             if (isPlayerOnRope) return Color.Cyan;
 
-            if (isTargetRope) return Color.Lime;
-
-            return Color.Lime;
+            return Color.Red;
         }
 
         private void DrawGrid(Graphics g, int width, int height)

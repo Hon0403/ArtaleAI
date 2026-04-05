@@ -84,6 +84,7 @@ navigation:
   playerPositionThreshold: 0.7
   otherPlayersThreshold: 0.5
   enableOtherPlayersDetection: true
+  # 繩索 X 對齊容差、小地圖繩線視覺半寬、側跳驗收與 waypointReachDistance 取大等皆用此值（不再額外 cap 2px）
   waypointReachDistance: 2
   # 側跳著陸 X 容許（px）；與 waypointReachDistance 取較大者驗收（略大可吸收落地後小滑動）
   jumpLandingTolerancePx: 10

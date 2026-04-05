@@ -23,8 +23,6 @@ namespace ArtaleAI.Models.Visualization
         /// <summary>臨時目標位置 (動作點/中間點) - 青色十字</summary>
         public SdPointF? TemporaryTarget { get; set; }
 
-        /// <summary>路徑終點（最後一個規劃節點）- 醒目高亮顯示</summary>
-        public SdPointF? FinalDestination { get; set; }
 
         /// <summary>動態插值點列表 - 亮綠色小點+連線</summary>
         public List<SdPointF>? IntermediatePoints { get; set; }
