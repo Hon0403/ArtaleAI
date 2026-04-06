@@ -115,8 +115,25 @@ namespace ArtaleAI.Services
                 isReached,
                 ct);
 
-            if (moveResult != MovementResult.Success)
+            if (moveResult == MovementResult.Failed)
                 return false;
+
+            if (!isReached())
+            {
+                Logger.Info("[導航] 未進 Hitbox，啟動微步對齊...");
+                var p = _positionProvider.GetCurrentPosition();
+                if (p.HasValue)
+                {
+                    float dx = targetPos.X - p.Value.X;
+                    ushort corrKey = dx > 0 ? VK_RIGHT : VK_LEFT;
+                    for (int i = 0; i < 8; i++)
+                    {
+                        if (isReached()) break;
+                        await _keyboard.TapKeyAsync(corrKey, 30, ct);
+                        await WaitForNextFrameAsync(ct);
+                    }
+                }
+            }
 
             return isReached();
         }
@@ -125,19 +142,20 @@ namespace ArtaleAI.Services
             NavigationEdge edge, SdPointF currentPos, SdPointF targetPos,
             bool isUp, Func<bool> isReached, CancellationToken ct)
         {
-            float ropeAlignTol = (float)(AppConfig.Instance.Navigation.RopeHitboxWidth / 2.0);
+            const float ropeAlignThreshold = 1.0f; // 統一門檻 (1.0px)
             float ropeX = ExtractRopeX(edge, targetPos.X);
             float ropeTargetY = targetPos.Y;
             float distanceToRopeX = Math.Abs(currentPos.X - ropeX);
 
-            if (distanceToRopeX > ropeAlignTol)
+            if (distanceToRopeX > ropeAlignThreshold)
             {
+                Logger.Info($"[爬梯前置] 水平位移至梯子 (X={ropeX:F1})，當前 X={currentPos.X:F1}");
                 var ropeTarget = new SdPointF(ropeX, currentPos.Y);
 
                 bool IsAlignedToRopeX()
                 {
                     var p = _positionProvider.GetCurrentPosition();
-                    return p.HasValue && Math.Abs(p.Value.X - ropeX) <= (float)(AppConfig.Instance.Navigation.RopeHitboxWidth / 2.0);
+                    return p.HasValue && Math.Abs(p.Value.X - ropeX) <= ropeAlignThreshold;
                 }
 
                 bool moveSuccess = await MoveToTargetWithCorrectionAsync(

@@ -8,6 +8,6 @@ namespace ArtaleAI.Core.Domain.Navigation
     {
         Success,
         Failed,
-        NeedsCorrection
+        Overshot
     }
 }

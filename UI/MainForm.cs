@@ -40,14 +40,12 @@ namespace ArtaleAI
         private GameVisionCore? gameVision;
         private AppConfig Config => AppConfig.Instance;
 
-        private List<Rectangle> _currentMinimapBoxes = new();
 
         private MonsterTemplateStore? _monsterTemplates;
         /// <summary>無模板時供 <see cref="GamePipeline"/> 重複指派，避免每幀配置新 <see cref="List{Mat}"/>。</summary>
         private static readonly List<Mat> s_emptyMonsterTemplates = new();
         private LiveViewManager? liveViewManager;
 
-        private Bitmap? _currentDisplayFrame;
         private readonly object imageUpdateLock = new object();
 
         private MinimapViewer? _minimapViewer;
@@ -72,7 +70,6 @@ namespace ArtaleAI
         private volatile bool _isLiveViewTabActive = false;
         private volatile bool _isPathEditingTabActive = false;
 
-        private volatile bool _visionDataReady = false;
 
 
         private string _lastReportedAction = "";
@@ -277,7 +274,6 @@ namespace ArtaleAI
                     {
                         var oldImage = pictureBoxLiveView.Image;
                         pictureBoxLiveView.Image = newFrame;
-                        _currentDisplayFrame = newFrame;
                         oldImage?.Dispose();
                     }
                 }
@@ -308,7 +304,6 @@ namespace ArtaleAI
 
             pictureBoxMinimap.BackColor = Color.FromArgb(45, 45, 48);
 
-            ckB_Start.CheckedChanged += (s, e) => UpdateAutoAttackState();
             cbo_LoadPathFile.SelectedIndexChanged += (s, e) => UpdateAutoAttackState();
             cbo_DetectMode.SelectedIndexChanged += (s, e) => UpdateAutoAttackState();
             cbo_MonsterTemplates.SelectedIndexChanged += (s, e) => UpdateAutoAttackState();
@@ -671,7 +666,6 @@ namespace ArtaleAI
 
                         _gamePipeline.ProcessFrame(frameMat, captureTime, config);
 
-                        _visionDataReady = _gamePipeline.VisionDataReady;
 
                         if (_isLiveViewTabActive && _overlayRenderer != null)
                         {
@@ -735,7 +729,6 @@ namespace ArtaleAI
         {
             if (result == null) return;
 
-            _currentMinimapBoxes = result.MinimapBoxes;
 
         }
 
@@ -920,7 +913,7 @@ namespace ArtaleAI
                         if (!float.IsNaN(ropeX))
                         {
                             pathData.RopeAlignCenterX = ropeX;
-                            pathData.RopeAlignTolerance = (float)(AppConfig.Instance.Navigation.RopeHitboxWidth / 2.0);
+                            pathData.RopeAlignTolerance = 1.0f; // 統一對位視覺化門檻 (與執行層同步)
                         }
                     }
                 }
@@ -939,7 +932,6 @@ namespace ArtaleAI
             try
             {
                 liveViewManager?.StopLiveView();
-                _currentDisplayFrame = null;
                 MsgLog.ShowStatus(textBox1, "所有資源已釋放");
             }
             catch (Exception ex)
@@ -1407,13 +1399,10 @@ namespace ArtaleAI
                 liveViewImage?.Dispose();
                 minimapImage?.Dispose();
 
-                _currentDisplayFrame?.Dispose();
-                _currentDisplayFrame = null;
 
                 _monsterTemplates?.Dispose();
 
 
-                _currentMinimapBoxes.Clear();
                 if (_mapFileManager != null)
                 {
                     _mapFileManager.MapSaved -= OnMapSaved;
@@ -1516,63 +1505,6 @@ namespace ArtaleAI
             }
         }
 
-        private async void rdo_Start_CheckedChanged(object sender, EventArgs e)
-        {
-            if (sender is not RadioButton rdoButton) return;
-
-            try
-            {
-                if (rdoButton.Checked)
-                {
-                    if (liveViewManager == null || !liveViewManager.IsRunning)
-                    {
-                        var captureItem = WindowFinder.TryCreateItemForWindow(Config.General.GameWindowTitle);
-                        if (captureItem == null)
-                        {
-                            MsgLog.ShowError(textBox1, "找不到遊戲視窗，請先開啟遊戲。");
-                            rdoButton.Checked = false;
-                            return;
-                        }
-
-                        MsgLog.ShowStatus(textBox1, "正在啟動背景擷取以處理路徑規劃...");
-
-                        if (liveViewManager != null)
-                        {
-                            liveViewManager.StartLiveView(captureItem);
-                            bool firstFrame = await liveViewManager.WaitForFirstFrameAsync(TimeSpan.FromSeconds(2));
-                            if (!firstFrame)
-                                Logger.Debug("[路徑規劃] 首幀未於 2 秒內就緒，仍繼續啟動追蹤。");
-                        }
-                    }
-
-                    if (_pathPlanningManager == null)
-                    {
-                        MsgLog.ShowError(textBox1, "路徑規劃管理器尚未初始化");
-                        rdoButton.Checked = false;
-                        return;
-                    }
-
-                    await _pathPlanningManager.StartAsync(Config.General.GameWindowTitle);
-                    MsgLog.ShowStatus(textBox1, "路徑規劃已啟動");
-                }
-                else
-                {
-                    if (_pathPlanningManager != null)
-                        await _pathPlanningManager.StopAsync();
-                    MsgLog.ShowStatus(textBox1, "路徑規劃已停止");
-                }
-            }
-            catch (Exception ex)
-            {
-                var action = rdoButton.Checked ? "啟動" : "停止";
-                MsgLog.ShowError(textBox1, $"路徑規劃{action}失敗: {ex.Message}");
-                if (rdoButton.Checked)
-                {
-                    rdoButton.Checked = false;
-                }
-            }
-        }
-
         #region 路徑規劃專用方法
 
         /// <summary>小地圖追蹤回呼：更新狀態列並驅動 FSM 啟動下一邊。</summary>
@@ -1618,7 +1550,6 @@ namespace ArtaleAI
                             if (_gamePipeline == null || !_gamePipeline.VisionDataReady)
                                 return;
                             _gamePipeline.VisionDataReady = false;
-                            _visionDataReady = false;
 
                             NavigationEdge? currentEdge = _pathPlanningManager?.Tracker?.CurrentNavigationEdge;
 
@@ -1683,6 +1614,7 @@ namespace ArtaleAI
         private async void ckB_Start_CheckedChanged(object sender, EventArgs e)
         {
             if (sender is not CheckBox chkBox) return;
+            UpdateAutoAttackState();
 
             try
             {

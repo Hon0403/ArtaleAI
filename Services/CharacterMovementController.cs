@@ -109,22 +109,11 @@ namespace ArtaleAI.Services
             }
         }
 
-        public void ReleaseAllKeys()
-        {
-            StopMovement();
-        }
 
-        /// <summary>由 <see cref="NavigationSettings.RopeHitboxWidth"/> 計算出的半徑，供繩索微調對齊 X。</summary>
+        /// <summary>統一的繩索對位門檻半徑 (1.0px)，供垂直移動發動前使用。</summary>
         private static float GetRopeAlignTolerancePx()
         {
-            try
-            {
-                return (float)(AppConfig.Instance.Navigation.RopeHitboxWidth / 2.0);
-            }
-            catch (InvalidOperationException)
-            {
-                return 3.0f;
-            }
+            return 1.0f; // 統一對位門檻
         }
 
         /// <summary>長按走向目標 X；以 <paramref name="isReachedExternally"/> 為到達。</summary>
@@ -200,8 +189,8 @@ namespace ArtaleAI.Services
                     if (Math.Sign(currentDx) != expectedSignX && Math.Sign(currentDx) != 0)
                     {
                         StopMovement();
-                        Logger.Warning("[移動] 偵測到越界，停止並等待慣性消散...");
-                        break;
+                        Logger.Warning("[移動] 偵測到越界。");
+                        return MovementResult.Overshot;
                     }
 
                     FocusGameWindow();
@@ -218,21 +207,6 @@ namespace ArtaleAI.Services
         }
 
 
-        private async Task<bool> WaitForHitboxAsync(Func<bool> isReachedExternally, int timeoutMs, CancellationToken ct)
-        {
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            while (sw.ElapsedMilliseconds < timeoutMs && !ct.IsCancellationRequested)
-            {
-                if (isReachedExternally())
-                {
-                    return true;
-                }
-
-                await WaitForNextFrameAsync(ct);
-            }
-
-            return false;
-        }
 
 
 
@@ -248,20 +222,6 @@ namespace ArtaleAI.Services
             }
         }
 
-        private async Task SendKeyPressAsync(ushort vkCode, int durationMs, CancellationToken cancellationToken)
-        {
-            if (cancellationToken.IsCancellationRequested) return;
-            try
-            {
-                SendKeyInput(vkCode, false);
-                await Task.Delay(durationMs, cancellationToken);
-                SendKeyInput(vkCode, true);
-            }
-            catch (OperationCanceledException)
-            {
-                SendKeyInput(vkCode, true);
-            }
-        }
 
         public bool HoldKey(ushort key)
         {
