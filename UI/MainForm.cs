@@ -1001,7 +1001,7 @@ namespace ArtaleAI
             {
                 if (_minimapViewer == null) return;
                 bool pathLoaded = loadedPathData != null && 
-                    ((loadedPathData.Platforms?.Count ?? 0) > 0 || (loadedPathData.Ropes?.Count ?? 0) > 0);
+                    ((loadedPathData.PolylinePlatforms?.Count ?? 0) > 0 || (loadedPathData.Ropes?.Count ?? 0) > 0);
                 bool autoStartChecked = ckB_Start.Checked;
                 bool liveViewReady = liveViewManager?.IsRunning == true && _isLiveViewTabActive;
 

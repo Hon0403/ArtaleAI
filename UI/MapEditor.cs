@@ -106,7 +106,6 @@ namespace ArtaleAI.UI
             _currentMapData.Nodes ??= new List<NavNodeData>();
             _currentMapData.Edges ??= new List<NavEdgeData>();
             _currentMapData.Ropes ??= new List<float[]>();
-            _currentMapData.Platforms ??= new List<PlatformSegmentData>();
             _currentMapData.PolylinePlatforms ??= new List<PolylinePlatformData>();
             _currentMapData.ManualEdges ??= new List<NavEdgeData>();
 

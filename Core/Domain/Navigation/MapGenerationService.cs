@@ -27,24 +27,6 @@ namespace ArtaleAI.Core.Domain.Navigation
             mapData.Ropes ??= new List<float[]>();
             mapData.PolylinePlatforms ??= new List<PolylinePlatformData>();
 
-            // A. 舊水平平台單向轉換
-            if (mapData.Platforms != null && mapData.Platforms.Count > 0 && mapData.PolylinePlatforms.Count == 0)
-            {
-                foreach (var oldPlat in mapData.Platforms)
-                {
-                    var newPlat = new PolylinePlatformData
-                    {
-                        Id = oldPlat.Id,
-                        Points = new List<PlatformPointData>
-                        {
-                            new PlatformPointData { X = oldPlat.X1, Y = oldPlat.Y },
-                            new PlatformPointData { X = oldPlat.X2, Y = oldPlat.Y }
-                        }
-                    };
-                    mapData.PolylinePlatforms.Add(newPlat);
-                }
-            }
-
             // 1. 統一清理所有以 n_v_ 開頭的自動生成虛擬節點與相關有向邊
             mapData.Nodes.RemoveAll(n => n.Id.StartsWith(VirtualNodePrefix, StringComparison.Ordinal));
             mapData.Edges.RemoveAll(e => e.FromNodeId.StartsWith(VirtualNodePrefix, StringComparison.Ordinal) || 

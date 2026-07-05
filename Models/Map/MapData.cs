@@ -5,24 +5,6 @@ using Newtonsoft.Json;
 namespace ArtaleAI.Models.Map
 {
     /// <summary>
-    /// 平台線段資料，代表地圖上一條可通行的水平線段幾何。
-    /// </summary>
-    public class PlatformSegmentData
-    {
-        /// <summary>平台唯一識別碼</summary>
-        public string Id { get; set; } = string.Empty;
-
-        /// <summary>起點 X 座標</summary>
-        public float X1 { get; set; }
-
-        /// <summary>終點 X 座標</summary>
-        public float X2 { get; set; }
-
-        /// <summary>平台高度 Y 座標</summary>
-        public float Y { get; set; }
-    }
-
-    /// <summary>
     /// 折線平台頂點資料。
     /// </summary>
     public class PlatformPointData
@@ -52,16 +34,8 @@ namespace ArtaleAI.Models.Map
         /// <summary>繩索位置列表</summary>
         public List<float[]> Ropes { get; set; } = new();
 
-        /// <summary>平台幾何線段列表</summary>
-        public List<PlatformSegmentData> Platforms { get; set; } = new();
-
         /// <summary>折線平台幾何列表</summary>
         public List<PolylinePlatformData> PolylinePlatforms { get; set; } = new();
-
-        /// <summary>
-        /// 確保舊的 Platforms 欄位在序列化為 JSON 時被忽略，但反序列化時仍能正常讀取。
-        /// </summary>
-        public bool ShouldSerializePlatforms() => false;
 
         /// <summary>導航圖節點（由幾何自動推導生成，不進行 JSON 持久化以避免 Double SSOT）。</summary>
         [JsonIgnore]
