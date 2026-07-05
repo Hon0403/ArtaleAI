@@ -137,13 +137,6 @@ namespace ArtaleAI
                 InitializeDetectionModeDropdown();
 
                 InitializeActionComboBox();
-                _mapEditor.OnNodeSelected += (action) =>
-                {
-                    if (InvokeRequired)
-                        Invoke(new Action(() => UpdateActionComboBoxSelection(action)));
-                    else
-                        UpdateActionComboBoxSelection(action);
-                };
 
                 var tracker = new PathPlanningTracker(gameVision);
                 _pathPlanningManager = new PathPlanningManager(tracker, Config);

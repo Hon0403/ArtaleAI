@@ -23,7 +23,7 @@ namespace ArtaleAI.UI
         }
 
         private const float PointRadius = 4.0f;
-        private const float SelectionRadius = 2.0f;
+        private const float SelectionRadius = 5.0f; // 調大以提高小地圖點選命中率
 
         private int _selectedNodeIndex = -1;
         private int _hoveredNodeIndex = -1;
@@ -31,8 +31,6 @@ namespace ArtaleAI.UI
         private int _manualEdgeStartIndex = -1;
 
         public float ZoomScale { get; set; } = 1.0f;
-
-        public event Action<int>? OnNodeSelected;
 
         private static NavigationActionType ActionTypeFromResolvedUiCode(int uiCode)
         {
@@ -187,12 +185,7 @@ namespace ArtaleAI.UI
                     if (_selectedNodeIndex != -1)
                     {
                         var node = _currentMapData.Nodes[_selectedNodeIndex];
-                        Logger.Info($"[編輯器] 選取生成節點 {_selectedNodeIndex} (Id={node.Id})");
-                        OnNodeSelected?.Invoke(node.EditorActionCode);
-                    }
-                    else
-                    {
-                        OnNodeSelected?.Invoke(-1);
+                        Logger.Info($"[編輯器] 選取預覽節點 {_selectedNodeIndex} (Id={node.Id}, X={node.X:F1}, Y={node.Y:F1})");
                     }
                 }
             }
@@ -766,19 +759,7 @@ namespace ArtaleAI.UI
             _hoveredNodeIndex = FindNearestNodeIndex(relativePoint);
         }
 
-        private Color GetNodeColor(int action)
-        {
-            var type = (NavigationActionType)action;
-            return type switch
-            {
-                NavigationActionType.Walk => Color.White,
-                NavigationActionType.Jump => Color.DeepSkyBlue,
-                NavigationActionType.SideJump => Color.Purple,
-                NavigationActionType.JumpDown => Color.Yellow,
-                NavigationActionType.Teleport => Color.OrangeRed,
-                _ => Color.Gray
-            };
-        }
+
 
         private string GetActionName(int action)
         {
