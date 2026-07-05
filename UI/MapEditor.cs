@@ -33,6 +33,9 @@ namespace ArtaleAI.UI
         private PolylinePlatformData? _hoveredPlatform = null;
         private float[]? _hoveredRope = null;
         private NavEdgeData? _hoveredManualEdge = null;
+        private List<PointF> _activeDrawingPoints = new();
+        private int _hoveredSegmentIndex = -1;
+        private PointF _hoveredProjectionPoint = PointF.Empty;
 
         public float ZoomScale { get; set; } = 1.0f;
 
@@ -162,24 +165,83 @@ namespace ArtaleAI.UI
 
         public void UpdateMousePosition(PointF screenPoint)
         {
-            if (!_startPoint.HasValue || minimapBounds.IsEmpty)
+            if (minimapBounds.IsEmpty)
             {
                 _previewPoint = null;
                 return;
             }
 
-            if (_currentEditMode == EditMode.Platform)
+            bool isDrawing = (_currentEditMode == EditMode.Platform && _activeDrawingPoints.Count > 0) ||
+                             (_currentEditMode != EditMode.Platform && _startPoint.HasValue);
+
+            if (!isDrawing)
             {
-                // 鎖定 Y 軸進行水平對齊預覽
-                _previewPoint = new PointF(
-                    screenPoint.X - minimapBounds.X,
-                    _startPoint.Value.Y);
+                _previewPoint = null;
+                return;
+            }
+
+            _previewPoint = new PointF(
+                screenPoint.X - minimapBounds.X,
+                screenPoint.Y - minimapBounds.Y);
+        }
+
+        public void CancelCurrentDrawing()
+        {
+            _activeDrawingPoints.Clear();
+            _startPoint = null;
+            _previewPoint = null;
+            _hoveredSegmentIndex = -1;
+            _hoveredProjectionPoint = PointF.Empty;
+            Logger.Info("[編輯器] 取消目前繪製狀態與重置 UI 狀態");
+        }
+
+        public void FinishCurrentPolyline()
+        {
+            var cleanedPoints = new List<PointF>();
+            const float MinVertexDistance = 1.5f;
+
+            foreach (var pt in _activeDrawingPoints)
+            {
+                if (cleanedPoints.Count == 0)
+                {
+                    cleanedPoints.Add(pt);
+                }
+                else
+                {
+                    var prev = cleanedPoints[cleanedPoints.Count - 1];
+                    float dx = pt.X - prev.X;
+                    float dy = pt.Y - prev.Y;
+                    float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+                    if (dist >= MinVertexDistance)
+                    {
+                        cleanedPoints.Add(pt);
+                    }
+                }
+            }
+
+            if (cleanedPoints.Count >= 2)
+            {
+                var newPlat = new PolylinePlatformData
+                {
+                    Id = AllocatePlatformId(),
+                    Points = cleanedPoints.Select(p => new PlatformPointData 
+                    { 
+                        X = (float)Math.Round(p.X, 1), 
+                        Y = (float)Math.Round(p.Y, 1) 
+                    }).ToList()
+                };
+
+                _currentMapData.PolylinePlatforms ??= new List<PolylinePlatformData>();
+                _currentMapData.PolylinePlatforms.Add(newPlat);
+                Logger.Info($"[編輯器] 建立折線平台幾何: Id={newPlat.Id}, 頂點數={newPlat.Points.Count}");
+
+                CancelCurrentDrawing();
+                MapGenerationService.BuildHTopology(_currentMapData);
             }
             else
             {
-                _previewPoint = new PointF(
-                    screenPoint.X - minimapBounds.X,
-                    screenPoint.Y - minimapBounds.Y);
+                Logger.Warning("[編輯器] 折線平台頂點數不足 2，取消建立");
+                CancelCurrentDrawing();
             }
         }
 
@@ -208,58 +270,88 @@ namespace ArtaleAI.UI
             {
                 if (button == MouseButtons.Right)
                 {
-                    _startPoint = null;
-                    _previewPoint = null;
-                    Logger.Info("[編輯器] 取消平台幾何繪製");
-                }
-                else
-                {
-                    if (!_startPoint.HasValue)
+                    if (_activeDrawingPoints.Count > 0)
                     {
-                        _startPoint = relativePoint;
-                        Logger.Info($"[編輯器] 設定平台起點: ({relativePoint.X:F1}, {relativePoint.Y:F1})");
+                        Logger.Info("[編輯器] 右鍵點擊：嘗試完成目前折線平台");
+                        FinishCurrentPolyline();
                     }
                     else
                     {
-                        var start = _startPoint.Value;
+                        CancelCurrentDrawing();
+                        Logger.Info("[編輯器] 右鍵點擊：取消平台模式所有繪製狀態");
+                    }
+                }
+                else
+                {
+                    if (_activeDrawingPoints.Count == 0)
+                    {
+                        // 插點檢測 (Phase 3 核心)
+                        PolylinePlatformData? hitPlat = null;
+                        PolylineHitResult? hitResult = null;
+                        float bestDist = float.MaxValue;
+                        float threshold = SelectionRadius * 2.0f; // 10 像素
                         
-                        float x1 = (float)Math.Round(start.X, 1);
-                        float y1 = (float)Math.Round(start.Y, 1);
-                        float x2 = (float)Math.Round(relativePoint.X, 1);
-                        float y2 = (float)Math.Round(relativePoint.Y, 1);
-
-                        if (_previewPoint.HasValue)
+                        if (_currentMapData.PolylinePlatforms != null)
                         {
-                            x2 = (float)Math.Round(_previewPoint.Value.X, 1);
-                            y2 = (float)Math.Round(_previewPoint.Value.Y, 1);
-                        }
-
-                        float length = (float)Math.Sqrt(Math.Pow(x2 - x1, 2) + Math.Pow(y2 - y1, 2));
-                        if (length < 2.0f)
-                        {
-                            Logger.Warning($"[編輯器] 平台幾何長度過短 ({length:F1} < 2.0)，取消建立");
-                            _startPoint = null;
-                            _previewPoint = null;
-                            return;
-                        }
-
-                        var newPlat = new PolylinePlatformData
-                        {
-                            Id = AllocatePlatformId(),
-                            Points = new List<PlatformPointData>
+                            foreach (var plat in _currentMapData.PolylinePlatforms)
                             {
-                                new PlatformPointData { X = x1, Y = y1 },
-                                new PlatformPointData { X = x2, Y = y2 }
+                                var hit = GetDistanceToPolyline(relativePoint, plat);
+                                if (hit.Distance < threshold && hit.Distance < bestDist)
+                                {
+                                    bestDist = hit.Distance;
+                                    hitPlat = plat;
+                                    hitResult = hit;
+                                }
                             }
-                        };
+                        }
 
-                        _currentMapData.PolylinePlatforms.Add(newPlat);
-                        Logger.Info($"[編輯器] 建立折線平台幾何: Id={newPlat.Id}, 起點=({x1:F1}, {y1:F1}), 終點=({x2:F1}, {y2:F1})");
+                        // 防呆規則：如果命中點距離此折線平台上的任何既有頂點 (Vertex) 過近，則忽略插點
+                        bool isTooCloseToVertex = false;
+                        const float MinVertexDistanceThreshold = 5.0f; // 5 像素
 
-                        _startPoint = null;
-                        _previewPoint = null;
+                        if (hitPlat != null && hitResult != null)
+                        {
+                            foreach (var v in hitPlat.Points)
+                            {
+                                float dx = hitResult.ProjectionPoint.X - v.X;
+                                float dy = hitResult.ProjectionPoint.Y - v.Y;
+                                float distToVertex = (float)Math.Sqrt(dx * dx + dy * dy);
+                                if (distToVertex <= MinVertexDistanceThreshold)
+                                {
+                                    isTooCloseToVertex = true;
+                                    break;
+                                }
+                            }
 
-                        MapGenerationService.BuildHTopology(_currentMapData);
+                            if (!isTooCloseToVertex)
+                            {
+                                // 插入新折點
+                                var newPt = new PlatformPointData
+                                {
+                                    X = (float)Math.Round(hitResult.ProjectionPoint.X, 1),
+                                    Y = (float)Math.Round(hitResult.ProjectionPoint.Y, 1)
+                                };
+                                hitPlat.Points.Insert(hitResult.SegmentIndex + 1, newPt);
+                                Logger.Info($"[編輯器] 於折線平台 {hitPlat.Id} 的段 {hitResult.SegmentIndex} 插入折點: ({newPt.X:F1}, {newPt.Y:F1})");
+                                
+                                MapGenerationService.BuildHTopology(_currentMapData);
+                                return; // 結束，不進入繪製起點
+                            }
+                            else
+                            {
+                                Logger.Warning("[編輯器] 點擊位置距離既有折點過近，忽略此次插點操作");
+                            }
+                        }
+
+                        // 開始新平台的繪製
+                        _activeDrawingPoints.Add(relativePoint);
+                        Logger.Info($"[編輯器] 設定折線平台起點: ({relativePoint.X:F1}, {relativePoint.Y:F1})");
+                    }
+                    else
+                    {
+                        var nextPt = _previewPoint ?? relativePoint;
+                        _activeDrawingPoints.Add(nextPt);
+                        Logger.Info($"[編輯器] 新增折線平台折點 {_activeDrawingPoints.Count - 1}: ({nextPt.X:F1}, {nextPt.Y:F1})");
                     }
                 }
             }
@@ -434,7 +526,7 @@ namespace ArtaleAI.UI
         {
             if (minimapBounds.IsEmpty) return;
 
-            // 1. 繪製實際的 Platforms 幾何線段 (萊姆綠粗線，Hover時以亮萊姆綠且加粗高亮)
+            // 1. 繪製實際的 Platforms 幾何線段 (萊姆綠粗線，Hover時以亮萊姆綠且加粗高亮，被選中的Segment特別高亮)
             if (_currentMapData.PolylinePlatforms?.Any() == true)
             {
                 foreach (var plat in _currentMapData.PolylinePlatforms)
@@ -445,19 +537,35 @@ namespace ArtaleAI.UI
                     Color platColor = isPlatHovered ? Color.Chartreuse : Color.Lime;
                     float platWidth = isPlatHovered ? 6.0f : 4.0f;
 
-                    using (var pen = new Pen(platColor, platWidth))
+                    for (int i = 0; i < plat.Points.Count - 1; i++)
                     {
-                        for (int i = 0; i < plat.Points.Count - 1; i++)
+                        var p1 = convert(new PointF(minimapBounds.X + plat.Points[i].X, minimapBounds.Y + plat.Points[i].Y));
+                        var p2 = convert(new PointF(minimapBounds.X + plat.Points[i + 1].X, minimapBounds.Y + plat.Points[i + 1].Y));
+
+                        bool isSegHovered = isPlatHovered && (i == _hoveredSegmentIndex);
+                        float currentWidth = isSegHovered ? 8.0f : platWidth;
+                        Color currentColor = isSegHovered ? Color.Gold : platColor;
+
+                        using (var pen = new Pen(currentColor, currentWidth))
                         {
-                            var p1 = convert(new PointF(minimapBounds.X + plat.Points[i].X, minimapBounds.Y + plat.Points[i].Y));
-                            var p2 = convert(new PointF(minimapBounds.X + plat.Points[i + 1].X, minimapBounds.Y + plat.Points[i + 1].Y));
                             g.DrawLine(pen, p1, p2);
-                            g.FillRectangle(Brushes.White, p1.X - 2, p1.Y - 2, 4, 4);
-                            if (i == plat.Points.Count - 2)
-                            {
-                                g.FillRectangle(Brushes.White, p2.X - 2, p2.Y - 2, 4, 4);
-                            }
                         }
+
+                        g.FillRectangle(Brushes.White, p1.X - 2, p1.Y - 2, 4, 4);
+                        if (i == plat.Points.Count - 2)
+                        {
+                            g.FillRectangle(Brushes.White, p2.X - 2, p2.Y - 2, 4, 4);
+                        }
+                    }
+
+                    if (isPlatHovered && _hoveredProjectionPoint != PointF.Empty)
+                    {
+                        var pProj = convert(new PointF(minimapBounds.X + _hoveredProjectionPoint.X, minimapBounds.Y + _hoveredProjectionPoint.Y));
+                        using (var projBrush = new SolidBrush(Color.FromArgb(200, Color.White)))
+                        {
+                            g.FillEllipse(projBrush, pProj.X - 4f, pProj.Y - 4f, 8f, 8f);
+                        }
+                        g.DrawEllipse(Pens.Black, pProj.X - 4f, pProj.Y - 4f, 8f, 8f);
                     }
                 }
             }
@@ -603,34 +711,74 @@ namespace ArtaleAI.UI
 
         private void DrawPreviewShapes(Graphics g, Func<PointF, PointF> convert)
         {
-            bool isLineMode = _currentEditMode == EditMode.Platform ||
-                               _currentEditMode == EditMode.Rope ||
-                               _currentEditMode == EditMode.ManualEdge;
-
-            if (_startPoint.HasValue && _previewPoint.HasValue && isLineMode)
+            if (_currentEditMode == EditMode.Platform)
             {
-                var startScreen = new PointF(
-                    minimapBounds.X + _startPoint.Value.X,
-                    minimapBounds.Y + _startPoint.Value.Y);
-                var previewScreen = new PointF(
-                    minimapBounds.X + _previewPoint.Value.X,
-                    minimapBounds.Y + _previewPoint.Value.Y);
-
-                using (var pen = new Pen(Color.Cyan, 2) { DashStyle = DashStyle.Dash })
+                if (_activeDrawingPoints.Count > 0)
                 {
-                    g.DrawLine(pen, convert(startScreen), convert(previewScreen));
+                    // 1. 繪製已確定的折線段 (Cyan 實線)
+                    using (var pen = new Pen(Color.Cyan, 2.5f))
+                    {
+                        for (int i = 0; i < _activeDrawingPoints.Count - 1; i++)
+                        {
+                            var p1 = convert(new PointF(minimapBounds.X + _activeDrawingPoints[i].X, minimapBounds.Y + _activeDrawingPoints[i].Y));
+                            var p2 = convert(new PointF(minimapBounds.X + _activeDrawingPoints[i + 1].X, minimapBounds.Y + _activeDrawingPoints[i + 1].Y));
+                            g.DrawLine(pen, p1, p2);
+                        }
+                    }
+
+                    // 2. 繪製已確定折線頂點的紅色圓點
+                    using (var brush = new SolidBrush(Color.Red))
+                    {
+                        foreach (var pt in _activeDrawingPoints)
+                        {
+                            var pScreen = convert(new PointF(minimapBounds.X + pt.X, minimapBounds.Y + pt.Y));
+                            g.FillEllipse(brush, pScreen.X - 3, pScreen.Y - 3, 6, 6);
+                        }
+                    }
+
+                    // 3. 繪製最後一個確定點到滑鼠預覽點的虛線段 (Cyan 虛線)
+                    if (_previewPoint.HasValue)
+                    {
+                        var lastPt = _activeDrawingPoints[_activeDrawingPoints.Count - 1];
+                        var pLast = convert(new PointF(minimapBounds.X + lastPt.X, minimapBounds.Y + lastPt.Y));
+                        var pMouse = convert(new PointF(minimapBounds.X + _previewPoint.Value.X, minimapBounds.Y + _previewPoint.Value.Y));
+
+                        using (var pen = new Pen(Color.Cyan, 2f) { DashStyle = DashStyle.Dash })
+                        {
+                            g.DrawLine(pen, pLast, pMouse);
+                        }
+                    }
                 }
             }
-
-            if (_startPoint.HasValue && isLineMode)
+            else
             {
-                var startScreen = new PointF(
-                    minimapBounds.X + _startPoint.Value.X,
-                    minimapBounds.Y + _startPoint.Value.Y);
-                var converted = convert(startScreen);
-                using (var brush = new SolidBrush(Color.Red))
+                bool isLineMode = _currentEditMode == EditMode.Rope || _currentEditMode == EditMode.ManualEdge;
+
+                if (_startPoint.HasValue && _previewPoint.HasValue && isLineMode)
                 {
-                    g.FillEllipse(brush, converted.X - 2, converted.Y - 2, 4, 4);
+                    var startScreen = new PointF(
+                        minimapBounds.X + _startPoint.Value.X,
+                        minimapBounds.Y + _startPoint.Value.Y);
+                    var previewScreen = new PointF(
+                        minimapBounds.X + _previewPoint.Value.X,
+                        minimapBounds.Y + _previewPoint.Value.Y);
+
+                    using (var pen = new Pen(Color.Cyan, 2) { DashStyle = DashStyle.Dash })
+                    {
+                        g.DrawLine(pen, convert(startScreen), convert(previewScreen));
+                    }
+                }
+
+                if (_startPoint.HasValue && isLineMode)
+                {
+                    var startScreen = new PointF(
+                        minimapBounds.X + _startPoint.Value.X,
+                        minimapBounds.Y + _startPoint.Value.Y);
+                    var converted = convert(startScreen);
+                    using (var brush = new SolidBrush(Color.Red))
+                    {
+                        g.FillEllipse(brush, converted.X - 2, converted.Y - 2, 4, 4);
+                    }
                 }
             }
         }
@@ -858,13 +1006,22 @@ namespace ArtaleAI.UI
             _hoveredPlatform = null;
             _hoveredRope = null;
             _hoveredManualEdge = null;
+            _hoveredSegmentIndex = -1;
+            _hoveredProjectionPoint = PointF.Empty;
 
-            if (_currentEditMode == EditMode.Delete)
+            bool isPlatformModeNotDrawing = _currentEditMode == EditMode.Platform && _activeDrawingPoints.Count == 0;
+
+            if (_currentEditMode == EditMode.Delete || isPlatformModeNotDrawing)
             {
                 float threshold = SelectionRadius; // 5.0 像素
+                if (isPlatformModeNotDrawing)
+                {
+                    threshold = SelectionRadius * 2.0f; // 插點模式下，放寬命中範圍到 10 像素
+                }
 
                 // 1. 檢索 Platform
                 PolylinePlatformData? bestPlatform = null;
+                PolylineHitResult? bestHitResult = null;
                 float bestPlatformDist = float.MaxValue;
                 if (_currentMapData.PolylinePlatforms != null)
                 {
@@ -875,65 +1032,107 @@ namespace ArtaleAI.UI
                         {
                             bestPlatformDist = hit.Distance;
                             bestPlatform = plat;
+                            bestHitResult = hit;
                         }
                     }
                 }
 
-                // 2. 檢索 Rope
-                float[]? bestRope = null;
-                float bestRopeDist = float.MaxValue;
-                if (_currentMapData.Ropes != null)
+                if (_currentEditMode == EditMode.Delete)
                 {
-                    foreach (var rope in _currentMapData.Ropes)
+                    // 2. 檢索 Rope
+                    float[]? bestRope = null;
+                    float bestRopeDist = float.MaxValue;
+                    if (_currentMapData.Ropes != null)
                     {
-                        if (rope.Length < 3) continue;
-                        float dist = GetDistanceToRope(relativePoint, rope);
-                        if (dist < threshold && dist < bestRopeDist)
+                        foreach (var rope in _currentMapData.Ropes)
                         {
-                            bestRopeDist = dist;
-                            bestRope = rope;
+                            if (rope.Length < 3) continue;
+                            float dist = GetDistanceToRope(relativePoint, rope);
+                            if (dist < threshold && dist < bestRopeDist)
+                            {
+                                bestRopeDist = dist;
+                                bestRope = rope;
+                            }
                         }
                     }
-                }
 
-                // 3. 檢索 ManualEdge
-                NavEdgeData? bestManualEdge = null;
-                float bestManualEdgeDist = float.MaxValue;
-                if (_currentMapData.ManualEdges != null)
-                {
-                    foreach (var edge in _currentMapData.ManualEdges)
+                    // 3. 檢索 ManualEdge
+                    NavEdgeData? bestManualEdge = null;
+                    float bestManualEdgeDist = float.MaxValue;
+                    if (_currentMapData.ManualEdges != null)
                     {
-                        int fromIdx = FindNodeIndexById(edge.FromNodeId);
-                        int toIdx = FindNodeIndexById(edge.ToNodeId);
-                        if (fromIdx < 0 || toIdx < 0) continue;
-
-                        var fromNode = _currentMapData.Nodes[fromIdx];
-                        var toNode = _currentMapData.Nodes[toIdx];
-
-                        float dist = GetDistanceToEdge(relativePoint, fromNode, toNode);
-                        if (dist < threshold && dist < bestManualEdgeDist)
+                        foreach (var edge in _currentMapData.ManualEdges)
                         {
-                            bestManualEdgeDist = dist;
-                            bestManualEdge = edge;
+                            int fromIdx = FindNodeIndexById(edge.FromNodeId);
+                            int toIdx = FindNodeIndexById(edge.ToNodeId);
+                            if (fromIdx < 0 || toIdx < 0) continue;
+
+                            var fromNode = _currentMapData.Nodes[fromIdx];
+                            var toNode = _currentMapData.Nodes[toIdx];
+
+                            float dist = GetDistanceToEdge(relativePoint, fromNode, toNode);
+                            if (dist < threshold && dist < bestManualEdgeDist)
+                            {
+                                bestManualEdgeDist = dist;
+                                bestManualEdge = edge;
+                            }
+                        }
+                    }
+
+                    // 尋找最近的命中物件
+                    float minOfAll = Math.Min(bestPlatformDist, Math.Min(bestRopeDist, bestManualEdgeDist));
+                    if (minOfAll < threshold)
+                    {
+                        if (bestPlatform != null && Math.Abs(bestPlatformDist - minOfAll) < 0.001f)
+                        {
+                            _hoveredPlatform = bestPlatform;
+                            if (bestHitResult != null)
+                            {
+                                _hoveredSegmentIndex = bestHitResult.SegmentIndex;
+                                _hoveredProjectionPoint = bestHitResult.ProjectionPoint;
+                            }
+                        }
+                        else if (bestRope != null && Math.Abs(bestRopeDist - minOfAll) < 0.001f)
+                        {
+                            _hoveredRope = bestRope;
+                        }
+                        else if (bestManualEdge != null && Math.Abs(bestManualEdgeDist - minOfAll) < 0.001f)
+                        {
+                            _hoveredManualEdge = bestManualEdge;
                         }
                     }
                 }
-
-                // 尋找最近的命中物件
-                float minOfAll = Math.Min(bestPlatformDist, Math.Min(bestRopeDist, bestManualEdgeDist));
-                if (minOfAll < threshold)
+                else
                 {
-                    if (bestPlatform != null && Math.Abs(bestPlatformDist - minOfAll) < 0.001f)
+                    // Platform 模式下的 Hover 命中
+                    if (bestPlatform != null)
                     {
-                        _hoveredPlatform = bestPlatform;
-                    }
-                    else if (bestRope != null && Math.Abs(bestRopeDist - minOfAll) < 0.001f)
-                    {
-                        _hoveredRope = bestRope;
-                    }
-                    else if (bestManualEdge != null && Math.Abs(bestManualEdgeDist - minOfAll) < 0.001f)
-                    {
-                        _hoveredManualEdge = bestManualEdge;
+                        // 防呆：如果命中點距離任何既有折點過近，也不高亮 segment 與 projection point
+                        bool isTooCloseToVertex = false;
+                        if (bestHitResult != null)
+                        {
+                            foreach (var v in bestPlatform.Points)
+                            {
+                                float dx = bestHitResult.ProjectionPoint.X - v.X;
+                                float dy = bestHitResult.ProjectionPoint.Y - v.Y;
+                                float distToVertex = (float)Math.Sqrt(dx * dx + dy * dy);
+                                if (distToVertex <= 5.0f)
+                                {
+                                    isTooCloseToVertex = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!isTooCloseToVertex)
+                        {
+                            _hoveredPlatform = bestPlatform;
+                            if (bestHitResult != null)
+                            {
+                                _hoveredSegmentIndex = bestHitResult.SegmentIndex;
+                                _hoveredProjectionPoint = bestHitResult.ProjectionPoint;
+                            }
+                        }
                     }
                 }
             }

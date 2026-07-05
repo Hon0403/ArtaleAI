@@ -301,6 +301,31 @@ namespace ArtaleAI
             cbo_DetectMode.SelectedIndexChanged += (s, e) => UpdateAutoAttackState();
             cbo_MonsterTemplates.SelectedIndexChanged += (s, e) => UpdateAutoAttackState();
 
+            this.KeyPreview = true;
+            this.KeyDown += MainForm_KeyDown;
+        }
+
+        private void MainForm_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (_mapEditor == null) return;
+
+            if (_mapEditor.GetCurrentEditMode() == EditMode.Platform)
+            {
+                if (e.KeyCode == Keys.Enter)
+                {
+                    _mapEditor.FinishCurrentPolyline();
+                    pictureBoxMinimap.Invalidate();
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                }
+                else if (e.KeyCode == Keys.Escape)
+                {
+                    _mapEditor.CancelCurrentDrawing();
+                    pictureBoxMinimap.Invalidate();
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                }
+            }
         }
 
         #endregion
