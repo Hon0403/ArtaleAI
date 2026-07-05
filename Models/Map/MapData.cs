@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
 
 namespace ArtaleAI.Models.Map
 {
@@ -33,10 +34,12 @@ namespace ArtaleAI.Models.Map
         /// <summary>平台幾何線段列表</summary>
         public List<PlatformSegmentData> Platforms { get; set; } = new();
 
-        /// <summary>導航圖節點（座標與類型；導航與編輯器 SSOT）。</summary>
+        /// <summary>導航圖節點（由幾何自動推導生成，不進行 JSON 持久化以避免 Double SSOT）。</summary>
+        [JsonIgnore]
         public List<NavNodeData> Nodes { get; set; } = new();
 
-        /// <summary>導航圖邊（有向）。</summary>
+        /// <summary>導航圖邊（由幾何與手動邊自動推導生成，不進行 JSON 持久化以避免 Double SSOT）。</summary>
+        [JsonIgnore]
         public List<NavEdgeData> Edges { get; set; } = new();
 
         /// <summary>手動例外邊列表</summary>
