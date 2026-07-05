@@ -23,6 +23,27 @@ namespace ArtaleAI.Models.Map
     }
 
     /// <summary>
+    /// 折線平台頂點資料。
+    /// </summary>
+    public class PlatformPointData
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+    }
+
+    /// <summary>
+    /// 折線平台資料，代表地圖上一條可通行的多點折線幾何。
+    /// </summary>
+    public class PolylinePlatformData
+    {
+        /// <summary>平台唯一識別碼</summary>
+        public string Id { get; set; } = string.Empty;
+
+        /// <summary>折線點序列</summary>
+        public List<PlatformPointData> Points { get; set; } = new();
+    }
+
+    /// <summary>
     /// 地圖資料
     /// 儲存地圖上的所有路徑點、區域標記等資訊
     /// </summary>
@@ -33,6 +54,14 @@ namespace ArtaleAI.Models.Map
 
         /// <summary>平台幾何線段列表</summary>
         public List<PlatformSegmentData> Platforms { get; set; } = new();
+
+        /// <summary>折線平台幾何列表</summary>
+        public List<PolylinePlatformData> PolylinePlatforms { get; set; } = new();
+
+        /// <summary>
+        /// 確保舊的 Platforms 欄位在序列化為 JSON 時被忽略，但反序列化時仍能正常讀取。
+        /// </summary>
+        public bool ShouldSerializePlatforms() => false;
 
         /// <summary>導航圖節點（由幾何自動推導生成，不進行 JSON 持久化以避免 Double SSOT）。</summary>
         [JsonIgnore]

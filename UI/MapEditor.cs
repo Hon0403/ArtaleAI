@@ -30,7 +30,7 @@ namespace ArtaleAI.UI
         private int _currentActionType = 0;
         private int _manualEdgeStartIndex = -1;
 
-        private PlatformSegmentData? _hoveredPlatform = null;
+        private PolylinePlatformData? _hoveredPlatform = null;
         private float[]? _hoveredRope = null;
         private NavEdgeData? _hoveredManualEdge = null;
 
@@ -44,11 +44,11 @@ namespace ArtaleAI.UI
 
         private string AllocatePlatformId()
         {
-            _currentMapData.Platforms ??= new List<PlatformSegmentData>();
+            _currentMapData.PolylinePlatforms ??= new List<PolylinePlatformData>();
             var taken = new HashSet<string>(
-                _currentMapData.Platforms.Select(p => p.Id),
+                _currentMapData.PolylinePlatforms.Select(p => p.Id),
                 StringComparer.Ordinal);
-            for (int i = _currentMapData.Platforms.Count; ; i++)
+            for (int i = _currentMapData.PolylinePlatforms.Count; ; i++)
             {
                 string id = $"plat_{i}";
                 if (taken.Add(id)) return id;
@@ -104,6 +104,7 @@ namespace ArtaleAI.UI
             _currentMapData.Edges ??= new List<NavEdgeData>();
             _currentMapData.Ropes ??= new List<float[]>();
             _currentMapData.Platforms ??= new List<PlatformSegmentData>();
+            _currentMapData.PolylinePlatforms ??= new List<PolylinePlatformData>();
             _currentMapData.ManualEdges ??= new List<NavEdgeData>();
 
             _selectedNodeIndex = -1;
@@ -221,9 +222,19 @@ namespace ArtaleAI.UI
                     else
                     {
                         var start = _startPoint.Value;
-                        var end = relativePoint;
+                        
+                        float x1 = (float)Math.Round(start.X, 1);
+                        float y1 = (float)Math.Round(start.Y, 1);
+                        float x2 = (float)Math.Round(relativePoint.X, 1);
+                        float y2 = (float)Math.Round(relativePoint.Y, 1);
 
-                        float length = Math.Abs(start.X - end.X);
+                        if (_previewPoint.HasValue)
+                        {
+                            x2 = (float)Math.Round(_previewPoint.Value.X, 1);
+                            y2 = (float)Math.Round(_previewPoint.Value.Y, 1);
+                        }
+
+                        float length = (float)Math.Sqrt(Math.Pow(x2 - x1, 2) + Math.Pow(y2 - y1, 2));
                         if (length < 2.0f)
                         {
                             Logger.Warning($"[編輯器] 平台幾何長度過短 ({length:F1} < 2.0)，取消建立");
@@ -232,20 +243,18 @@ namespace ArtaleAI.UI
                             return;
                         }
 
-                        float x1 = Math.Min(start.X, end.X);
-                        float x2 = Math.Max(start.X, end.X);
-                        float y = start.Y;
-
-                        var newPlat = new PlatformSegmentData
+                        var newPlat = new PolylinePlatformData
                         {
                             Id = AllocatePlatformId(),
-                            X1 = (float)Math.Round(x1, 1),
-                            X2 = (float)Math.Round(x2, 1),
-                            Y = (float)Math.Round(y, 1)
+                            Points = new List<PlatformPointData>
+                            {
+                                new PlatformPointData { X = x1, Y = y1 },
+                                new PlatformPointData { X = x2, Y = y2 }
+                            }
                         };
 
-                        _currentMapData.Platforms.Add(newPlat);
-                        Logger.Info($"[編輯器] 建立平台幾何: Id={newPlat.Id}, X1={newPlat.X1:F1}, X2={newPlat.X2:F1}, Y={newPlat.Y:F1}");
+                        _currentMapData.PolylinePlatforms.Add(newPlat);
+                        Logger.Info($"[編輯器] 建立折線平台幾何: Id={newPlat.Id}, 起點=({x1:F1}, {y1:F1}), 終點=({x2:F1}, {y2:F1})");
 
                         _startPoint = null;
                         _previewPoint = null;
@@ -426,12 +435,11 @@ namespace ArtaleAI.UI
             if (minimapBounds.IsEmpty) return;
 
             // 1. 繪製實際的 Platforms 幾何線段 (萊姆綠粗線，Hover時以亮萊姆綠且加粗高亮)
-            if (_currentMapData.Platforms?.Any() == true)
+            if (_currentMapData.PolylinePlatforms?.Any() == true)
             {
-                foreach (var plat in _currentMapData.Platforms)
+                foreach (var plat in _currentMapData.PolylinePlatforms)
                 {
-                    var p1 = convert(new PointF(minimapBounds.X + plat.X1, minimapBounds.Y + plat.Y));
-                    var p2 = convert(new PointF(minimapBounds.X + plat.X2, minimapBounds.Y + plat.Y));
+                    if (plat.Points == null || plat.Points.Count < 2) continue;
 
                     bool isPlatHovered = (plat == _hoveredPlatform);
                     Color platColor = isPlatHovered ? Color.Chartreuse : Color.Lime;
@@ -439,10 +447,18 @@ namespace ArtaleAI.UI
 
                     using (var pen = new Pen(platColor, platWidth))
                     {
-                        g.DrawLine(pen, p1, p2);
+                        for (int i = 0; i < plat.Points.Count - 1; i++)
+                        {
+                            var p1 = convert(new PointF(minimapBounds.X + plat.Points[i].X, minimapBounds.Y + plat.Points[i].Y));
+                            var p2 = convert(new PointF(minimapBounds.X + plat.Points[i + 1].X, minimapBounds.Y + plat.Points[i + 1].Y));
+                            g.DrawLine(pen, p1, p2);
+                            g.FillRectangle(Brushes.White, p1.X - 2, p1.Y - 2, 4, 4);
+                            if (i == plat.Points.Count - 2)
+                            {
+                                g.FillRectangle(Brushes.White, p2.X - 2, p2.Y - 2, 4, 4);
+                            }
+                        }
                     }
-                    g.FillRectangle(Brushes.White, p1.X - 2, p1.Y - 2, 4, 4);
-                    g.FillRectangle(Brushes.White, p2.X - 2, p2.Y - 2, 4, 4);
                 }
             }
 
@@ -619,21 +635,78 @@ namespace ArtaleAI.UI
             }
         }
 
+        public class PolylineHitResult
+        {
+            public float Distance { get; set; } = float.MaxValue;
+            public int SegmentIndex { get; set; } = -1;
+            public PointF ProjectionPoint { get; set; } = PointF.Empty;
+        }
+
+        private static PolylineHitResult GetDistanceToPolyline(PointF p, PolylinePlatformData plat)
+        {
+            var result = new PolylineHitResult();
+            if (plat.Points == null || plat.Points.Count < 2) return result;
+
+            for (int i = 0; i < plat.Points.Count - 1; i++)
+            {
+                var A = new PointF(plat.Points[i].X, plat.Points[i].Y);
+                var B = new PointF(plat.Points[i + 1].X, plat.Points[i + 1].Y);
+
+                float abx = B.X - A.X;
+                float aby = B.Y - A.Y;
+                float ab2 = abx * abx + aby * aby;
+
+                float cx, cy;
+                PointF projPt;
+                int currentSegIdx = i;
+
+                if (ab2 < 0.001f)
+                {
+                    cx = A.X;
+                    cy = A.Y;
+                    projPt = A;
+                }
+                else
+                {
+                    float apx = p.X - A.X;
+                    float apy = p.Y - A.Y;
+                    float t = (apx * abx + apy * aby) / ab2;
+                    t = Math.Max(0.0f, Math.Min(1.0f, t));
+                    cx = A.X + t * abx;
+                    cy = A.Y + t * aby;
+                    projPt = new PointF(cx, cy);
+                }
+
+                float dx = p.X - cx;
+                float dy = p.Y - cy;
+                float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+
+                if (dist < result.Distance)
+                {
+                    result.Distance = dist;
+                    result.SegmentIndex = currentSegIdx;
+                    result.ProjectionPoint = projPt;
+                }
+            }
+
+            return result;
+        }
+
         private void HandleDeleteAction(PointF clickPosition)
         {
             float threshold = SelectionRadius * 2.0f; // 10.0 像素 (以 SelectionRadius 的兩倍距離作為命中候選範圍)
 
-            PlatformSegmentData? bestPlatform = null;
+            PolylinePlatformData? bestPlatform = null;
             float bestPlatformDist = float.MaxValue;
 
-            if (_currentMapData.Platforms != null)
+            if (_currentMapData.PolylinePlatforms != null)
             {
-                foreach (var plat in _currentMapData.Platforms)
+                foreach (var plat in _currentMapData.PolylinePlatforms)
                 {
-                    float dist = GetDistanceToPlatform(clickPosition, plat);
-                    if (dist < threshold && dist < bestPlatformDist)
+                    var hit = GetDistanceToPolyline(clickPosition, plat);
+                    if (hit.Distance < threshold && hit.Distance < bestPlatformDist)
                     {
-                        bestPlatformDist = dist;
+                        bestPlatformDist = hit.Distance;
                         bestPlatform = plat;
                     }
                 }
@@ -694,41 +767,21 @@ namespace ArtaleAI.UI
 
             if (bestPlatform != null && Math.Abs(bestPlatformDist - minOfAll) < 0.001f)
             {
-                _currentMapData.Platforms.Remove(bestPlatform);
-                Logger.Info($"[編輯器] 刪除平台幾何: Id={bestPlatform.Id}, Y={bestPlatform.Y:F1}");
+                _currentMapData.PolylinePlatforms?.Remove(bestPlatform);
+                Logger.Info($"[編輯器] 刪除折線平台幾何: Id={bestPlatform.Id}");
                 MapGenerationService.BuildHTopology(_currentMapData);
             }
             else if (bestRope != null && bestRopeIdx >= 0 && Math.Abs(bestRopeDist - minOfAll) < 0.001f)
             {
-                _currentMapData.Ropes.RemoveAt(bestRopeIdx);
+                _currentMapData.Ropes?.RemoveAt(bestRopeIdx);
                 Logger.Info($"[編輯器] 刪除繩索幾何: X={bestRope[0]:F1}, Y={bestRope[1]:F1}~{bestRope[2]:F1}");
                 MapGenerationService.BuildHTopology(_currentMapData);
             }
             else if (bestManualEdge != null && Math.Abs(bestManualEdgeDist - minOfAll) < 0.001f)
             {
-                _currentMapData.ManualEdges.Remove(bestManualEdge);
+                _currentMapData.ManualEdges?.Remove(bestManualEdge);
                 Logger.Info($"[編輯器] 刪除手動例外邊: {bestManualEdge.FromNodeId} -> {bestManualEdge.ToNodeId}");
                 MapGenerationService.BuildHTopology(_currentMapData);
-            }
-        }
-
-        private static float GetDistanceToPlatform(PointF p, PlatformSegmentData plat)
-        {
-            if (p.X >= plat.X1 && p.X <= plat.X2)
-            {
-                return Math.Abs(p.Y - plat.Y);
-            }
-            if (p.X < plat.X1)
-            {
-                float dx = plat.X1 - p.X;
-                float dy = plat.Y - p.Y;
-                return (float)Math.Sqrt(dx * dx + dy * dy);
-            }
-            else
-            {
-                float dx = plat.X2 - p.X;
-                float dy = plat.Y - p.Y;
-                return (float)Math.Sqrt(dx * dx + dy * dy);
             }
         }
 
@@ -811,16 +864,16 @@ namespace ArtaleAI.UI
                 float threshold = SelectionRadius; // 5.0 像素
 
                 // 1. 檢索 Platform
-                PlatformSegmentData? bestPlatform = null;
+                PolylinePlatformData? bestPlatform = null;
                 float bestPlatformDist = float.MaxValue;
-                if (_currentMapData.Platforms != null)
+                if (_currentMapData.PolylinePlatforms != null)
                 {
-                    foreach (var plat in _currentMapData.Platforms)
+                    foreach (var plat in _currentMapData.PolylinePlatforms)
                     {
-                        float dist = GetDistanceToPlatform(relativePoint, plat);
-                        if (dist < threshold && dist < bestPlatformDist)
+                        var hit = GetDistanceToPolyline(relativePoint, plat);
+                        if (hit.Distance < threshold && hit.Distance < bestPlatformDist)
                         {
-                            bestPlatformDist = dist;
+                            bestPlatformDist = hit.Distance;
                             bestPlatform = plat;
                         }
                     }
