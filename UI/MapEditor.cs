@@ -145,6 +145,11 @@ namespace ArtaleAI.UI
             }
         }
 
+        public EditMode GetCurrentEditMode()
+        {
+            return _currentEditMode;
+        }
+
         public void UpdateMousePosition(PointF screenPoint)
         {
             if (!_startPoint.HasValue || minimapBounds.IsEmpty)

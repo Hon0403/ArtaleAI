@@ -36,6 +36,7 @@ namespace ArtaleAI
 
         #region Private Fields
         private MapEditor? _mapEditor;
+        private CheckBox? chk_AdvancedMode;
         private Rectangle minimapBounds = Rectangle.Empty;
         private GameVisionCore? gameVision;
         private AppConfig Config => AppConfig.Instance;
@@ -137,6 +138,7 @@ namespace ArtaleAI
                 InitializeDetectionModeDropdown();
 
                 InitializeActionComboBox();
+                InitializeAdvancedModeCheckBox();
 
                 var tracker = new PathPlanningTracker(gameVision);
                 _pathPlanningManager = new PathPlanningManager(tracker, Config);
@@ -906,27 +908,57 @@ namespace ArtaleAI
 
         #region 地圖編輯事件
 
+        private void InitializeAdvancedModeCheckBox()
+        {
+            chk_AdvancedMode = new CheckBox
+            {
+                Text = "啟用進階例外邊模式",
+                AutoSize = true,
+                Location = new System.Drawing.Point(8, 90),
+                Checked = false
+            };
+            chk_AdvancedMode.CheckedChanged += (s, e) =>
+            {
+                if (!chk_AdvancedMode.Checked && _mapEditor?.GetCurrentEditMode() == EditMode.ManualEdge)
+                {
+                    rdo_SelectMode.Checked = true;
+                }
+                UpdateEditModeAndActionUi();
+            };
+            groupBox3.Controls.Add(chk_AdvancedMode);
+
+            rdo_TwoPointLink.Enabled = false;
+        }
+
+        private void UpdateEditModeAndActionUi()
+        {
+            EditMode selectedMode = EditMode.None;
+            if (rdo_PathMarker.Checked) selectedMode = EditMode.Platform;
+            else if (rdo_RopeMarker.Checked) selectedMode = EditMode.Rope;
+            else if (rdo_DeleteMarker.Checked) selectedMode = EditMode.Delete;
+            else if (rdo_SelectMode.Checked) selectedMode = EditMode.Select;
+            else if (rdo_TwoPointLink.Checked) selectedMode = EditMode.ManualEdge;
+
+            bool advancedActive = chk_AdvancedMode != null && chk_AdvancedMode.Checked;
+
+            rdo_TwoPointLink.Enabled = advancedActive;
+            groupBox_Action.Enabled = (selectedMode == EditMode.ManualEdge) && advancedActive;
+
+            if (_mapEditor != null)
+            {
+                _mapEditor.SetEditMode(selectedMode);
+            }
+            pictureBoxMinimap.Invalidate();
+        }
+
         private void OnEditModeChanged(object? sender, EventArgs e)
         {
-            if (sender is not RadioButton checkedButton || !checkedButton.Checked)
+            if (sender is RadioButton rb && !rb.Checked)
                 return;
 
-            EditMode selectedMode = checkedButton.Name switch
-            {
-                nameof(rdo_PathMarker) => EditMode.Platform,
-                nameof(rdo_RopeMarker) => EditMode.Rope,
-                nameof(rdo_DeleteMarker) => EditMode.Delete,
-                nameof(rdo_SelectMode) => EditMode.Select,
-                nameof(rdo_TwoPointLink) => EditMode.ManualEdge,
-                _ => EditMode.None
-            };
+            UpdateEditModeAndActionUi();
 
-            groupBox_Action.Enabled = (selectedMode == EditMode.ManualEdge);
-
-            if (_mapEditor == null) return;
-            _mapEditor.SetEditMode(selectedMode);
-            pictureBoxMinimap.Invalidate();
-
+            EditMode selectedMode = _mapEditor?.GetCurrentEditMode() ?? EditMode.None;
             MsgLog.ShowStatus(textBox1, $"編輯模式切換至: {selectedMode}");
         }
 
@@ -943,7 +975,8 @@ namespace ArtaleAI
             try
             {
                 if (_minimapViewer == null) return;
-                bool pathLoaded = loadedPathData != null && (loadedPathData.Nodes?.Count ?? 0) > 0;
+                bool pathLoaded = loadedPathData != null && 
+                    ((loadedPathData.Platforms?.Count ?? 0) > 0 || (loadedPathData.Ropes?.Count ?? 0) > 0);
                 bool autoStartChecked = ckB_Start.Checked;
                 bool liveViewReady = liveViewManager?.IsRunning == true && _isLiveViewTabActive;
 
@@ -1037,7 +1070,7 @@ namespace ArtaleAI
         private void UpdateActionComboBoxSelection(int action)
         {
             if (action == -1) return;
-            int targetAction = (action == 9 || action == 10) ? 13 : action;
+            int targetAction = action;
 
             foreach (ComboBoxItem item in cbo_ActionType.Items)
             {
