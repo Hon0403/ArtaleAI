@@ -523,8 +523,7 @@ namespace ArtaleAI.UI
 
                 if (i == _selectedNodeIndex)
                 {
-                    string actionName = GetActionName(nav.EditorActionCode);
-                    DrawLabel(g, new PointF(pos.X, pos.Y - 15), $"{i}: {actionName}", Color.Yellow);
+                    DrawLabel(g, new PointF(pos.X, pos.Y - 15), $"{nav.Id} ({nav.X:F0}, {nav.Y:F0})", Color.Yellow);
                 }
             }
 
@@ -555,6 +554,17 @@ namespace ArtaleAI.UI
             }
         }
 
+        /// <summary>
+        /// 取得自動/手動拓撲邊的渲染顏色。
+        /// 顏色語意對照：
+        /// - Magenta (洋紅): Walk (基礎自動通行步行的細邊)
+        /// - Cyan (青色): Rope (自動生成的攀爬繩索輔助邊)
+        /// - MediumPurple (粉紫): SideJump (平台兩端往外側跳的自動邊)
+        /// - Yellow (黃色): JumpDown (平台邊緣往下跳的自動邊)
+        /// - DeepSkyBlue (深天藍): Jump (向上或往前跳躍的自動邊)
+        /// - OrangeRed (橘紅): Teleport (傳送點之間的自動邊)
+        /// - OrangeRed (加粗 2.5f) / Red (Hover加粗 4.0f): ManualEdges (例外自訂手動例外邊)
+        /// </summary>
         private static Color GetEdgeDrawColor(NavEdgeData edge)
         {
             if (edge.ActionType == NavigationActionType.Walk)
@@ -611,7 +621,7 @@ namespace ArtaleAI.UI
 
         private void HandleDeleteAction(PointF clickPosition)
         {
-            float threshold = SelectionRadius * 2.0f; // 4.0 像素
+            float threshold = SelectionRadius * 2.0f; // 10.0 像素 (以 SelectionRadius 的兩倍距離作為命中候選範圍)
 
             PlatformSegmentData? bestPlatform = null;
             float bestPlatformDist = float.MaxValue;
@@ -774,6 +784,14 @@ namespace ArtaleAI.UI
             return (float)Math.Sqrt(dx * dx + dy * dy);
         }
 
+        /// <summary>
+        /// 更新目前滑鼠所在的 Hover 物件狀態。
+        /// 行為分層設計：
+        /// 1. Delete 模式下：以「真實幾何物件」（Platform、Rope）與「手動例外邊」（ManualEdge）優先檢索。
+        ///    這是因為 Delete 模式不允許直接刪除拓撲生成節點，因此此模式下不 Hover 節點。
+        /// 2. ManualEdge 模式下：僅 Hover 生成節點，作為建立手動邊的起訖點引導。
+        /// 3. 其他模式下：預設僅 Hover 生成節點以作為資訊預覽。
+        /// </summary>
         public void UpdateHoveredNode(PointF screenPoint)
         {
             if (minimapBounds.IsEmpty) return;
