@@ -10,7 +10,7 @@ namespace ArtaleAI.UI
     /// <summary>小地圖上導航節點、邊、繩索之狀態與 GDI+ 繪製；持久化僅使用 <see cref="MapData.Nodes"/>／<see cref="MapData.Edges"/>。</summary>
     public class MapEditor
     {
-        private const int SmartSideJumpActionCode = 13;
+        private const int SmartSideJumpActionCode = (int)NavigationActionType.SideJump;
 
         private MapData _currentMapData = new MapData();
         private EditMode _currentEditMode = EditMode.None;
@@ -32,51 +32,34 @@ namespace ArtaleAI.UI
         private int _currentActionType = 0;
         private int _waypointAnchorIndex = -1;
 
+        public float ZoomScale { get; set; } = 1.0f;
+
         public event Action<int>? OnNodeSelected;
 
         private static NavigationActionType ActionTypeFromResolvedUiCode(int uiCode)
         {
-            return uiCode switch
-            {
-                1 => NavigationActionType.Walk,
-                2 => NavigationActionType.Walk,
-                3 => NavigationActionType.ClimbUp,
-                4 => NavigationActionType.ClimbDown,
-                5 => NavigationActionType.JumpLeft,
-                6 => NavigationActionType.JumpRight,
-                7 => NavigationActionType.JumpDown,
-                8 => NavigationActionType.Jump,
-                9 => NavigationActionType.JumpLeft,
-                10 => NavigationActionType.JumpRight,
-                11 => NavigationActionType.ClimbUp,
-                12 => NavigationActionType.ClimbDown,
-                _ => NavigationActionType.Walk
-            };
+            // UI Code 現在與 NavigationActionType 列舉值完全對應
+            return (NavigationActionType)uiCode;
         }
 
         private static int ResolveActionCodeByGeometry(PointF fromPoint, PointF toPoint, int actionCode)
         {
-            if (actionCode != SmartSideJumpActionCode)
-            {
-                return actionCode;
-            }
-
-            float dx = toPoint.X - fromPoint.X;
-            return dx < 0 ? 9 : 10;
+            // 不再區分左右跳 (9/10)，側跳統一回傳 SideJump (3)
+            return actionCode; 
         }
 
-        private static int JumpUiCodeOpposite(int jumpLeftOrRight) => jumpLeftOrRight == 9 ? 10 : 9;
+        private static int JumpUiCodeOpposite(int jumpAction) => (int)NavigationActionType.SideJump;
 
-        private static float ComputeEdgeCost(int resolvedUi, float distance)
+        private static float ComputeEdgeCost(int actionCode, float distance)
         {
-            return resolvedUi switch
+            var type = (NavigationActionType)actionCode;
+            return type switch
             {
-                0 => distance,
-                11 => 5.0f,
-                12 => 3.0f,
-                9 or 10 => 8.0f,
-                4 => 2.0f,
-                _ => 6.0f
+                NavigationActionType.Walk => distance,
+                NavigationActionType.Jump => 8.0f,
+                NavigationActionType.SideJump => 8.0f,
+                NavigationActionType.JumpDown => 2.0f,
+                _ => distance
             };
         }
 
@@ -255,8 +238,7 @@ namespace ArtaleAI.UI
             foreach (var edge in _currentMapData.Edges)
             {
                 if (!string.Equals(edge.FromNodeId, fromId, StringComparison.Ordinal)) continue;
-                if (edge.ActionType != NavigationActionType.JumpLeft &&
-                    edge.ActionType != NavigationActionType.JumpRight) continue;
+                if (edge.ActionType != NavigationActionType.SideJump) continue;
 
                 int candidateTo = FindNodeIndexById(edge.ToNodeId);
                 if (candidateTo < 0) continue;
@@ -338,7 +320,7 @@ namespace ArtaleAI.UI
                 fromN.EditorActionCode = resolvedAction;
             }
 
-            if (ensureReverseJumpIfSideJump && (resolvedAction == 9 || resolvedAction == 10))
+            if (ensureReverseJumpIfSideJump && resolvedAction == (int)NavigationActionType.SideJump)
             {
                 EnsureReverseJumpConnection(fromIdx, toIdx, resolvedAction);
             }
@@ -361,7 +343,7 @@ namespace ArtaleAI.UI
 
         private bool EnsureReverseJumpConnection(int fromIdx, int toIdx, int resolvedForwardAction)
         {
-            if (resolvedForwardAction != 9 && resolvedForwardAction != 10) return false;
+            if (resolvedForwardAction != (int)NavigationActionType.SideJump) return false;
 
             int expectedReverseUi = JumpUiCodeOpposite(resolvedForwardAction);
             var reverseType = ActionTypeFromResolvedUiCode(expectedReverseUi);
@@ -766,13 +748,15 @@ namespace ArtaleAI.UI
                 return Color.Magenta;
             }
 
+            bool isRope = edge.InputSequence?.Any(s => s.StartsWith("ropeX:")) ?? false;
+            if (isRope) return Color.Cyan;
+
             return edge.ActionType switch
             {
-                NavigationActionType.JumpLeft => Color.MediumPurple,
-                NavigationActionType.JumpRight => Color.Purple,
-                NavigationActionType.ClimbUp or NavigationActionType.ClimbDown => Color.Cyan,
+                NavigationActionType.SideJump => Color.MediumPurple,
                 NavigationActionType.JumpDown => Color.Yellow,
                 NavigationActionType.Jump => Color.DeepSkyBlue,
+                NavigationActionType.Teleport => Color.OrangeRed,
                 _ => Color.White
             };
         }
@@ -904,31 +888,28 @@ namespace ArtaleAI.UI
 
         private Color GetNodeColor(int action)
         {
-            return action switch
+            var type = (NavigationActionType)action;
+            return type switch
             {
-                9 => Color.MediumPurple,
-                10 => Color.Purple,
-                13 => Color.MediumPurple,
-                11 => Color.Cyan,
-                12 => Color.Cyan,
-                4 => Color.Yellow,
-                8 => Color.DeepSkyBlue,
-                _ => Color.White
+                NavigationActionType.Walk => Color.White,
+                NavigationActionType.Jump => Color.DeepSkyBlue,
+                NavigationActionType.SideJump => Color.Purple,
+                NavigationActionType.JumpDown => Color.Yellow,
+                NavigationActionType.Teleport => Color.OrangeRed,
+                _ => Color.Gray
             };
         }
 
         private string GetActionName(int action)
         {
-            return action switch
+            var type = (NavigationActionType)action;
+            return type switch
             {
-                9 => "JumpLeft",
-                10 => "JumpRight",
-                13 => "SmartSideJump",
-                11 => "ClimbUp",
-                12 => "ClimbDn",
-                4 => "DownJump",
-                8 => "Jump",
-                0 => "Walk",
+                NavigationActionType.Walk => "Walk",
+                NavigationActionType.Jump => "Jump",
+                NavigationActionType.SideJump => "SideJump",
+                NavigationActionType.JumpDown => "JumpDown",
+                NavigationActionType.Teleport => "Teleport",
                 _ => $"Act:{action}"
             };
         }

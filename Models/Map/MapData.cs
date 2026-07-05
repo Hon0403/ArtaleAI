@@ -4,6 +4,24 @@ using System.Collections.Generic;
 namespace ArtaleAI.Models.Map
 {
     /// <summary>
+    /// 平台線段資料，代表地圖上一條可通行的水平線段幾何。
+    /// </summary>
+    public class PlatformSegmentData
+    {
+        /// <summary>平台唯一識別碼</summary>
+        public string Id { get; set; } = string.Empty;
+
+        /// <summary>起點 X 座標</summary>
+        public float X1 { get; set; }
+
+        /// <summary>終點 X 座標</summary>
+        public float X2 { get; set; }
+
+        /// <summary>平台高度 Y 座標</summary>
+        public float Y { get; set; }
+    }
+
+    /// <summary>
     /// 地圖資料
     /// 儲存地圖上的所有路徑點、區域標記等資訊
     /// </summary>
@@ -11,6 +29,9 @@ namespace ArtaleAI.Models.Map
     {
         /// <summary>繩索位置列表</summary>
         public List<float[]> Ropes { get; set; } = new();
+
+        /// <summary>平台幾何線段列表</summary>
+        public List<PlatformSegmentData> Platforms { get; set; } = new();
 
         /// <summary>導航圖節點（座標與類型；導航與編輯器 SSOT）。</summary>
         public List<NavNodeData> Nodes { get; set; } = new();

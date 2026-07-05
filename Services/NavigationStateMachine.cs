@@ -42,18 +42,25 @@ namespace ArtaleAI.Services
                 _currentTaskCts?.Dispose();
                 _currentTaskCts = new CancellationTokenSource();
 
-                NavigationState nextState = edge.ActionType switch
+                bool isRope = edge.InputSequence?.Any(s => s.StartsWith("ropeX:")) ?? false;
+
+                NavigationState nextState;
+                if (isRope)
                 {
-                    NavigationActionType.Walk => NavigationState.Moving_Horizontal,
-                    NavigationActionType.ClimbUp => NavigationState.Moving_Vertical,
-                    NavigationActionType.ClimbDown => NavigationState.Moving_Vertical,
-                    NavigationActionType.Jump => NavigationState.Jumping,
-                    NavigationActionType.JumpLeft => NavigationState.Jumping,
-                    NavigationActionType.JumpRight => NavigationState.Jumping,
-                    NavigationActionType.JumpDown => NavigationState.Jumping,
-                    NavigationActionType.Teleport => NavigationState.Transitioning,
-                    _ => NavigationState.Moving_Horizontal
-                };
+                    nextState = NavigationState.Moving_Vertical;
+                }
+                else
+                {
+                    nextState = edge.ActionType switch
+                    {
+                        NavigationActionType.Walk => NavigationState.Moving_Horizontal,
+                        NavigationActionType.Jump => NavigationState.Jumping,
+                        NavigationActionType.SideJump => NavigationState.Jumping,
+                        NavigationActionType.JumpDown => NavigationState.Jumping,
+                        NavigationActionType.Teleport => NavigationState.Transitioning,
+                        _ => NavigationState.Moving_Horizontal
+                    };
+                }
 
                 ChangeState(nextState);
 

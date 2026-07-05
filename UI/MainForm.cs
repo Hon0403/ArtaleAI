@@ -127,14 +127,14 @@ namespace ArtaleAI
                 _minimapViewer = new MinimapViewer(this, config);
                 _monsterDownloader = new MonsterImageFetcher(this);
 
-                PopulateMapFilesComboBox();
-                cbo_MapFiles.DropDown += (s, e) => PopulateMapFilesComboBox();
+                pictureBoxMinimap.MouseWheel += pictureBoxMinimap_MouseWheel;
+
+                SyncMapFileDropdowns(false);
+                cbo_MapFiles.DropDown += (s, e) => SyncMapFileDropdowns(true);
+                cbo_LoadPathFile.DropDown += (s, e) => SyncMapFileDropdowns(true);
 
                 InitializeMonsterTemplateSystem();
                 InitializeDetectionModeDropdown();
-
-                RefreshLoadPathFileOptions(false);
-                cbo_LoadPathFile.DropDown += (s, e) => RefreshLoadPathFileOptions(true);
 
                 InitializeActionComboBox();
                 _mapEditor.OnNodeSelected += (action) =>
@@ -166,7 +166,7 @@ namespace ArtaleAI
                 _mapFileManager.MapLoaded += OnMapFileLoaded;
                 _mapFileManager.StatusMessage += OnMapFileManagerStatusMessage;
                 _mapFileManager.ErrorMessage += OnMapFileManagerErrorMessage;
-                _mapFileManager.FileListChanged += OnMapFileListChanged;
+                _mapFileManager.FileListChanged += () => SyncMapFileDropdowns(true);
 
                 _gamePipeline.OnFrameProcessed += OnGamePipelineFrameProcessed;
                 _gamePipeline.OnStatusMessage += msg =>
@@ -191,43 +191,41 @@ namespace ArtaleAI
             }
         }
 
-        /// <summary>重新列舉 <c>MapData</c> 內 JSON 路徑檔並填入下拉選單。</summary>
-        private void RefreshLoadPathFileOptions(bool suppressLog = false)
+        /// <summary>統一刷新所有地圖相關下拉選單（載入路徑與地圖檔案）。</summary>
+        private void SyncMapFileDropdowns(bool suppressLog = false)
         {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => SyncMapFileDropdowns(suppressLog)));
+                return;
+            }
+
             try
             {
-                var currentSelection = cbo_LoadPathFile.Text;
-                cbo_LoadPathFile.Items.Clear();
-                string mapDataDirectory = PathManager.MapDataDirectory;
-
-                if (!Directory.Exists(mapDataDirectory))
+                var mapFiles = _mapFileManager?.GetAvailableMapFiles() ?? Array.Empty<string>();
+                
+                void UpdateCombo(ComboBox combo)
                 {
-                    Directory.CreateDirectory(mapDataDirectory);
+                    var currentSelection = combo.Text;
+                    combo.Items.Clear();
+                    combo.Items.Add("null");
+                    foreach (var file in mapFiles)
+                        combo.Items.Add(file);
+
+                    if (!string.IsNullOrEmpty(currentSelection) && combo.Items.Contains(currentSelection))
+                        combo.Text = currentSelection;
                 }
 
-
-
-                cbo_LoadPathFile.Items.Add("null");
-
-                var mapFiles = Directory.GetFiles(mapDataDirectory, "*.json");
-
-                foreach (var file in mapFiles)
-                {
-                    cbo_LoadPathFile.Items.Add(Path.GetFileNameWithoutExtension(file));
-                }
-
-                if (!string.IsNullOrEmpty(currentSelection) && cbo_LoadPathFile.Items.Contains(currentSelection))
-                {
-                    cbo_LoadPathFile.Text = currentSelection;
-                }
+                UpdateCombo(cbo_LoadPathFile);
+                UpdateCombo(cbo_MapFiles);
 
                 if (!suppressLog)
-                    MsgLog.ShowStatus(textBox1, $"載入 {mapFiles.Length} 個路徑檔案到路徑規劃下拉選單");
+                    MsgLog.ShowStatus(textBox1, $"[地圖管理] 已同步 {mapFiles.Length} 個路徑檔案至下拉選單");
             }
             catch (Exception ex)
             {
                 if (!suppressLog)
-                    MsgLog.ShowError(textBox1, $"刷新路徑列表失敗: {ex.Message}");
+                    MsgLog.ShowError(textBox1, $"同步地圖列表失敗: {ex.Message}");
             }
         }
 
@@ -338,7 +336,7 @@ namespace ArtaleAI
 
             if (isNewFile)
             {
-                PopulateMapFilesComboBox();
+                SyncMapFileDropdowns(true);
             }
 
             RefreshMinimap();
@@ -732,27 +730,7 @@ namespace ArtaleAI
 
         }
 
-        /// <summary>由 <see cref="MapFileManager"/> 列舉檔名填入地圖下拉選單。</summary>
-        private void PopulateMapFilesComboBox()
-        {
-            try
-            {
-                var currentSelection = cbo_MapFiles.SelectedItem?.ToString();
-                cbo_MapFiles.Items.Clear();
-                cbo_MapFiles.Items.Add("null");
 
-                var files = _mapFileManager?.GetAvailableMapFiles() ?? Array.Empty<string>();
-                foreach (var file in files)
-                    cbo_MapFiles.Items.Add(file);
-
-                if (!string.IsNullOrEmpty(currentSelection) && cbo_MapFiles.Items.Contains(currentSelection))
-                    cbo_MapFiles.SelectedItem = currentSelection;
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"[地圖] 填充檔案清單失敗: {ex.Message}");
-            }
-        }
 
 
 
@@ -798,16 +776,7 @@ namespace ArtaleAI
             MsgLog.ShowError(textBox1, message);
         }
 
-        private void OnMapFileListChanged()
-        {
-            if (InvokeRequired)
-            {
-                BeginInvoke(new Action(OnMapFileListChanged));
-                return;
-            }
 
-            PopulateMapFilesComboBox();
-        }
 
 
         /// <summary>組裝獨立小地圖視窗所需的路徑／繩索／Hitbox 疊加資料。</summary>
@@ -896,8 +865,8 @@ namespace ArtaleAI
                 if (currentEdge != null)
                 {
                     pathData.CurrentAction = currentEdge.ActionType.ToString();
-                    if (currentEdge.ActionType == NavigationActionType.ClimbUp ||
-                        currentEdge.ActionType == NavigationActionType.ClimbDown)
+                    bool isImplicitClimb = currentEdge.InputSequence?.Any(s => s.StartsWith("ropeX:")) ?? false;
+                    if (isImplicitClimb)
                     {
                         float ropeX = float.NaN;
                         foreach (var seq in currentEdge.InputSequence)
@@ -1055,12 +1024,11 @@ namespace ArtaleAI
         private void InitializeActionComboBox()
         {
             cbo_ActionType.Items.Clear();
-            cbo_ActionType.Items.Add(new ComboBoxItem("Walk (走路)", 0));
-            cbo_ActionType.Items.Add(new ComboBoxItem("SmartSideJump (智慧側跳)", 13));
-            cbo_ActionType.Items.Add(new ComboBoxItem("Jump (原地跳)", 8));
-            cbo_ActionType.Items.Add(new ComboBoxItem("JumpDown (下跳)", 4));
-            cbo_ActionType.Items.Add(new ComboBoxItem("ClimbUp (上爬)", 11));
-            cbo_ActionType.Items.Add(new ComboBoxItem("ClimbDown (下爬)", 12));
+            cbo_ActionType.Items.Add(new ComboBoxItem("Walk (走路)", (int)NavigationActionType.Walk));
+            cbo_ActionType.Items.Add(new ComboBoxItem("SideJump (側跳)", (int)NavigationActionType.SideJump));
+            cbo_ActionType.Items.Add(new ComboBoxItem("Jump (原地跳)", (int)NavigationActionType.Jump));
+            cbo_ActionType.Items.Add(new ComboBoxItem("JumpDown (下跳)", (int)NavigationActionType.JumpDown));
+            cbo_ActionType.Items.Add(new ComboBoxItem("Teleport (傳送)", (int)NavigationActionType.Teleport));
 
             cbo_ActionType.SelectedIndex = 0;
         }
@@ -1134,17 +1102,24 @@ namespace ArtaleAI
             float scaleX, scaleY;
             float offsetX = 0, offsetY = 0;
 
+            float zoom = _mapEditor.ZoomScale;
             if (pbAspect > imgAspect)
             {
-                scaleY = pbHeight / imgHeight;
+                scaleY = (pbHeight / imgHeight) * zoom;
                 scaleX = scaleY;
                 offsetX = (pbWidth - imgWidth * scaleX) / 2;
             }
             else
             {
-                scaleX = pbWidth / imgWidth;
+                scaleX = (pbWidth / imgWidth) * zoom;
                 scaleY = scaleX;
-                offsetY = (pbHeight - imgHeight * scaleY) / 2;
+                offsetY = (pbHeight - imgHeight * scaleY) / 2f; 
+            }
+
+            // 考慮縮放後的偏移補償 (置中)
+            if (zoom > 1.0f)
+            {
+                 // 若有需要可實作平移，目前先維持以中心點放大
             }
 
             PointF ConvertScreenToDisplay(PointF screenPoint)
@@ -1273,24 +1248,41 @@ namespace ArtaleAI
             pictureBoxMinimap.Invalidate();
         }
 
-        private static PointF TranslatePictureBoxPointToImage(PointF pbPoint, PictureBox pb)
+        private PointF TranslatePictureBoxPointToImage(PointF pbPoint, PictureBox pb)
         {
             if (pb.Image == null) return pbPoint;
             float pbW = pb.ClientSize.Width, pbH = pb.ClientSize.Height;
             float imgW = pb.Image.Width, imgH = pb.Image.Height;
             float scale, offsetX = 0f, offsetY = 0f;
+            float zoom = _mapEditor.ZoomScale;
             if (pbW / pbH > imgW / imgH)
             {
-                scale = pbH / imgH;
+                scale = (pbH / imgH) * zoom;
                 offsetX = (pbW - imgW * scale) / 2f;
             }
             else
             {
-                scale = pbW / imgW;
+                scale = (pbW / imgW) * zoom;
                 offsetY = (pbH - imgH * scale) / 2f;
             }
             if (scale <= 0f) return pbPoint;
             return new PointF((pbPoint.X - offsetX) / scale, (pbPoint.Y - offsetY) / scale);
+        }
+
+        private void pictureBoxMinimap_MouseWheel(object? sender, MouseEventArgs e)
+        {
+            if (ModifierKeys != Keys.Control) return;
+
+            float oldZoom = _mapEditor.ZoomScale;
+            if (e.Delta > 0)
+                _mapEditor.ZoomScale = Math.Min(10.0f, _mapEditor.ZoomScale + 0.1f);
+            else
+                _mapEditor.ZoomScale = Math.Max(0.5f, _mapEditor.ZoomScale - 0.1f);
+
+            if (Math.Abs(oldZoom - _mapEditor.ZoomScale) > 0.001f)
+            {
+                pictureBoxMinimap.Invalidate();
+            }
         }
 
         private void pictureBoxMinimap_MouseLeave(object sender, EventArgs e)
@@ -1409,7 +1401,7 @@ namespace ArtaleAI
                     _mapFileManager.MapLoaded -= OnMapFileLoaded;
                     _mapFileManager.StatusMessage -= OnMapFileManagerStatusMessage;
                     _mapFileManager.ErrorMessage -= OnMapFileManagerErrorMessage;
-                    _mapFileManager.FileListChanged -= OnMapFileListChanged;
+
                 }
 
                 if (liveViewManager != null)
