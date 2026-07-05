@@ -7,11 +7,9 @@ using System.Drawing.Drawing2D;
 
 namespace ArtaleAI.UI
 {
-    /// <summary>小地圖上導航節點、邊、繩索之狀態與 GDI+ 繪製；持久化僅使用 <see cref="MapData.Nodes"/>／<see cref="MapData.Edges"/>。</summary>
+    /// <summary>小地圖路徑幾何標記工具 (Geometry Marker)；以 Platforms 與 Ropes 為主要真實來源 (SSOT)。</summary>
     public class MapEditor
     {
-        private const int SmartSideJumpActionCode = (int)NavigationActionType.SideJump;
-
         private MapData _currentMapData = new MapData();
         private EditMode _currentEditMode = EditMode.None;
 
@@ -55,14 +53,6 @@ namespace ArtaleAI.UI
             }
         }
 
-        private static int ResolveActionCodeByGeometry(PointF fromPoint, PointF toPoint, int actionCode)
-        {
-            // 不再區分左右跳 (9/10)，側跳統一回傳 SideJump (3)
-            return actionCode; 
-        }
-
-        private static int JumpUiCodeOpposite(int jumpAction) => (int)NavigationActionType.SideJump;
-
         private static float ComputeEdgeCost(int actionCode, float distance)
         {
             var type = (NavigationActionType)actionCode;
@@ -74,29 +64,6 @@ namespace ArtaleAI.UI
                 NavigationActionType.JumpDown => 2.0f,
                 _ => distance
             };
-        }
-
-        private string AllocateNodeId()
-        {
-            var taken = new HashSet<string>(
-                _currentMapData.Nodes.Select(n => n.Id),
-                StringComparer.Ordinal);
-            for (int i = _currentMapData.Nodes.Count; ; i++)
-            {
-                string id = $"n{i}";
-                if (taken.Add(id)) return id;
-            }
-        }
-
-        private void EnsureNodeIds()
-        {
-            foreach (var n in _currentMapData.Nodes)
-            {
-                if (string.IsNullOrWhiteSpace(n.Id))
-                {
-                    n.Id = AllocateNodeId();
-                }
-            }
         }
 
         private int FindNodeIndexById(string id)
@@ -136,8 +103,6 @@ namespace ArtaleAI.UI
             _currentMapData.Ropes ??= new List<float[]>();
             _currentMapData.Platforms ??= new List<PlatformSegmentData>();
             _currentMapData.ManualEdges ??= new List<NavEdgeData>();
-
-            EnsureNodeIds();
 
             _selectedNodeIndex = -1;
             _manualEdgeStartIndex = -1;
@@ -237,7 +202,7 @@ namespace ArtaleAI.UI
                 {
                     _startPoint = null;
                     _previewPoint = null;
-                    Logger.Info("[編輯器] 取消平台繪製");
+                    Logger.Info("[編輯器] 取消平台幾何繪製");
                 }
                 else
                 {
@@ -250,6 +215,15 @@ namespace ArtaleAI.UI
                     {
                         var start = _startPoint.Value;
                         var end = relativePoint;
+
+                        float length = Math.Abs(start.X - end.X);
+                        if (length < 2.0f)
+                        {
+                            Logger.Warning($"[編輯器] 平台幾何長度過短 ({length:F1} < 2.0)，取消建立");
+                            _startPoint = null;
+                            _previewPoint = null;
+                            return;
+                        }
 
                         float x1 = Math.Min(start.X, end.X);
                         float x2 = Math.Max(start.X, end.X);
@@ -279,7 +253,7 @@ namespace ArtaleAI.UI
                 {
                     _startPoint = null;
                     _previewPoint = null;
-                    Logger.Info("[編輯器] 取消繩索繪製");
+                    Logger.Info("[編輯器] 取消繩索幾何繪製");
                 }
                 else
                 {
@@ -293,6 +267,15 @@ namespace ArtaleAI.UI
                         var start = _startPoint.Value;
                         var end = relativePoint;
 
+                        float length = Math.Abs(start.Y - end.Y);
+                        if (length < 2.0f)
+                        {
+                            Logger.Warning($"[編輯器] 繩索幾何長度過短 ({length:F1} < 2.0)，取消建立");
+                            _startPoint = null;
+                            _previewPoint = null;
+                            return;
+                        }
+
                         float topY = Math.Min(start.Y, end.Y);
                         float bottomY = Math.Max(start.Y, end.Y);
                         float x = start.X;
@@ -303,7 +286,7 @@ namespace ArtaleAI.UI
                             (float)Math.Round(bottomY, 1)
                         });
 
-                        Logger.Info($"[編輯器] 建立繩索: X={x:F1}, Y={topY:F1}~{bottomY:F1}");
+                        Logger.Info($"[編輯器] 建立繩索幾何: X={x:F1}, Y={topY:F1}~{bottomY:F1}");
 
                         _startPoint = null;
                         _previewPoint = null;
@@ -340,11 +323,32 @@ namespace ArtaleAI.UI
                                 var fromNode = _currentMapData.Nodes[_manualEdgeStartIndex];
                                 var toNode = _currentMapData.Nodes[clickedIndex];
 
+                                if (string.Equals(fromNode.Id, toNode.Id, StringComparison.Ordinal))
+                                {
+                                    Logger.Warning("[編輯器] 例外邊不可連接相同節點，取消建立");
+                                    _manualEdgeStartIndex = -1;
+                                    _startPoint = null;
+                                    _previewPoint = null;
+                                    return;
+                                }
+
+                                _currentMapData.ManualEdges ??= new List<NavEdgeData>();
+                                bool duplicated = _currentMapData.ManualEdges.Any(e =>
+                                    string.Equals(e.FromNodeId, fromNode.Id, StringComparison.Ordinal) &&
+                                    string.Equals(e.ToNodeId, toNode.Id, StringComparison.Ordinal));
+                                if (duplicated)
+                                {
+                                    Logger.Warning("[編輯器] 手動例外邊已存在，不予重複建立");
+                                    _manualEdgeStartIndex = -1;
+                                    _startPoint = null;
+                                    _previewPoint = null;
+                                    return;
+                                }
+
                                 var actionType = ActionTypeFromResolvedUiCode(_currentActionType);
                                 float dist = (float)Math.Sqrt(Math.Pow(fromNode.X - toNode.X, 2) + Math.Pow(fromNode.Y - toNode.Y, 2));
                                 float cost = ComputeEdgeCost(_currentActionType, dist);
 
-                                _currentMapData.ManualEdges ??= new List<NavEdgeData>();
                                 _currentMapData.ManualEdges.Add(new NavEdgeData
                                 {
                                     FromNodeId = fromNode.Id,
@@ -431,7 +435,7 @@ namespace ArtaleAI.UI
                 }
             }
 
-            // 2. 繪製自動生成的拓撲邊 (細線)
+            // 2. 繪製拓撲邊 (細線代表自動生成，醒目橘線代表手動例外)
             if (_currentMapData.Edges.Count > 0)
             {
                 foreach (var edge in _currentMapData.Edges)
@@ -443,43 +447,58 @@ namespace ArtaleAI.UI
                     var p1Data = _currentMapData.Nodes[fromIdx];
                     var p2Data = _currentMapData.Nodes[toIdx];
 
-                    Color lineColor = GetEdgeDrawColor(edge);
+                    bool isManual = _currentMapData.ManualEdges != null && _currentMapData.ManualEdges.Any(me =>
+                        string.Equals(me.FromNodeId, edge.FromNodeId, StringComparison.Ordinal) &&
+                        string.Equals(me.ToNodeId, edge.ToNodeId, StringComparison.Ordinal));
 
+                    Color lineColor = GetEdgeDrawColor(edge);
                     var p1 = convert(new PointF(minimapBounds.X + p1Data.X, minimapBounds.Y + p1Data.Y));
                     var p2 = convert(new PointF(minimapBounds.X + p2Data.X, minimapBounds.Y + p2Data.Y));
 
-                    using (var pen = new Pen(Color.FromArgb(160, lineColor), 1.5f)) // 半透明細邊
+                    float penWidth = isManual ? 2.5f : 1.5f;
+                    Color drawColor = isManual ? Color.OrangeRed : Color.FromArgb(120, lineColor);
+
+                    using (var pen = new Pen(drawColor, penWidth))
                     {
                         g.DrawLine(pen, p1, p2);
 
                         float midX = (p1.X + p2.X) / 2;
                         float midY = (p1.Y + p2.Y) / 2;
-                        DrawArrow(g, p1, p2, new PointF(midX, midY));
+                        DrawArrow(g, p1, p2, new PointF(midX, midY), isManual ? Brushes.OrangeRed : Brushes.Cyan);
                     }
                 }
             }
 
-            // 3. 繪製自動生成的拓撲節點
+            // 3. 繪製自動生成的拓撲節點 (灰色小點代表自動生成，黃/白代表選取/Hover高亮，橘紅代表例外邊端點)
             for (int i = 0; i < _currentMapData.Nodes.Count; i++)
             {
                 var nav = _currentMapData.Nodes[i];
                 var pos = convert(new PointF(minimapBounds.X + nav.X, minimapBounds.Y + nav.Y));
-                int action = nav.EditorActionCode;
 
-                Color nodeColor = GetNodeColor(action);
-                float radius = PointRadius - 0.5f; // 稍小一點的點
+                bool isManualEndpoint = _currentMapData.ManualEdges != null && _currentMapData.ManualEdges.Any(me =>
+                    string.Equals(me.FromNodeId, nav.Id, StringComparison.Ordinal) ||
+                    string.Equals(me.ToNodeId, nav.Id, StringComparison.Ordinal));
+
+                Color nodeColor = Color.FromArgb(180, Color.DarkGray); // 預設中性灰
+                float radius = PointRadius - 0.5f;
 
                 if (i == _selectedNodeIndex)
                 {
+                    nodeColor = Color.Yellow;
                     g.FillEllipse(Brushes.Yellow, pos.X - radius - 2, pos.Y - radius - 2, (radius + 2) * 2, (radius + 2) * 2);
                     g.DrawEllipse(Pens.Black, pos.X - radius - 2, pos.Y - radius - 2, (radius + 2) * 2, (radius + 2) * 2);
                 }
                 else if (i == _hoveredNodeIndex)
                 {
+                    nodeColor = Color.White;
                     g.DrawEllipse(Pens.White, pos.X - radius - 1, pos.Y - radius - 1, (radius + 1) * 2, (radius + 1) * 2);
                 }
+                else if (isManualEndpoint)
+                {
+                    nodeColor = Color.OrangeRed;
+                }
 
-                using (var brush = new SolidBrush(Color.FromArgb(200, nodeColor))) // 稍微帶點透明度
+                using (var brush = new SolidBrush(nodeColor))
                 {
                     g.FillEllipse(brush, pos.X - radius, pos.Y - radius, radius * 2, radius * 2);
                 }
@@ -489,10 +508,7 @@ namespace ArtaleAI.UI
 
                 if (i == _selectedNodeIndex)
                 {
-                    int displayAction = (_currentEditMode == EditMode.Select && _currentActionType == SmartSideJumpActionCode)
-                         ? SmartSideJumpActionCode
-                         : action;
-                    string actionName = GetActionName(displayAction);
+                    string actionName = GetActionName(nav.EditorActionCode);
                     DrawLabel(g, new PointF(pos.X, pos.Y - 15), $"{i}: {actionName}", Color.Yellow);
                 }
             }
@@ -615,17 +631,54 @@ namespace ArtaleAI.UI
                 }
             }
 
-            // 衝突解決與優先刪除距離最近者
-            if (bestPlatform != null && (bestRope == null || bestPlatformDist <= bestRopeDist))
+            NavEdgeData? bestManualEdge = null;
+            float bestManualEdgeDist = float.MaxValue;
+
+            if (_currentMapData.ManualEdges != null)
+            {
+                foreach (var edge in _currentMapData.ManualEdges)
+                {
+                    int fromIdx = FindNodeIndexById(edge.FromNodeId);
+                    int toIdx = FindNodeIndexById(edge.ToNodeId);
+                    if (fromIdx < 0 || toIdx < 0) continue;
+
+                    var fromNode = _currentMapData.Nodes[fromIdx];
+                    var toNode = _currentMapData.Nodes[toIdx];
+
+                    float dist = GetDistanceToEdge(clickPosition, fromNode, toNode);
+                    if (dist < threshold && dist < bestManualEdgeDist)
+                    {
+                        bestManualEdgeDist = dist;
+                        bestManualEdge = edge;
+                    }
+                }
+            }
+
+            // 決定最近的命中幾何物件與例外邊
+            float minOfAll = Math.Min(bestPlatformDist, Math.Min(bestRopeDist, bestManualEdgeDist));
+
+            if (minOfAll >= threshold)
+            {
+                Logger.Info("[編輯器] 未命中任何可刪除的幾何物件或手動邊");
+                return;
+            }
+
+            if (bestPlatform != null && Math.Abs(bestPlatformDist - minOfAll) < 0.001f)
             {
                 _currentMapData.Platforms.Remove(bestPlatform);
                 Logger.Info($"[編輯器] 刪除平台幾何: Id={bestPlatform.Id}, Y={bestPlatform.Y:F1}");
                 MapGenerationService.BuildHTopology(_currentMapData);
             }
-            else if (bestRope != null && bestRopeIdx >= 0)
+            else if (bestRope != null && bestRopeIdx >= 0 && Math.Abs(bestRopeDist - minOfAll) < 0.001f)
             {
                 _currentMapData.Ropes.RemoveAt(bestRopeIdx);
                 Logger.Info($"[編輯器] 刪除繩索幾何: X={bestRope[0]:F1}, Y={bestRope[1]:F1}~{bestRope[2]:F1}");
+                MapGenerationService.BuildHTopology(_currentMapData);
+            }
+            else if (bestManualEdge != null && Math.Abs(bestManualEdgeDist - minOfAll) < 0.001f)
+            {
+                _currentMapData.ManualEdges.Remove(bestManualEdge);
+                Logger.Info($"[編輯器] 刪除手動例外邊: {bestManualEdge.FromNodeId} -> {bestManualEdge.ToNodeId}");
                 MapGenerationService.BuildHTopology(_currentMapData);
             }
         }
@@ -674,6 +727,34 @@ namespace ArtaleAI.UI
             }
         }
 
+        private static float GetDistanceToEdge(PointF p, NavNodeData fromNode, NavNodeData toNode)
+        {
+            float ax = fromNode.X;
+            float ay = fromNode.Y;
+            float bx = toNode.X;
+            float by = toNode.Y;
+
+            float abx = bx - ax;
+            float aby = by - ay;
+            float ab2 = abx * abx + aby * aby;
+            if (ab2 < 0.001f)
+            {
+                return (float)Math.Sqrt((p.X - ax) * (p.X - ax) + (p.Y - ay) * (p.Y - ay));
+            }
+
+            float apx = p.X - ax;
+            float apy = p.Y - ay;
+            float t = (apx * abx + apy * aby) / ab2;
+            t = Math.Max(0.0f, Math.Min(1.0f, t));
+
+            float cx = ax + t * abx;
+            float cy = ay + t * aby;
+
+            float dx = p.X - cx;
+            float dy = p.Y - cy;
+            return (float)Math.Sqrt(dx * dx + dy * dy);
+        }
+
         public void UpdateHoveredNode(PointF screenPoint)
         {
             if (minimapBounds.IsEmpty) return;
@@ -713,7 +794,7 @@ namespace ArtaleAI.UI
             };
         }
 
-        private void DrawArrow(Graphics g, PointF p1, PointF p2, PointF mid)
+        private void DrawArrow(Graphics g, PointF p1, PointF p2, PointF mid, Brush brush)
         {
             float dx = p2.X - p1.X;
             float dy = p2.Y - p1.Y;
@@ -731,7 +812,7 @@ namespace ArtaleAI.UI
                 new PointF(mid.X - dx * arrowSize + dy * arrowSize, mid.Y - dy * arrowSize - dx * arrowSize)
             };
 
-            g.FillPolygon(Brushes.Cyan, arrow);
+            g.FillPolygon(brush, arrow);
         }
 
         private void DrawLabel(Graphics g, PointF pos, string text, Color color)
