@@ -26,6 +26,24 @@ namespace ArtaleAI.Models.Map
     }
 
     /// <summary>
+    /// 手動例外邊的幾何錨點。持久化語意為「在某平台的某個位置」，
+    /// 不綁定 runtime node ID，由 BuildHTopology.ResolveManualEdgeAnchors() 轉譯。
+    /// </summary>
+    public class ManualEdgeAnchor
+    {
+        public string FromPlatformId { get; set; } = string.Empty;
+        public float FromX { get; set; }
+        public float FromY { get; set; }
+        public int? FromSegmentIndex { get; set; }
+        public string ToPlatformId { get; set; } = string.Empty;
+        public float ToX { get; set; }
+        public float ToY { get; set; }
+        public int? ToSegmentIndex { get; set; }
+        public ArtaleAI.Core.Domain.Navigation.NavigationActionType ActionType { get; set; } =
+            ArtaleAI.Core.Domain.Navigation.NavigationActionType.Walk;
+    }
+
+    /// <summary>
     /// 地圖資料
     /// 儲存地圖上的所有路徑點、區域標記等資訊
     /// </summary>
@@ -45,8 +63,8 @@ namespace ArtaleAI.Models.Map
         [JsonIgnore]
         public List<NavEdgeData> Edges { get; set; } = new();
 
-        /// <summary>手動例外邊列表</summary>
-        public List<NavEdgeData> ManualEdges { get; set; } = new();
+        /// <summary>手動例外邊幾何錨點（持久化 SSOT）</summary>
+        public List<ManualEdgeAnchor> ManualEdgeAnchors { get; set; } = new();
 
         /// <summary>安全區列表</summary>
         public List<float[]> SafeZones { get; set; } = new();
@@ -61,9 +79,6 @@ namespace ArtaleAI.Models.Map
         public float X { get; set; }
         public float Y { get; set; }
         public string Type { get; set; } = "Platform";
-
-        /// <summary>編輯器 UI 動作碼（與下拉選單一致）；導航仍以 <see cref="NavEdgeData"/> 為準。</summary>
-        public int EditorActionCode { get; set; }
     }
 
     public class NavEdgeData

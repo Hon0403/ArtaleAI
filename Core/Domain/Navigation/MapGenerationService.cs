@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using ArtaleAI.Models.Map;
+using ArtaleAI.Utils;
 
 namespace ArtaleAI.Core.Domain.Navigation
 {
@@ -26,6 +27,7 @@ namespace ArtaleAI.Core.Domain.Navigation
             mapData.Edges ??= new List<NavEdgeData>();
             mapData.Ropes ??= new List<float[]>();
             mapData.PolylinePlatforms ??= new List<PolylinePlatformData>();
+            mapData.ManualEdgeAnchors ??= new List<ManualEdgeAnchor>();
 
             // 1. 統一清理所有以 n_v_ 開頭的自動生成虛擬節點與相關有向邊
             mapData.Nodes.RemoveAll(n => n.Id.StartsWith(VirtualNodePrefix, StringComparison.Ordinal));
@@ -34,27 +36,78 @@ namespace ArtaleAI.Core.Domain.Navigation
 
             if (mapData.PolylinePlatforms.Count == 0) return;
 
-            // 2. 執行平台幾何自動切分與拓撲生成
+            // 2. 執行平台幾何自動切分與拓撲生成（A/B/C 段）
             BuildNewPlatformTopology(mapData);
 
-            // 3. 疊加手動例外邊 (ManualEdges)
-            if (mapData.ManualEdges != null)
+            // D 段：ManualEdgeAnchors → 例外邊
+            ResolveManualEdgeAnchors(mapData);
+        }
+
+        /// <summary>由平台 ID 與量化座標組裝虛擬節點 ID，供 UI 與 Resolve 共用。</summary>
+        public static string BuildVirtualNodeId(string platformId, float x, float y)
+        {
+            float qX = (float)Math.Round(x, 1, MidpointRounding.AwayFromZero);
+            float qY = (float)Math.Round(y, 1, MidpointRounding.AwayFromZero);
+            return $"{VirtualNodePrefix}plat_{platformId}_{Quantize(qX)}_{Quantize(qY)}";
+        }
+
+        private static void ResolveManualEdgeAnchors(MapData mapData)
+        {
+            if (mapData.ManualEdgeAnchors == null || mapData.ManualEdgeAnchors.Count == 0)
+                return;
+
+            var nodeById = mapData.Nodes
+                .Where(n => !string.IsNullOrEmpty(n.Id))
+                .ToDictionary(n => n.Id, StringComparer.Ordinal);
+
+            foreach (var anchor in mapData.ManualEdgeAnchors)
             {
-                foreach (var edge in mapData.ManualEdges)
+                string fromId = BuildVirtualNodeId(anchor.FromPlatformId, anchor.FromX, anchor.FromY);
+                string toId = BuildVirtualNodeId(anchor.ToPlatformId, anchor.ToX, anchor.ToY);
+
+                if (!nodeById.ContainsKey(fromId))
                 {
-                    // 防禦性檢查：確保起終點節點都存在於現行生成的 Nodes 中
-                    if (mapData.Nodes.Any(n => string.Equals(n.Id, edge.FromNodeId, StringComparison.Ordinal)) &&
-                        mapData.Nodes.Any(n => string.Equals(n.Id, edge.ToNodeId, StringComparison.Ordinal)))
-                    {
-                        // 避免重複加入
-                        if (!mapData.Edges.Any(e => string.Equals(e.FromNodeId, edge.FromNodeId, StringComparison.Ordinal) &&
-                                                    string.Equals(e.ToNodeId, edge.ToNodeId, StringComparison.Ordinal)))
-                        {
-                            mapData.Edges.Add(edge);
-                        }
-                    }
+                    Logger.Warning($"[拓撲] ResolveAnchor 失敗：找不到 fromNode {fromId}");
+                    continue;
                 }
+
+                if (!nodeById.ContainsKey(toId))
+                {
+                    Logger.Warning($"[拓撲] ResolveAnchor 失敗：找不到 toNode {toId}");
+                    continue;
+                }
+
+                bool duplicate = mapData.Edges.Any(e =>
+                    string.Equals(e.FromNodeId, fromId, StringComparison.Ordinal) &&
+                    string.Equals(e.ToNodeId, toId, StringComparison.Ordinal));
+                if (duplicate) continue;
+
+                float cost = ComputeAnchorCost(anchor, nodeById[fromId], nodeById[toId]);
+                mapData.Edges.Add(new NavEdgeData
+                {
+                    FromNodeId = fromId,
+                    ToNodeId = toId,
+                    ActionType = anchor.ActionType,
+                    Cost = cost
+                });
             }
+        }
+
+        /// <summary>Cost 由 ActionType + 幾何距離決定，不由 UI 預算。</summary>
+        private static float ComputeAnchorCost(ManualEdgeAnchor anchor, NavNodeData from, NavNodeData to)
+        {
+            float dx = to.X - from.X;
+            float dy = to.Y - from.Y;
+            float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+            return anchor.ActionType switch
+            {
+                NavigationActionType.Walk => dist,
+                NavigationActionType.Jump => 8.0f,
+                NavigationActionType.SideJump => 8.0f,
+                NavigationActionType.JumpDown => 2.0f,
+                NavigationActionType.Teleport => 1.0f,
+                _ => dist
+            };
         }
 
         private static void BuildNewPlatformTopology(MapData mapData)
@@ -164,6 +217,23 @@ namespace ArtaleAI.Core.Domain.Navigation
                         if (bestSegIdx != -1 && bestDist <= HeightTolerance)
                         {
                             cutPoints.Add((bestArcLength, bestProj));
+                        }
+                    }
+                }
+
+                // 3b. 手動邊錨點切分（確保 Resolve 前節點已存在於平台拓撲）
+                if (mapData.ManualEdgeAnchors != null)
+                {
+                    foreach (var anchor in mapData.ManualEdgeAnchors)
+                    {
+                        if (string.Equals(anchor.FromPlatformId, plat.Id, StringComparison.Ordinal))
+                        {
+                            TryAddAnchorCutPoint(cutPoints, segmentArcLengths, plat, N, anchor.FromX, anchor.FromY);
+                        }
+
+                        if (string.Equals(anchor.ToPlatformId, plat.Id, StringComparison.Ordinal))
+                        {
+                            TryAddAnchorCutPoint(cutPoints, segmentArcLengths, plat, N, anchor.ToX, anchor.ToY);
                         }
                     }
                 }
@@ -307,6 +377,55 @@ namespace ArtaleAI.Core.Domain.Navigation
 
             mapData.Nodes.AddRange(sortedNodes);
             mapData.Edges.AddRange(sortedEdges);
+        }
+
+        private static void TryAddAnchorCutPoint(
+            List<(float ArcLength, PointF Position)> cutPoints,
+            float[] segmentArcLengths,
+            PolylinePlatformData plat,
+            int vertexCount,
+            float anchorX,
+            float anchorY)
+        {
+            var anchorP = new PointF(anchorX, anchorY);
+            float bestDist = float.MaxValue;
+            float bestArcLength = 0f;
+            PointF bestProj = PointF.Empty;
+
+            for (int i = 0; i < vertexCount - 1; i++)
+            {
+                var a = new PointF(plat.Points[i].X, plat.Points[i].Y);
+                var b = new PointF(plat.Points[i + 1].X, plat.Points[i + 1].Y);
+
+                float abx = b.X - a.X;
+                float aby = b.Y - a.Y;
+                float ab2 = abx * abx + aby * aby;
+                if (ab2 < 0.001f) continue;
+
+                float apx = anchorP.X - a.X;
+                float apy = anchorP.Y - a.Y;
+                float t = (apx * abx + apy * aby) / ab2;
+                t = Math.Max(0.0f, Math.Min(1.0f, t));
+
+                var proj = new PointF(a.X + t * abx, a.Y + t * aby);
+                float dx = anchorP.X - proj.X;
+                float dy = anchorP.Y - proj.Y;
+                float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+                float segDist = (float)Math.Sqrt(ab2);
+                float arcLen = segmentArcLengths[i] + t * segDist;
+
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    bestArcLength = arcLen;
+                    bestProj = proj;
+                }
+            }
+
+            if (bestDist <= HeightTolerance)
+            {
+                cutPoints.Add((bestArcLength, bestProj));
+            }
         }
 
         private static int Quantize(float value)

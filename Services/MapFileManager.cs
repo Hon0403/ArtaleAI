@@ -214,32 +214,6 @@ namespace ArtaleAI.Services
             return true; 
         }
 
-        private static bool IsDirectionalJump(NavigationActionType actionType)
-        {
-            return actionType == NavigationActionType.SideJump;
-        }
-
-        private static bool TryGetNodes(
-            Dictionary<string, NavNodeData> nodeById,
-            NavEdgeData edge,
-            out NavNodeData fromNode,
-            out NavNodeData toNode)
-        {
-            fromNode = null!;
-            toNode = null!;
-            if (!nodeById.TryGetValue(edge.FromNodeId, out fromNode!))
-            {
-                return false;
-            }
-
-            if (!nodeById.TryGetValue(edge.ToNodeId, out toNode!))
-            {
-                return false;
-            }
-
-            return true;
-        }
-
         private static string BuildValidationErrorMessage(IReadOnlyList<string> errors)
         {
             var sb = new StringBuilder();
