@@ -35,6 +35,25 @@ namespace ArtaleAI.Core.Domain.Navigation
 
             // 2. 執行平台幾何自動切分與拓撲生成
             BuildNewPlatformTopology(mapData, platforms);
+
+            // 3. 疊加手動例外邊 (ManualEdges)
+            if (mapData.ManualEdges != null)
+            {
+                foreach (var edge in mapData.ManualEdges)
+                {
+                    // 防禦性檢查：確保起終點節點都存在於現行生成的 Nodes 中
+                    if (mapData.Nodes.Any(n => string.Equals(n.Id, edge.FromNodeId, StringComparison.Ordinal)) &&
+                        mapData.Nodes.Any(n => string.Equals(n.Id, edge.ToNodeId, StringComparison.Ordinal)))
+                    {
+                        // 避免重複加入
+                        if (!mapData.Edges.Any(e => string.Equals(e.FromNodeId, edge.FromNodeId, StringComparison.Ordinal) &&
+                                                    string.Equals(e.ToNodeId, edge.ToNodeId, StringComparison.Ordinal)))
+                        {
+                            mapData.Edges.Add(edge);
+                        }
+                    }
+                }
+            }
         }
 
         private static void BuildNewPlatformTopology(MapData mapData, List<PlatformSegmentData> platforms)

@@ -920,15 +920,15 @@ namespace ArtaleAI
 
             EditMode selectedMode = checkedButton.Name switch
             {
-                nameof(rdo_PathMarker) => EditMode.Waypoint,
+                nameof(rdo_PathMarker) => EditMode.Platform,
                 nameof(rdo_RopeMarker) => EditMode.Rope,
                 nameof(rdo_DeleteMarker) => EditMode.Delete,
                 nameof(rdo_SelectMode) => EditMode.Select,
-                nameof(rdo_TwoPointLink) => EditMode.Link,
+                nameof(rdo_TwoPointLink) => EditMode.ManualEdge,
                 _ => EditMode.None
             };
 
-            groupBox_Action.Enabled = selectedMode is EditMode.Waypoint or EditMode.Select or EditMode.Link;
+            groupBox_Action.Enabled = (selectedMode == EditMode.ManualEdge);
 
             if (_mapEditor == null) return;
             _mapEditor.SetEditMode(selectedMode);

@@ -30,7 +30,7 @@ namespace ArtaleAI.UI
         private int _selectedNodeIndex = -1;
         private int _hoveredNodeIndex = -1;
         private int _currentActionType = 0;
-        private int _waypointAnchorIndex = -1;
+        private int _manualEdgeStartIndex = -1;
 
         public float ZoomScale { get; set; } = 1.0f;
 
@@ -40,6 +40,19 @@ namespace ArtaleAI.UI
         {
             // UI Code 現在與 NavigationActionType 列舉值完全對應
             return (NavigationActionType)uiCode;
+        }
+
+        private string AllocatePlatformId()
+        {
+            _currentMapData.Platforms ??= new List<PlatformSegmentData>();
+            var taken = new HashSet<string>(
+                _currentMapData.Platforms.Select(p => p.Id),
+                StringComparer.Ordinal);
+            for (int i = _currentMapData.Platforms.Count; ; i++)
+            {
+                string id = $"plat_{i}";
+                if (taken.Add(id)) return id;
+            }
         }
 
         private static int ResolveActionCodeByGeometry(PointF fromPoint, PointF toPoint, int actionCode)
@@ -101,120 +114,6 @@ namespace ArtaleAI.UI
         {
             _currentActionType = actionType;
             Logger.Info($"[編輯器] SetCurrentActionType 被呼叫: actionType={actionType}");
-            if (_selectedNodeIndex != -1)
-            {
-                UpdateSelectedNodeAction(actionType);
-                ApplyActionToSelectedNodeConnections();
-            }
-        }
-
-        private void UpdateSelectedNodeAction(int actionType)
-        {
-            if (_selectedNodeIndex < 0 || _selectedNodeIndex >= _currentMapData.Nodes.Count) return;
-
-            var node = _currentMapData.Nodes[_selectedNodeIndex];
-            if (node.Type == "Rope")
-            {
-                Logger.Warning($"[編輯器] 試圖對繩索節點設定動作，已攔截。Index: {_selectedNodeIndex}");
-                return;
-            }
-
-            if (actionType == SmartSideJumpActionCode)
-            {
-                return;
-            }
-
-            node.EditorActionCode = actionType;
-            Logger.Info($"[編輯器] 更新節點 {_selectedNodeIndex} EditorActionCode 為 {actionType}");
-        }
-
-        private void ApplyActionToSelectedNodeConnections()
-        {
-            if (_selectedNodeIndex < 0 || _selectedNodeIndex >= _currentMapData.Nodes.Count)
-            {
-                return;
-            }
-
-            var fromNav = _currentMapData.Nodes[_selectedNodeIndex];
-            var fromPt = new PointF(fromNav.X, fromNav.Y);
-            string fromId = fromNav.Id;
-
-            if (_currentActionType == SmartSideJumpActionCode)
-            {
-                bool updated = false;
-                bool reverseUpdated = false;
-
-                if (TryResolveSmartSideJumpTarget(_selectedNodeIndex, out int toIdx))
-                {
-                    var toNav = _currentMapData.Nodes[toIdx];
-                    int resolvedAction = ResolveActionCodeByGeometry(
-                        fromPt,
-                        new PointF(toNav.X, toNav.Y),
-                        SmartSideJumpActionCode);
-
-                    bool forwardUpdated = UpsertEdge(_selectedNodeIndex, toIdx, resolvedAction);
-                    if (forwardUpdated)
-                    {
-                        updated = true;
-                        reverseUpdated = EnsureReverseJumpConnection(_selectedNodeIndex, toIdx, resolvedAction);
-                        Logger.Info($"[編輯器] 節點 {_selectedNodeIndex} 已套用 SmartSideJump 到邊界目標節點 {toIdx}。");
-                    }
-                }
-
-                if (updated)
-                {
-                    Logger.Info($"[編輯器] 套用節點 {_selectedNodeIndex} 的出邊動作為 {GetActionName(_currentActionType)}");
-                    if (reverseUpdated)
-                    {
-                        Logger.Info($"[編輯器] 已自動補齊節點 {_selectedNodeIndex} 相關反向跳邊。");
-                    }
-                }
-                else
-                {
-                    Logger.Info($"[編輯器] 節點 {_selectedNodeIndex} 沒有可更新的邊界跳邊（未變更）。");
-                }
-
-                return;
-            }
-
-            bool regularUpdated = false;
-            var edges = _currentMapData.Edges;
-            int originalCount = edges.Count;
-
-            for (int i = 0; i < originalCount; i++)
-            {
-                var edge = edges[i];
-                if (!string.Equals(edge.FromNodeId, fromId, StringComparison.Ordinal)) continue;
-
-                int toIdx = FindNodeIndexById(edge.ToNodeId);
-                if (toIdx < 0) continue;
-
-                var toNav = _currentMapData.Nodes[toIdx];
-                int resolvedAction = ResolveActionCodeByGeometry(
-                    fromPt,
-                    new PointF(toNav.X, toNav.Y),
-                    _currentActionType);
-
-                var newType = ActionTypeFromResolvedUiCode(resolvedAction);
-                float dist = Distance(fromPt, toNav);
-                float cost = ComputeEdgeCost(resolvedAction, dist);
-
-                if (edge.ActionType != newType || Math.Abs(edge.Cost - cost) > 0.001f)
-                {
-                    edge.ActionType = newType;
-                    edge.Cost = cost;
-                    regularUpdated = true;
-                }
-            }
-
-            if (regularUpdated)
-            {
-                Logger.Info($"[編輯器] 套用節點 {_selectedNodeIndex} 的出邊動作為 {GetActionName(_currentActionType)}");
-            }
-            else
-            {
-                Logger.Info($"[編輯器] 節點 {_selectedNodeIndex} 沒有可更新的出邊（未變更）。");
-            }
         }
 
         private static float Distance(PointF a, NavNodeData b)
@@ -222,165 +121,6 @@ namespace ArtaleAI.UI
             float dx = b.X - a.X;
             float dy = b.Y - a.Y;
             return (float)Math.Sqrt(dx * dx + dy * dy);
-        }
-
-        private bool TryResolveSmartSideJumpTarget(int fromIdx, out int bestToIdx)
-        {
-            bestToIdx = -1;
-            if (fromIdx < 0 || fromIdx >= _currentMapData.Nodes.Count) return false;
-
-            var fromNav = _currentMapData.Nodes[fromIdx];
-            var fromPt = new PointF(fromNav.X, fromNav.Y);
-            string fromId = fromNav.Id;
-
-            float bestDistanceSq = float.MaxValue;
-
-            foreach (var edge in _currentMapData.Edges)
-            {
-                if (!string.Equals(edge.FromNodeId, fromId, StringComparison.Ordinal)) continue;
-                if (edge.ActionType != NavigationActionType.SideJump) continue;
-
-                int candidateTo = FindNodeIndexById(edge.ToNodeId);
-                if (candidateTo < 0) continue;
-
-                var toNav = _currentMapData.Nodes[candidateTo];
-                float dx = toNav.X - fromPt.X;
-                float dy = toNav.Y - fromPt.Y;
-                float distanceSq = dx * dx + dy * dy;
-                if (distanceSq < bestDistanceSq)
-                {
-                    bestDistanceSq = distanceSq;
-                    bestToIdx = candidateTo;
-                }
-            }
-
-            return bestToIdx >= 0;
-        }
-
-        private bool UpsertEdge(int fromIdx, int toIdx, int resolvedUiCode)
-        {
-            if (fromIdx < 0 || toIdx < 0 || fromIdx >= _currentMapData.Nodes.Count || toIdx >= _currentMapData.Nodes.Count)
-                return false;
-
-            string fromId = _currentMapData.Nodes[fromIdx].Id;
-            string toId = _currentMapData.Nodes[toIdx].Id;
-            var fromPt = new PointF(_currentMapData.Nodes[fromIdx].X, _currentMapData.Nodes[fromIdx].Y);
-            var toNav = _currentMapData.Nodes[toIdx];
-
-            var existing = _currentMapData.Edges.FirstOrDefault(e =>
-                string.Equals(e.FromNodeId, fromId, StringComparison.Ordinal) &&
-                string.Equals(e.ToNodeId, toId, StringComparison.Ordinal));
-
-            var actionType = ActionTypeFromResolvedUiCode(resolvedUiCode);
-            float dist = Distance(fromPt, toNav);
-            float cost = ComputeEdgeCost(resolvedUiCode, dist);
-
-            if (existing == null)
-            {
-                _currentMapData.Edges.Add(new NavEdgeData
-                {
-                    FromNodeId = fromId,
-                    ToNodeId = toId,
-                    ActionType = actionType,
-                    Cost = cost
-                });
-                return true;
-            }
-
-            if (existing.ActionType == actionType && Math.Abs(existing.Cost - cost) < 0.001f) return false;
-            existing.ActionType = actionType;
-            existing.Cost = cost;
-            return true;
-        }
-
-        private void ApplyDirectedConnection(
-            int fromIdx,
-            int toIdx,
-            int uiActionCode,
-            bool ensureReverseJumpIfSideJump,
-            out int resolvedAction)
-        {
-            resolvedAction = 0;
-
-            if (fromIdx < 0 || toIdx < 0 || fromIdx == toIdx) return;
-            if (fromIdx >= _currentMapData.Nodes.Count || toIdx >= _currentMapData.Nodes.Count) return;
-
-            var fromN = _currentMapData.Nodes[fromIdx];
-            var toN = _currentMapData.Nodes[toIdx];
-
-            resolvedAction = ResolveActionCodeByGeometry(
-                new PointF(fromN.X, fromN.Y),
-                new PointF(toN.X, toN.Y),
-                uiActionCode);
-
-            UpsertEdge(fromIdx, toIdx, resolvedAction);
-
-            if (resolvedAction != 0)
-            {
-                fromN.EditorActionCode = resolvedAction;
-            }
-
-            if (ensureReverseJumpIfSideJump && resolvedAction == (int)NavigationActionType.SideJump)
-            {
-                EnsureReverseJumpConnection(fromIdx, toIdx, resolvedAction);
-            }
-
-            PruneSelfLoopEdges(_currentMapData);
-        }
-
-        private static void PruneSelfLoopEdges(MapData data)
-        {
-            for (int i = data.Edges.Count - 1; i >= 0; i--)
-            {
-                var e = data.Edges[i];
-                if (string.Equals(e.FromNodeId, e.ToNodeId, StringComparison.Ordinal))
-                {
-                    data.Edges.RemoveAt(i);
-                    Logger.Info($"[編輯器] 自動清理自我連結: {e.FromNodeId}");
-                }
-            }
-        }
-
-        private bool EnsureReverseJumpConnection(int fromIdx, int toIdx, int resolvedForwardAction)
-        {
-            if (resolvedForwardAction != (int)NavigationActionType.SideJump) return false;
-
-            int expectedReverseUi = JumpUiCodeOpposite(resolvedForwardAction);
-            var reverseType = ActionTypeFromResolvedUiCode(expectedReverseUi);
-
-            string fromId = _currentMapData.Nodes[fromIdx].Id;
-            string toId = _currentMapData.Nodes[toIdx].Id;
-
-            var reverseEdge = _currentMapData.Edges.FirstOrDefault(e =>
-                string.Equals(e.FromNodeId, toId, StringComparison.Ordinal) &&
-                string.Equals(e.ToNodeId, fromId, StringComparison.Ordinal));
-
-            var toN = _currentMapData.Nodes[toIdx];
-            var fromN = _currentMapData.Nodes[fromIdx];
-            float dist = Distance(new PointF(toN.X, toN.Y), fromN);
-            float cost = ComputeEdgeCost(expectedReverseUi, dist);
-
-            if (reverseEdge == null)
-            {
-                _currentMapData.Edges.Add(new NavEdgeData
-                {
-                    FromNodeId = toId,
-                    ToNodeId = fromId,
-                    ActionType = reverseType,
-                    Cost = cost
-                });
-                toN.EditorActionCode = expectedReverseUi;
-                return true;
-            }
-
-            if (reverseEdge.ActionType != reverseType || Math.Abs(reverseEdge.Cost - cost) > 0.001f)
-            {
-                reverseEdge.ActionType = reverseType;
-                reverseEdge.Cost = cost;
-                return true;
-            }
-
-            return false;
         }
 
         public void SetMinimapBounds(Rectangle bounds)
@@ -394,13 +134,18 @@ namespace ArtaleAI.UI
             _currentMapData.Nodes ??= new List<NavNodeData>();
             _currentMapData.Edges ??= new List<NavEdgeData>();
             _currentMapData.Ropes ??= new List<float[]>();
+            _currentMapData.Platforms ??= new List<PlatformSegmentData>();
+            _currentMapData.ManualEdges ??= new List<NavEdgeData>();
 
             EnsureNodeIds();
 
             _selectedNodeIndex = -1;
-            _waypointAnchorIndex = -1;
+            _manualEdgeStartIndex = -1;
             _startPoint = null;
             _previewPoint = null;
+
+            // 載入時立即跑一次拓撲生成以確保 UI 能正確顯示預覽
+            MapGenerationService.BuildHTopology(_currentMapData);
         }
 
         public MapData GetCurrentMapData()
@@ -411,27 +156,27 @@ namespace ArtaleAI.UI
 
         public void SetEditMode(EditMode mode)
         {
-            if ((_currentEditMode == EditMode.Waypoint ||
+            if ((_currentEditMode == EditMode.Platform ||
                  _currentEditMode == EditMode.Rope) &&
                 _startPoint.HasValue)
             {
-                Logger.Info($"[編輯器] 放棄未完成的繪製: {_currentEditMode}");
+                Logger.Info($"[編輯器] 放棄未完成的幾何繪製: {_currentEditMode}");
                 _startPoint = null;
                 _previewPoint = null;
             }
 
-            if (_currentEditMode == EditMode.Link && mode != EditMode.Link)
+            if (_currentEditMode == EditMode.ManualEdge && mode != EditMode.ManualEdge)
             {
-                _linkStartIndex = -1;
+                _manualEdgeStartIndex = -1;
                 _startPoint = null;
                 _previewPoint = null;
             }
 
             _currentEditMode = mode;
 
-            if (mode == EditMode.Link)
+            if (mode == EditMode.ManualEdge)
             {
-                _linkStartIndex = -1;
+                _manualEdgeStartIndex = -1;
                 _startPoint = null;
                 _previewPoint = null;
             }
@@ -445,12 +190,20 @@ namespace ArtaleAI.UI
                 return;
             }
 
-            _previewPoint = new PointF(
-                screenPoint.X - minimapBounds.X,
-                screenPoint.Y - minimapBounds.Y);
+            if (_currentEditMode == EditMode.Platform)
+            {
+                // 鎖定 Y 軸進行水平對齊預覽
+                _previewPoint = new PointF(
+                    screenPoint.X - minimapBounds.X,
+                    _startPoint.Value.Y);
+            }
+            else
+            {
+                _previewPoint = new PointF(
+                    screenPoint.X - minimapBounds.X,
+                    screenPoint.Y - minimapBounds.Y);
+            }
         }
-
-        private int _linkStartIndex = -1;
 
         public void HandleClick(PointF screenPoint, MouseButtons button = MouseButtons.Left)
         {
@@ -462,155 +215,161 @@ namespace ArtaleAI.UI
 
             if (_currentEditMode == EditMode.Select)
             {
-                int nearestIndex = FindNearestNodeIndex(relativePoint);
-
-                _selectedNodeIndex = nearestIndex;
-                if (_selectedNodeIndex != -1)
+                if (button == MouseButtons.Left)
                 {
-                    var node = _currentMapData.Nodes[_selectedNodeIndex];
-                    int action = node.EditorActionCode;
-                    ApplyActionToSelectedNodeConnections();
-                    int actionForUi = _currentActionType == SmartSideJumpActionCode ? SmartSideJumpActionCode : action;
-                    Logger.Info($"[編輯器] 選取節點 {_selectedNodeIndex} (Action={action})");
-                    OnNodeSelected?.Invoke(actionForUi);
-                }
-                else
-                {
-                    OnNodeSelected?.Invoke(-1);
-                }
-            }
-            else if (_currentEditMode == EditMode.Link)
-            {
-                int clickedIndex = FindNearestNodeIndex(relativePoint);
-
-                if (clickedIndex != -1)
-                {
-                    if (_linkStartIndex == -1)
+                    int nearestIndex = FindNearestNodeIndex(relativePoint);
+                    _selectedNodeIndex = nearestIndex;
+                    if (_selectedNodeIndex != -1)
                     {
-                        _linkStartIndex = clickedIndex;
-                        var node = _currentMapData.Nodes[clickedIndex];
-                        _startPoint = new PointF(node.X, node.Y);
-                        Logger.Info($"[編輯器] 連結起點: {clickedIndex}");
+                        var node = _currentMapData.Nodes[_selectedNodeIndex];
+                        Logger.Info($"[編輯器] 選取生成節點 {_selectedNodeIndex} (Id={node.Id})");
+                        OnNodeSelected?.Invoke(node.EditorActionCode);
                     }
                     else
                     {
-                        if (clickedIndex != _linkStartIndex)
-                        {
-                            ApplyDirectedConnection(
-                                _linkStartIndex,
-                                clickedIndex,
-                                _currentActionType,
-                                ensureReverseJumpIfSideJump: true,
-                                out int resolved);
-                            Logger.Info(
-                                $"[編輯器] 連結完成: {_linkStartIndex} -> {clickedIndex} (Action={GetActionName(resolved)})");
-                        }
-                        else
-                        {
-                            Logger.Info("[編輯器] 取消連結起點（點擊同一起點）");
-                        }
-
-                        _linkStartIndex = -1;
-                        _startPoint = null;
-                        _previewPoint = null;
+                        OnNodeSelected?.Invoke(-1);
                     }
                 }
-                else
-                {
-                    _linkStartIndex = -1;
-                    _startPoint = null;
-                    _previewPoint = null;
-                }
             }
-            else if (_currentEditMode == EditMode.Waypoint)
+            else if (_currentEditMode == EditMode.Platform)
             {
                 if (button == MouseButtons.Right)
                 {
-                    // 清除錨點：下一筆在空白處新增的節點不再自動連到「Nodes 清單上一筆」，
-                    // 以達成「分段／截斷折線」；若要再接續連線請左鍵點既有節點設為錨點。
-                    _waypointAnchorIndex = -1;
                     _startPoint = null;
-                    Logger.Info("[編輯器] 路徑標記：右鍵已截斷鏈條，下一個新節點將獨立（不自動連邊），除非先左鍵選取錨點節點。");
+                    _previewPoint = null;
+                    Logger.Info("[編輯器] 取消平台繪製");
                 }
                 else
                 {
-                    int clickedExisting = FindNearestNodeIndex(relativePoint);
-
-                    if (clickedExisting != -1)
+                    if (!_startPoint.HasValue)
                     {
-                        _waypointAnchorIndex = clickedExisting;
-                        _selectedNodeIndex = clickedExisting;
-                        var node = _currentMapData.Nodes[clickedExisting];
-                        _startPoint = new PointF(node.X, node.Y);
-                        OnNodeSelected?.Invoke(node.EditorActionCode);
-                        Logger.Info($"[編輯器] 選中節點 {clickedExisting} 為錨點 (從此連出新節點)");
+                        _startPoint = relativePoint;
+                        Logger.Info($"[編輯器] 設定平台起點: ({relativePoint.X:F1}, {relativePoint.Y:F1})");
                     }
                     else
                     {
-                        var newNode = new NavNodeData
+                        var start = _startPoint.Value;
+                        var end = relativePoint;
+
+                        float x1 = Math.Min(start.X, end.X);
+                        float x2 = Math.Max(start.X, end.X);
+                        float y = start.Y;
+
+                        var newPlat = new PlatformSegmentData
                         {
-                            Id = AllocateNodeId(),
-                            X = (float)Math.Round(relativePoint.X, 1),
-                            Y = (float)Math.Round(relativePoint.Y, 1),
-                            Type = "Platform",
-                            EditorActionCode = 0
+                            Id = AllocatePlatformId(),
+                            X1 = (float)Math.Round(x1, 1),
+                            X2 = (float)Math.Round(x2, 1),
+                            Y = (float)Math.Round(y, 1)
                         };
-                        _currentMapData.Nodes.Add(newNode);
-                        int newIndex = _currentMapData.Nodes.Count - 1;
 
-                        // 僅在已選錨點（含連續左鍵新增時自動帶入的上一節點）時自動拉邊；
-                        // 右鍵截斷後錨點為 -1，不可再用「清單 index-1」推上一點，否則鏈條永遠不斷。
-                        int prevIndex = _waypointAnchorIndex != -1 ? _waypointAnchorIndex : -1;
+                        _currentMapData.Platforms.Add(newPlat);
+                        Logger.Info($"[編輯器] 建立平台幾何: Id={newPlat.Id}, X1={newPlat.X1:F1}, X2={newPlat.X2:F1}, Y={newPlat.Y:F1}");
 
-                        if (prevIndex != -1)
-                        {
-                            ApplyDirectedConnection(
-                                prevIndex,
-                                newIndex,
-                                _currentActionType,
-                                ensureReverseJumpIfSideJump: true,
-                                out int actionToUse);
-                            string actionName = GetActionName(actionToUse);
-                            Logger.Info($"[手動選取] 新增節點 {newIndex} ({relativePoint.X:F1}, {relativePoint.Y:F1}) ← {actionName} ← 節點 {prevIndex}");
-                        }
-                        else
-                        {
-                            Logger.Info($"[編輯器] 新增起始節點 {newIndex} ({relativePoint.X:F1}, {relativePoint.Y:F1})");
-                        }
+                        _startPoint = null;
+                        _previewPoint = null;
 
-                        _waypointAnchorIndex = newIndex;
-                        _startPoint = relativePoint;
+                        MapGenerationService.BuildHTopology(_currentMapData);
                     }
                 }
             }
             else if (_currentEditMode == EditMode.Rope)
             {
-                _currentMapData.Ropes ??= new List<float[]>();
-
-                if (!_startPoint.HasValue)
+                if (button == MouseButtons.Right)
                 {
-                    _startPoint = relativePoint;
-                    Logger.Info($"[編輯器] 繩索起點: ({relativePoint.X:F1}, {relativePoint.Y:F1})");
+                    _startPoint = null;
+                    _previewPoint = null;
+                    Logger.Info("[編輯器] 取消繩索繪製");
                 }
                 else
                 {
-                    var start = _startPoint.Value;
-                    var end = relativePoint;
+                    if (!_startPoint.HasValue)
+                    {
+                        _startPoint = relativePoint;
+                        Logger.Info($"[編輯器] 設定繩索起點: ({relativePoint.X:F1}, {relativePoint.Y:F1})");
+                    }
+                    else
+                    {
+                        var start = _startPoint.Value;
+                        var end = relativePoint;
 
-                    float topY = Math.Min(start.Y, end.Y);
-                    float bottomY = Math.Max(start.Y, end.Y);
-                    float x = start.X;
+                        float topY = Math.Min(start.Y, end.Y);
+                        float bottomY = Math.Max(start.Y, end.Y);
+                        float x = start.X;
 
-                    _currentMapData.Ropes.Add(new[] {
-                        (float)Math.Round(x, 1),
-                        (float)Math.Round(topY, 1),
-                        (float)Math.Round(bottomY, 1)
-                    });
+                        _currentMapData.Ropes.Add(new[] {
+                            (float)Math.Round(x, 1),
+                            (float)Math.Round(topY, 1),
+                            (float)Math.Round(bottomY, 1)
+                        });
 
-                    Logger.Info($"[編輯器] 建立繩索: X={x:F1}, Y={topY:F1}~{bottomY:F1}");
+                        Logger.Info($"[編輯器] 建立繩索: X={x:F1}, Y={topY:F1}~{bottomY:F1}");
 
+                        _startPoint = null;
+                        _previewPoint = null;
+
+                        MapGenerationService.BuildHTopology(_currentMapData);
+                    }
+                }
+            }
+            else if (_currentEditMode == EditMode.ManualEdge)
+            {
+                if (button == MouseButtons.Right)
+                {
+                    _manualEdgeStartIndex = -1;
                     _startPoint = null;
                     _previewPoint = null;
+                    Logger.Info("[編輯器] 取消建立例外邊");
+                }
+                else
+                {
+                    int clickedIndex = FindNearestNodeIndex(relativePoint);
+                    if (clickedIndex != -1)
+                    {
+                        if (_manualEdgeStartIndex == -1)
+                        {
+                            _manualEdgeStartIndex = clickedIndex;
+                            var node = _currentMapData.Nodes[clickedIndex];
+                            _startPoint = new PointF(node.X, node.Y);
+                            Logger.Info($"[編輯器] 選擇例外邊起點: {clickedIndex} (Id={node.Id})");
+                        }
+                        else
+                        {
+                            if (clickedIndex != _manualEdgeStartIndex)
+                            {
+                                var fromNode = _currentMapData.Nodes[_manualEdgeStartIndex];
+                                var toNode = _currentMapData.Nodes[clickedIndex];
+
+                                var actionType = ActionTypeFromResolvedUiCode(_currentActionType);
+                                float dist = (float)Math.Sqrt(Math.Pow(fromNode.X - toNode.X, 2) + Math.Pow(fromNode.Y - toNode.Y, 2));
+                                float cost = ComputeEdgeCost(_currentActionType, dist);
+
+                                _currentMapData.ManualEdges ??= new List<NavEdgeData>();
+                                _currentMapData.ManualEdges.Add(new NavEdgeData
+                                {
+                                    FromNodeId = fromNode.Id,
+                                    ToNodeId = toNode.Id,
+                                    ActionType = actionType,
+                                    Cost = cost
+                                });
+
+                                Logger.Info($"[編輯器] 建立手動例外邊: {fromNode.Id} -> {toNode.Id} (Action={actionType})");
+
+                                _manualEdgeStartIndex = -1;
+                                _startPoint = null;
+                                _previewPoint = null;
+
+                                MapGenerationService.BuildHTopology(_currentMapData);
+                            }
+                            else
+                            {
+                                Logger.Info("[編輯器] 取消例外邊（點選同一起點）");
+                                _manualEdgeStartIndex = -1;
+                                _startPoint = null;
+                                _previewPoint = null;
+                            }
+                        }
+                    }
                 }
             }
             else if (_currentEditMode == EditMode.Delete)
@@ -655,6 +414,24 @@ namespace ArtaleAI.UI
         {
             if (minimapBounds.IsEmpty) return;
 
+            // 1. 繪製實際的 Platforms 幾何線段 (萊姆綠粗線)
+            if (_currentMapData.Platforms?.Any() == true)
+            {
+                foreach (var plat in _currentMapData.Platforms)
+                {
+                    var p1 = convert(new PointF(minimapBounds.X + plat.X1, minimapBounds.Y + plat.Y));
+                    var p2 = convert(new PointF(minimapBounds.X + plat.X2, minimapBounds.Y + plat.Y));
+
+                    using (var pen = new Pen(Color.Lime, 4.0f))
+                    {
+                        g.DrawLine(pen, p1, p2);
+                    }
+                    g.FillRectangle(Brushes.White, p1.X - 2, p1.Y - 2, 4, 4);
+                    g.FillRectangle(Brushes.White, p2.X - 2, p2.Y - 2, 4, 4);
+                }
+            }
+
+            // 2. 繪製自動生成的拓撲邊 (細線)
             if (_currentMapData.Edges.Count > 0)
             {
                 foreach (var edge in _currentMapData.Edges)
@@ -671,7 +448,7 @@ namespace ArtaleAI.UI
                     var p1 = convert(new PointF(minimapBounds.X + p1Data.X, minimapBounds.Y + p1Data.Y));
                     var p2 = convert(new PointF(minimapBounds.X + p2Data.X, minimapBounds.Y + p2Data.Y));
 
-                    using (var pen = new Pen(lineColor, 2.0f))
+                    using (var pen = new Pen(Color.FromArgb(160, lineColor), 1.5f)) // 半透明細邊
                     {
                         g.DrawLine(pen, p1, p2);
 
@@ -682,6 +459,7 @@ namespace ArtaleAI.UI
                 }
             }
 
+            // 3. 繪製自動生成的拓撲節點
             for (int i = 0; i < _currentMapData.Nodes.Count; i++)
             {
                 var nav = _currentMapData.Nodes[i];
@@ -689,7 +467,7 @@ namespace ArtaleAI.UI
                 int action = nav.EditorActionCode;
 
                 Color nodeColor = GetNodeColor(action);
-                float radius = PointRadius;
+                float radius = PointRadius - 0.5f; // 稍小一點的點
 
                 if (i == _selectedNodeIndex)
                 {
@@ -701,7 +479,7 @@ namespace ArtaleAI.UI
                     g.DrawEllipse(Pens.White, pos.X - radius - 1, pos.Y - radius - 1, (radius + 1) * 2, (radius + 1) * 2);
                 }
 
-                using (var brush = new SolidBrush(nodeColor))
+                using (var brush = new SolidBrush(Color.FromArgb(200, nodeColor))) // 稍微帶點透明度
                 {
                     g.FillEllipse(brush, pos.X - radius, pos.Y - radius, radius * 2, radius * 2);
                 }
@@ -712,13 +490,14 @@ namespace ArtaleAI.UI
                 if (i == _selectedNodeIndex)
                 {
                     int displayAction = (_currentEditMode == EditMode.Select && _currentActionType == SmartSideJumpActionCode)
-                        ? SmartSideJumpActionCode
-                        : action;
+                         ? SmartSideJumpActionCode
+                         : action;
                     string actionName = GetActionName(displayAction);
                     DrawLabel(g, new PointF(pos.X, pos.Y - 15), $"{i}: {actionName}", Color.Yellow);
                 }
             }
 
+            // 4. 繪製繩索幾何 (黃色粗線)
             if (_currentMapData.Ropes?.Any() == true)
             {
                 foreach (var rope in _currentMapData.Ropes)
@@ -732,7 +511,7 @@ namespace ArtaleAI.UI
                     var pTop = convert(new PointF(minimapBounds.X + x, minimapBounds.Y + topY));
                     var pBottom = convert(new PointF(minimapBounds.X + x, minimapBounds.Y + bottomY));
 
-                    using var pen = new Pen(Color.Yellow, 3f);
+                    using var pen = new Pen(Color.Yellow, 3.5f);
                     g.DrawLine(pen, pTop, pBottom);
 
                     g.FillRectangle(Brushes.Red, pTop.X - 3, pTop.Y - 3, 6, 6);
@@ -763,9 +542,9 @@ namespace ArtaleAI.UI
 
         private void DrawPreviewShapes(Graphics g, Func<PointF, PointF> convert)
         {
-            bool isLineMode = _currentEditMode == EditMode.Waypoint ||
-                              _currentEditMode == EditMode.Rope ||
-                              _currentEditMode == EditMode.Link;
+            bool isLineMode = _currentEditMode == EditMode.Platform ||
+                               _currentEditMode == EditMode.Rope ||
+                               _currentEditMode == EditMode.ManualEdge;
 
             if (_startPoint.HasValue && _previewPoint.HasValue && isLineMode)
             {
@@ -797,82 +576,102 @@ namespace ArtaleAI.UI
 
         private void HandleDeleteAction(PointF clickPosition)
         {
-            float deletionRadius = SelectionRadius;
+            float threshold = SelectionRadius * 2.0f; // 4.0 像素
 
-            int bestNodeIndex = -1;
-            float bestNodeDistance = float.MaxValue;
-            for (int i = 0; i < _currentMapData.Nodes.Count; i++)
+            PlatformSegmentData? bestPlatform = null;
+            float bestPlatformDist = float.MaxValue;
+
+            if (_currentMapData.Platforms != null)
             {
-                var n = _currentMapData.Nodes[i];
-                float dx = n.X - clickPosition.X;
-                float dy = n.Y - clickPosition.Y;
-                float dist = (float)Math.Sqrt(dx * dx + dy * dy);
-                if (dist <= deletionRadius && dist < bestNodeDistance)
+                foreach (var plat in _currentMapData.Platforms)
                 {
-                    bestNodeDistance = dist;
-                    bestNodeIndex = i;
-                }
-            }
-
-            IList<float[]>? bestRopeList = null;
-            int bestRopeIndex = -1;
-            float bestRopeDistance = float.MaxValue;
-            if (_currentMapData.Ropes?.Any() == true)
-            {
-                for (int i = 0; i < _currentMapData.Ropes.Count; i++)
-                {
-                    var coord = _currentMapData.Ropes[i];
-                    if (coord.Length < 2) continue;
-
-                    float dx = coord[0] - clickPosition.X;
-                    float dy = coord[1] - clickPosition.Y;
-                    float dist = (float)Math.Sqrt(dx * dx + dy * dy);
-
-                    if (dist <= deletionRadius && dist < bestRopeDistance)
+                    float dist = GetDistanceToPlatform(clickPosition, plat);
+                    if (dist < threshold && dist < bestPlatformDist)
                     {
-                        bestRopeDistance = dist;
-                        bestRopeList = _currentMapData.Ropes;
-                        bestRopeIndex = i;
+                        bestPlatformDist = dist;
+                        bestPlatform = plat;
                     }
                 }
             }
 
-            if (bestNodeIndex >= 0 && bestNodeDistance <= bestRopeDistance)
+            float[]? bestRope = null;
+            float bestRopeDist = float.MaxValue;
+            int bestRopeIdx = -1;
+
+            if (_currentMapData.Ropes != null)
             {
-                RemoveNodeAtIndex(bestNodeIndex);
-                return;
+                for (int i = 0; i < _currentMapData.Ropes.Count; i++)
+                {
+                    var rope = _currentMapData.Ropes[i];
+                    if (rope.Length < 3) continue;
+
+                    float dist = GetDistanceToRope(clickPosition, rope);
+                    if (dist < threshold && dist < bestRopeDist)
+                    {
+                        bestRopeDist = dist;
+                        bestRope = rope;
+                        bestRopeIdx = i;
+                    }
+                }
             }
 
-            if (bestRopeList != null && bestRopeIndex >= 0)
+            // 衝突解決與優先刪除距離最近者
+            if (bestPlatform != null && (bestRope == null || bestPlatformDist <= bestRopeDist))
             {
-                var deletedCoord = bestRopeList[bestRopeIndex];
-                bestRopeList.RemoveAt(bestRopeIndex);
-                Logger.Info($"刪除 Rope (Index {bestRopeIndex}): ({deletedCoord[0]:F1}, {deletedCoord[1]:F1})");
+                _currentMapData.Platforms.Remove(bestPlatform);
+                Logger.Info($"[編輯器] 刪除平台幾何: Id={bestPlatform.Id}, Y={bestPlatform.Y:F1}");
+                MapGenerationService.BuildHTopology(_currentMapData);
+            }
+            else if (bestRope != null && bestRopeIdx >= 0)
+            {
+                _currentMapData.Ropes.RemoveAt(bestRopeIdx);
+                Logger.Info($"[編輯器] 刪除繩索幾何: X={bestRope[0]:F1}, Y={bestRope[1]:F1}~{bestRope[2]:F1}");
+                MapGenerationService.BuildHTopology(_currentMapData);
             }
         }
 
-        private void RemoveNodeAtIndex(int bestIndex)
+        private static float GetDistanceToPlatform(PointF p, PlatformSegmentData plat)
         {
-            string removedId = _currentMapData.Nodes[bestIndex].Id;
-            _currentMapData.Edges.RemoveAll(e =>
-                string.Equals(e.FromNodeId, removedId, StringComparison.Ordinal) ||
-                string.Equals(e.ToNodeId, removedId, StringComparison.Ordinal));
+            if (p.X >= plat.X1 && p.X <= plat.X2)
+            {
+                return Math.Abs(p.Y - plat.Y);
+            }
+            if (p.X < plat.X1)
+            {
+                float dx = plat.X1 - p.X;
+                float dy = plat.Y - p.Y;
+                return (float)Math.Sqrt(dx * dx + dy * dy);
+            }
+            else
+            {
+                float dx = plat.X2 - p.X;
+                float dy = plat.Y - p.Y;
+                return (float)Math.Sqrt(dx * dx + dy * dy);
+            }
+        }
 
-            if (_selectedNodeIndex == bestIndex) _selectedNodeIndex = -1;
-            else if (_selectedNodeIndex > bestIndex) _selectedNodeIndex--;
+        private static float GetDistanceToRope(PointF p, float[] rope)
+        {
+            float ropeX = rope[0];
+            float topY = rope[1];
+            float bottomY = rope[2];
 
-            if (_waypointAnchorIndex == bestIndex) _waypointAnchorIndex = -1;
-            else if (_waypointAnchorIndex > bestIndex) _waypointAnchorIndex--;
-
-            if (_linkStartIndex == bestIndex) _linkStartIndex = -1;
-            else if (_linkStartIndex > bestIndex) _linkStartIndex--;
-
-            if (_hoveredNodeIndex == bestIndex) _hoveredNodeIndex = -1;
-            else if (_hoveredNodeIndex > bestIndex) _hoveredNodeIndex--;
-
-            var deleted = _currentMapData.Nodes[bestIndex];
-            _currentMapData.Nodes.RemoveAt(bestIndex);
-            Logger.Info($"刪除 Node (Index {bestIndex}): ({deleted.X:F1}, {deleted.Y:F1})");
+            if (p.Y >= topY && p.Y <= bottomY)
+            {
+                return Math.Abs(p.X - ropeX);
+            }
+            if (p.Y < topY)
+            {
+                float dx = ropeX - p.X;
+                float dy = topY - p.Y;
+                return (float)Math.Sqrt(dx * dx + dy * dy);
+            }
+            else
+            {
+                float dx = ropeX - p.X;
+                float dy = bottomY - p.Y;
+                return (float)Math.Sqrt(dx * dx + dy * dy);
+            }
         }
 
         public void UpdateHoveredNode(PointF screenPoint)

@@ -39,6 +39,9 @@ namespace ArtaleAI.Models.Map
         /// <summary>導航圖邊（有向）。</summary>
         public List<NavEdgeData> Edges { get; set; } = new();
 
+        /// <summary>手動例外邊列表</summary>
+        public List<NavEdgeData> ManualEdges { get; set; } = new();
+
         /// <summary>安全區列表</summary>
         public List<float[]> SafeZones { get; set; } = new();
 
