@@ -30,6 +30,10 @@ namespace ArtaleAI.UI
         private int _currentActionType = 0;
         private int _manualEdgeStartIndex = -1;
 
+        private PlatformSegmentData? _hoveredPlatform = null;
+        private float[]? _hoveredRope = null;
+        private NavEdgeData? _hoveredManualEdge = null;
+
         public float ZoomScale { get; set; } = 1.0f;
 
         private static NavigationActionType ActionTypeFromResolvedUiCode(int uiCode)
@@ -143,6 +147,11 @@ namespace ArtaleAI.UI
                 _startPoint = null;
                 _previewPoint = null;
             }
+
+            _hoveredNodeIndex = -1;
+            _hoveredPlatform = null;
+            _hoveredRope = null;
+            _hoveredManualEdge = null;
         }
 
         public EditMode GetCurrentEditMode()
@@ -416,7 +425,7 @@ namespace ArtaleAI.UI
         {
             if (minimapBounds.IsEmpty) return;
 
-            // 1. 繪製實際的 Platforms 幾何線段 (萊姆綠粗線)
+            // 1. 繪製實際的 Platforms 幾何線段 (萊姆綠粗線，Hover時以亮萊姆綠且加粗高亮)
             if (_currentMapData.Platforms?.Any() == true)
             {
                 foreach (var plat in _currentMapData.Platforms)
@@ -424,7 +433,11 @@ namespace ArtaleAI.UI
                     var p1 = convert(new PointF(minimapBounds.X + plat.X1, minimapBounds.Y + plat.Y));
                     var p2 = convert(new PointF(minimapBounds.X + plat.X2, minimapBounds.Y + plat.Y));
 
-                    using (var pen = new Pen(Color.Lime, 4.0f))
+                    bool isPlatHovered = (plat == _hoveredPlatform);
+                    Color platColor = isPlatHovered ? Color.Chartreuse : Color.Lime;
+                    float platWidth = isPlatHovered ? 6.0f : 4.0f;
+
+                    using (var pen = new Pen(platColor, platWidth))
                     {
                         g.DrawLine(pen, p1, p2);
                     }
@@ -433,7 +446,7 @@ namespace ArtaleAI.UI
                 }
             }
 
-            // 2. 繪製拓撲邊 (細線代表自動生成，醒目橘線代表手動例外)
+            // 2. 繪製拓撲邊 (細線代表自動生成，醒目橘線代表手動例外，Hover手動邊時以亮紅粗線高亮)
             if (_currentMapData.Edges.Count > 0)
             {
                 foreach (var edge in _currentMapData.Edges)
@@ -449,12 +462,16 @@ namespace ArtaleAI.UI
                         string.Equals(me.FromNodeId, edge.FromNodeId, StringComparison.Ordinal) &&
                         string.Equals(me.ToNodeId, edge.ToNodeId, StringComparison.Ordinal));
 
+                    bool isEdgeHovered = isManual && (_hoveredManualEdge != null &&
+                        string.Equals(_hoveredManualEdge.FromNodeId, edge.FromNodeId, StringComparison.Ordinal) &&
+                        string.Equals(_hoveredManualEdge.ToNodeId, edge.ToNodeId, StringComparison.Ordinal));
+
                     Color lineColor = GetEdgeDrawColor(edge);
                     var p1 = convert(new PointF(minimapBounds.X + p1Data.X, minimapBounds.Y + p1Data.Y));
                     var p2 = convert(new PointF(minimapBounds.X + p2Data.X, minimapBounds.Y + p2Data.Y));
 
-                    float penWidth = isManual ? 2.5f : 1.5f;
-                    Color drawColor = isManual ? Color.OrangeRed : Color.FromArgb(120, lineColor);
+                    float penWidth = isEdgeHovered ? 4.0f : (isManual ? 2.5f : 1.5f);
+                    Color drawColor = isEdgeHovered ? Color.Red : (isManual ? Color.OrangeRed : Color.FromArgb(120, lineColor));
 
                     using (var pen = new Pen(drawColor, penWidth))
                     {
@@ -462,7 +479,7 @@ namespace ArtaleAI.UI
 
                         float midX = (p1.X + p2.X) / 2;
                         float midY = (p1.Y + p2.Y) / 2;
-                        DrawArrow(g, p1, p2, new PointF(midX, midY), isManual ? Brushes.OrangeRed : Brushes.Cyan);
+                        DrawArrow(g, p1, p2, new PointF(midX, midY), isEdgeHovered ? Brushes.Red : (isManual ? Brushes.OrangeRed : Brushes.Cyan));
                     }
                 }
             }
@@ -511,7 +528,7 @@ namespace ArtaleAI.UI
                 }
             }
 
-            // 4. 繪製繩索幾何 (黃色粗線)
+            // 4. 繪製繩索幾何 (黃色粗線，Hover時以亮黃色且加粗高亮)
             if (_currentMapData.Ropes?.Any() == true)
             {
                 foreach (var rope in _currentMapData.Ropes)
@@ -525,7 +542,11 @@ namespace ArtaleAI.UI
                     var pTop = convert(new PointF(minimapBounds.X + x, minimapBounds.Y + topY));
                     var pBottom = convert(new PointF(minimapBounds.X + x, minimapBounds.Y + bottomY));
 
-                    using var pen = new Pen(Color.Yellow, 3.5f);
+                    bool isRopeHovered = (rope == _hoveredRope);
+                    Color ropeColor = isRopeHovered ? Color.LightYellow : Color.Yellow;
+                    float ropeWidth = isRopeHovered ? 5.5f : 3.5f;
+
+                    using var pen = new Pen(ropeColor, ropeWidth);
                     g.DrawLine(pen, pTop, pBottom);
 
                     g.FillRectangle(Brushes.Red, pTop.X - 3, pTop.Y - 3, 6, 6);
@@ -761,7 +782,95 @@ namespace ArtaleAI.UI
                screenPoint.X - minimapBounds.X,
                screenPoint.Y - minimapBounds.Y);
 
-            _hoveredNodeIndex = FindNearestNodeIndex(relativePoint);
+            // 重設所有 Hover 狀態
+            _hoveredNodeIndex = -1;
+            _hoveredPlatform = null;
+            _hoveredRope = null;
+            _hoveredManualEdge = null;
+
+            if (_currentEditMode == EditMode.Delete)
+            {
+                float threshold = SelectionRadius; // 5.0 像素
+
+                // 1. 檢索 Platform
+                PlatformSegmentData? bestPlatform = null;
+                float bestPlatformDist = float.MaxValue;
+                if (_currentMapData.Platforms != null)
+                {
+                    foreach (var plat in _currentMapData.Platforms)
+                    {
+                        float dist = GetDistanceToPlatform(relativePoint, plat);
+                        if (dist < threshold && dist < bestPlatformDist)
+                        {
+                            bestPlatformDist = dist;
+                            bestPlatform = plat;
+                        }
+                    }
+                }
+
+                // 2. 檢索 Rope
+                float[]? bestRope = null;
+                float bestRopeDist = float.MaxValue;
+                if (_currentMapData.Ropes != null)
+                {
+                    foreach (var rope in _currentMapData.Ropes)
+                    {
+                        if (rope.Length < 3) continue;
+                        float dist = GetDistanceToRope(relativePoint, rope);
+                        if (dist < threshold && dist < bestRopeDist)
+                        {
+                            bestRopeDist = dist;
+                            bestRope = rope;
+                        }
+                    }
+                }
+
+                // 3. 檢索 ManualEdge
+                NavEdgeData? bestManualEdge = null;
+                float bestManualEdgeDist = float.MaxValue;
+                if (_currentMapData.ManualEdges != null)
+                {
+                    foreach (var edge in _currentMapData.ManualEdges)
+                    {
+                        int fromIdx = FindNodeIndexById(edge.FromNodeId);
+                        int toIdx = FindNodeIndexById(edge.ToNodeId);
+                        if (fromIdx < 0 || toIdx < 0) continue;
+
+                        var fromNode = _currentMapData.Nodes[fromIdx];
+                        var toNode = _currentMapData.Nodes[toIdx];
+
+                        float dist = GetDistanceToEdge(relativePoint, fromNode, toNode);
+                        if (dist < threshold && dist < bestManualEdgeDist)
+                        {
+                            bestManualEdgeDist = dist;
+                            bestManualEdge = edge;
+                        }
+                    }
+                }
+
+                // 尋找最近的命中物件
+                float minOfAll = Math.Min(bestPlatformDist, Math.Min(bestRopeDist, bestManualEdgeDist));
+                if (minOfAll < threshold)
+                {
+                    if (bestPlatform != null && Math.Abs(bestPlatformDist - minOfAll) < 0.001f)
+                    {
+                        _hoveredPlatform = bestPlatform;
+                    }
+                    else if (bestRope != null && Math.Abs(bestRopeDist - minOfAll) < 0.001f)
+                    {
+                        _hoveredRope = bestRope;
+                    }
+                    else if (bestManualEdge != null && Math.Abs(bestManualEdgeDist - minOfAll) < 0.001f)
+                    {
+                        _hoveredManualEdge = bestManualEdge;
+                    }
+                }
+            }
+            else
+            {
+                // 其他模式下，只 hover 節點
+                _hoveredNodeIndex = FindNearestNodeIndex(relativePoint);
+            }
         }
 
 

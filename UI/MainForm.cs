@@ -1067,20 +1067,7 @@ namespace ArtaleAI
             pictureBoxMinimap.Invalidate();
         }
 
-        private void UpdateActionComboBoxSelection(int action)
-        {
-            if (action == -1) return;
-            int targetAction = action;
 
-            foreach (ComboBoxItem item in cbo_ActionType.Items)
-            {
-                if (item.Value == targetAction)
-                {
-                    cbo_ActionType.SelectedItem = item;
-                    break;
-                }
-            }
-        }
         private class ComboBoxItem
         {
             public string Text { get; }
