@@ -87,6 +87,13 @@ navigation:
   # 到達判定參數 (SSOT)
   platformHitboxWidth: 3.0
   platformHitboxHeight: 3.0
+  walkAlignTolerancePx: 1.0
+  walkBrakeDistancePx: 3.5
+  slopeStandYTolerancePx: 4.5
+  ropeLandingYTolerancePx: 1.5
+  ropeSegmentXTolerancePx: 1.5
+  approachFailureRescueCutoff: 3
+  rescueRepeatCutoff: 3
   ropeHitboxWidth: 6.0
   ropeHitboxHeight: 15.0
 

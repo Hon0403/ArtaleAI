@@ -34,6 +34,11 @@ namespace ArtaleAI.Services
         {
             lock (_stateLock)
             {
+                if (_tracker?.IsRescueCircuitBroken == true)
+                {
+                    return false;
+                }
+
                 if (_currentState != NavigationState.Idle && _currentState != NavigationState.Reached_Waypoint)
                 {
                     return false;
@@ -42,35 +47,34 @@ namespace ArtaleAI.Services
                 _currentTaskCts?.Dispose();
                 _currentTaskCts = new CancellationTokenSource();
 
-                bool isRope = edge.InputSequence?.Any(s => s.StartsWith("ropeX:")) ?? false;
-
-                NavigationState nextState;
-                if (isRope)
+                NavigationState nextState = edge.ActionType switch
                 {
-                    nextState = NavigationState.Moving_Vertical;
-                }
-                else
-                {
-                    nextState = edge.ActionType switch
-                    {
-                        NavigationActionType.Walk => NavigationState.Moving_Horizontal,
-                        NavigationActionType.Jump => NavigationState.Jumping,
-                        NavigationActionType.SideJump => NavigationState.Jumping,
-                        NavigationActionType.JumpDown => NavigationState.Jumping,
-                        NavigationActionType.Teleport => NavigationState.Transitioning,
-                        _ => NavigationState.Moving_Horizontal
-                    };
-                }
+                    NavigationActionType.ClimbUp or NavigationActionType.ClimbDown =>
+                        NavigationState.Moving_Vertical,
+                    NavigationActionType.Walk => NavigationState.Moving_Horizontal,
+                    NavigationActionType.Jump => NavigationState.Jumping,
+                    NavigationActionType.SideJump => NavigationState.Jumping,
+                    NavigationActionType.JumpDown => NavigationState.Jumping,
+                    NavigationActionType.Teleport => NavigationState.Transitioning,
+                    _ => NavigationState.Moving_Horizontal
+                };
 
                 ChangeState(nextState);
 
-                _ = InternalExecuteEdgeAsync(edge, currentPos, targetPos, _currentTaskCts.Token, nextState);
+                Guid flightToken = _tracker?.BeginNavigationFlight(edge) ?? Guid.Empty;
+
+                _ = InternalExecuteEdgeAsync(edge, currentPos, targetPos, _currentTaskCts.Token, flightToken);
 
                 return true;
             }
         }
 
-        private async Task InternalExecuteEdgeAsync(NavigationEdge edge, SdPointF currentPos, SdPointF targetPos, CancellationToken token, NavigationState actionState)
+        private async Task InternalExecuteEdgeAsync(
+            NavigationEdge edge,
+            SdPointF currentPos,
+            SdPointF targetPos,
+            CancellationToken token,
+            Guid flightToken)
         {
             try
             {
@@ -80,11 +84,20 @@ namespace ArtaleAI.Services
                     edge,
                     (System.Drawing.PointF)currentPos,
                     (System.Drawing.PointF)targetPos,
-                    () => _tracker?.IsPlayerAtTarget() ?? false,
+                    () => _tracker?.IsPlayerAtFrozenFlightTarget() ?? false,
                     token);
 
                 if (exeResult == NavigationExecutor.ExecutionResult.Failed || exeResult == NavigationExecutor.ExecutionResult.Error)
                 {
+                    bool shouldRescue = _tracker?.ShouldAcceptFailureRescue(flightToken) ?? true;
+                    _tracker?.EndNavigationFlight();
+
+                    if (!shouldRescue)
+                    {
+                        Logger.Debug("[FSM] 忽略過期 executor 失敗回報");
+                        return;
+                    }
+
                     Logger.Warning($"[FSM] 執行 Edge {edge.ActionType} 發生中斷 (Error/Failed)。啟動自癒分析...");
                     ChangeState(NavigationState.Error);
 
@@ -99,6 +112,7 @@ namespace ArtaleAI.Services
                         else
                         {
                             Logger.Error("[FSM] 致命錯誤：救援路徑規劃失敗！自動導航中止。");
+                            ChangeState(NavigationState.Idle);
                         }
                     }
                     else
@@ -111,17 +125,26 @@ namespace ArtaleAI.Services
                 if (!token.IsCancellationRequested &&
                     exeResult == NavigationExecutor.ExecutionResult.Completed)
                 {
-                    Logger.Debug("[FSM] 接收到執行層 Success 訊號，立即進入 Reached_Waypoint");
-                    ChangeState(NavigationState.Reached_Waypoint);
+                    if (_tracker == null || _tracker.TryAcknowledgeWaypointCompletion(flightToken))
+                    {
+                        Logger.Debug("[FSM] 執行層完成且 waypoint 完成已確認，進入 Reached_Waypoint");
+                        ChangeState(NavigationState.Reached_Waypoint);
+                    }
+                    else
+                    {
+                        Logger.Debug("[FSM] 執行層完成但 waypoint 完成已被處理，忽略重複推進");
+                    }
                 }
             }
             catch (OperationCanceledException)
             {
                 Logger.Info("[FSM] 任務已被取消 (例外流退避)。");
+                _tracker?.EndNavigationFlight();
             }
             catch (Exception ex)
             {
                 Logger.Error($"[FSM] 執行 Edge 發生錯誤: {ex.Message}");
+                _tracker?.EndNavigationFlight();
                 ChangeState(NavigationState.Error);
             }
             finally
@@ -144,6 +167,7 @@ namespace ArtaleAI.Services
 
                 _currentTaskCts?.Cancel();
 
+                _tracker?.EndNavigationFlight();
                 ChangeState(NavigationState.Idle);
             }
         }
@@ -153,18 +177,17 @@ namespace ArtaleAI.Services
         {
             lock (_stateLock)
             {
-                if (_currentState == NavigationState.Moving_Horizontal || _currentState == NavigationState.Moving_Vertical)
-                {
-                    bool ssotReached = _tracker?.IsPlayerAtTarget() ?? false;
-                    if (!ssotReached)
-                    {
-                        Logger.Debug("[FSM] 外部通知到達被忽略：SSOT(Hitbox) 尚未成立。");
-                        return;
-                    }
+                if (_currentState != NavigationState.Idle)
+                    return;
 
-                    Logger.Debug("[FSM] 外部通知已到達目標，且 SSOT 成立，切換至 Reached_Waypoint");
-                    ChangeState(NavigationState.Reached_Waypoint);
-                }
+                if (!(_tracker?.TryAcknowledgeWaypointCompletion(
+                        Guid.Empty,
+                        WaypointCompletionSource.IdleSupplement) ?? false))
+                    return;
+
+                Logger.Debug("[FSM] Idle 補推進：驗收成立且無 in-flight，推進 Waypoint");
+                ChangeState(NavigationState.Reached_Waypoint);
+                ChangeState(NavigationState.Idle);
             }
         }
 

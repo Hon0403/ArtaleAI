@@ -110,17 +110,24 @@ namespace ArtaleAI.Services
         }
 
 
-        /// <summary>統一的繩索對位門檻半徑 (1.0px)，供垂直移動發動前使用。</summary>
-        private static float GetRopeAlignTolerancePx()
-        {
-            return 1.0f; // 統一對位門檻
-        }
+        private static float WalkAlignTolerancePx =>
+            (float)AppConfig.Instance.Navigation.WalkAlignTolerancePx;
 
-        /// <summary>長按走向目標 X；以 <paramref name="isReachedExternally"/> 為到達。</summary>
-        public async Task<MovementResult> MoveToTargetAsync(SdPointF targetPos, Func<SdPointF?> getPlayerPosition, float fallToleranceY, Func<bool> isReachedExternally, CancellationToken cancellationToken = default)
+        private static float WalkBrakeDistancePx =>
+            (float)AppConfig.Instance.Navigation.WalkBrakeDistancePx;
+
+        /// <summary>統一的繩索對位門檻半徑 (1.0px)，供垂直移動發動前使用。</summary>
+        private static float GetRopeAlignTolerancePx() => WalkAlignTolerancePx;
+
+        /// <summary>長按走向目標 X；以座標對齊與煞車區停止，不再以 Hitbox 熔斷提前停步。</summary>
+        public async Task<MovementResult> MoveToTargetAsync(
+            SdPointF targetPos,
+            Func<SdPointF?> getPlayerPosition,
+            float fallToleranceY,
+            CancellationToken cancellationToken = default,
+            WalkPlatformContext? platformContext = null)
         {
             if (_isDisposed) return MovementResult.Failed;
-            ArgumentNullException.ThrowIfNull(isReachedExternally);
 
             if (targetPos.X < 0 || targetPos.Y < 0)
             {
@@ -148,8 +155,16 @@ namespace ArtaleAI.Services
             float initialDx = targetPos.X - initialPos.X;
             int expectedSignX = Math.Sign(initialDx);
             ushort targetKey = expectedSignX > 0 ? VK_RIGHT : VK_LEFT;
+            float initialAdx = Math.Abs(initialDx);
+            string walkDir = expectedSignX > 0 ? "右" : (expectedSignX < 0 ? "左" : "無");
+
+            Logger.Info(
+                $"[移動診斷] Walk 啟動 from=({initialPos.X:F1},{initialPos.Y:F1}) target=({targetPos.X:F1},{targetPos.Y:F1}) " +
+                $"dir={walkDir} distX={initialAdx:F1}px platform={platformContext?.PlatformId ?? "-"} node={platformContext?.NodeId ?? "-"}");
 
             var visionLossWatcher = new System.Diagnostics.Stopwatch();
+            float lastAdx = initialAdx;
+            int divergingFrames = 0;
 
             try
             {
@@ -171,25 +186,60 @@ namespace ArtaleAI.Services
                     if (visionLossWatcher.IsRunning) visionLossWatcher.Reset();
 
                     var currentPos = currentPosNullable.Value;
+                    float dY = currentPos.Y - initialY;
 
-                    if (Math.Abs(currentPos.Y - initialY) > fallToleranceY)
+                    if (Math.Abs(dY) > fallToleranceY)
                     {
-                        Logger.Warning($"[移動] 偵測到墜落 (Y偏移:{Math.Abs(currentPos.Y - initialY):F1})，中止導航。");
+                        LogWalkFallDiagnostic(
+                            initialPos, currentPos, targetPos, initialY, dY, fallToleranceY,
+                            walkDir, expectedSignX, platformContext);
                         return MovementResult.Failed;
                     }
 
-                    if (isReachedExternally())
+                    float currentDx = targetPos.X - currentPos.X;
+                    float adx = Math.Abs(currentDx);
+
+                    if (adx > lastAdx + 0.4f)
+                    {
+                        divergingFrames++;
+                        if (divergingFrames >= 3)
+                        {
+                            StopMovement();
+                            Logger.Warning(
+                                $"[移動診斷] 走離目標中止 distX {lastAdx:F1}->{adx:F1} dir={walkDir} " +
+                                $"player=({currentPos.X:F1},{currentPos.Y:F1}) targetX={targetPos.X:F1} " +
+                                $"attribution=程式-走離目標 platform={platformContext?.PlatformId ?? "-"}");
+                            return MovementResult.Failed;
+                        }
+                    }
+                    else
+                    {
+                        divergingFrames = 0;
+                    }
+                    lastAdx = adx;
+
+                    LogWalkPlatformDriftIfNeeded(currentPos, platformContext, walkDir, targetPos.X);
+
+                    if (adx <= WalkAlignTolerancePx)
                     {
                         StopMovement();
-                        Logger.Info("[移動] 碰撞熔斷觸發：進入目標 Hitbox。");
+                        Logger.Info($"[移動] X 軸對齊完成 (誤差:{adx:F2}px)");
                         break;
                     }
 
-                    float currentDx = targetPos.X - currentPos.X;
+                    if (adx <= WalkBrakeDistancePx)
+                    {
+                        StopMovement();
+                        Logger.Info($"[移動] 進入煞車區 (剩餘:{adx:F2}px)，交由微步精準對位。");
+                        break;
+                    }
+
                     if (Math.Sign(currentDx) != expectedSignX && Math.Sign(currentDx) != 0)
                     {
                         StopMovement();
-                        Logger.Warning("[移動] 偵測到越界。");
+                        Logger.Warning(
+                            $"[移動診斷] 越界 overshoot adx={adx:F2}px playerX={currentPos.X:F1} targetX={targetPos.X:F1} " +
+                            $"attribution=程式-走過頭");
                         return MovementResult.Overshot;
                     }
 
@@ -209,6 +259,120 @@ namespace ArtaleAI.Services
 
 
 
+
+        private static float _lastDriftLogY;
+
+        private static void LogWalkPlatformDriftIfNeeded(
+            PointF playerPos,
+            WalkPlatformContext? platformContext,
+            string walkDir,
+            float targetX)
+        {
+            if (platformContext?.Geometry == null || string.IsNullOrEmpty(platformContext.PlatformId))
+                return;
+
+            if (!platformContext.Geometry.TryProjectStandY(
+                    platformContext.PlatformId, playerPos.X, out float projectedY, out bool extrapolated))
+                return;
+
+            float yDrift = playerPos.Y - projectedY;
+            float yTol = (float)AppConfig.Instance.Navigation.SlopeStandYTolerancePx;
+            if (Math.Abs(yDrift) <= yTol)
+                return;
+
+            if (Math.Abs(playerPos.Y - _lastDriftLogY) < 0.5f)
+                return;
+
+            _lastDriftLogY = playerPos.Y;
+            string attribution = extrapolated ? "標記-折線外推區" : "程式-離開平台面";
+            Logger.Warning(
+                $"[移動診斷] 平台Y漂移 player=({playerPos.X:F1},{playerPos.Y:F1}) projectedY={projectedY:F1} " +
+                $"yDrift={yDrift:F1} tol={yTol:F1} extrapolated={extrapolated} dir={walkDir} targetX={targetX:F1} " +
+                $"platform={platformContext.PlatformId} attribution={attribution}");
+        }
+
+        private static void LogWalkFallDiagnostic(
+            PointF initialPos,
+            PointF currentPos,
+            SdPointF targetPos,
+            float initialY,
+            float dY,
+            float fallToleranceY,
+            string walkDir,
+            int expectedSignX,
+            WalkPlatformContext? platformContext)
+        {
+            float? projectedY = null;
+            bool extrapolated = false;
+            float? yDrift = null;
+            if (platformContext?.Geometry != null &&
+                !string.IsNullOrEmpty(platformContext.PlatformId) &&
+                platformContext.Geometry.TryProjectStandY(
+                    platformContext.PlatformId, currentPos.X, out float py, out extrapolated))
+            {
+                projectedY = py;
+                yDrift = currentPos.Y - py;
+            }
+
+            string yAttribution = yDrift.HasValue && Math.Abs(yDrift.Value) > (float)AppConfig.Instance.Navigation.SlopeStandYTolerancePx
+                ? (extrapolated ? "標記-邊緣外+離開平台面" : "程式-離開平台面")
+                : "程式-垂直偏移";
+
+            Logger.Warning(
+                $"[移動診斷] 墜落中止 dY={Math.Abs(dY):F1} tol={fallToleranceY:F1} dir={walkDir} " +
+                $"from=({initialPos.X:F1},{initialY:F1}) now=({currentPos.X:F1},{currentPos.Y:F1}) target=({targetPos.X:F1},{targetPos.Y:F1}) " +
+                $"projectedY={(projectedY.HasValue ? projectedY.Value.ToString("F1") : "-")} yDrift={(yDrift.HasValue ? yDrift.Value.ToString("F1") : "-")} " +
+                $"platform={platformContext?.PlatformId ?? "-"} node={platformContext?.NodeId ?? "-"} attribution={yAttribution}");
+        }
+
+        /// <summary>短按微步將 X 對齊至 targetX；每步重算方向以修正 overshoot。</summary>
+        public async Task<bool> AlignHorizontallyAsync(
+            float targetX,
+            Func<SdPointF?> getPlayerPosition,
+            CancellationToken cancellationToken = default,
+            WalkPlatformContext? platformContext = null)
+        {
+            const int maxSteps = 16;
+
+            for (int i = 0; i < maxSteps && !cancellationToken.IsCancellationRequested; i++)
+            {
+                var pos = getPlayerPosition();
+                if (!pos.HasValue)
+                {
+                    await WaitForNextFrameAsync(cancellationToken);
+                    continue;
+                }
+
+                float dx = targetX - pos.Value.X;
+                float adx = Math.Abs(dx);
+                if (adx <= WalkAlignTolerancePx)
+                {
+                    Logger.Info($"[移動] 微步對齊完成 (誤差:{adx:F2}px)");
+                    return true;
+                }
+
+                ushort key = dx > 0 ? VK_RIGHT : VK_LEFT;
+                int tapMs = adx > 2f ? 30 : 20;
+                FocusGameWindow();
+                await TapKeyAsync(key, tapMs, 60, cancellationToken);
+                await WaitForNextFrameAsync(cancellationToken);
+            }
+
+            var finalPos = getPlayerPosition();
+            if (finalPos.HasValue)
+            {
+                float finalAdx = Math.Abs(targetX - finalPos.Value.X);
+                if (finalAdx <= WalkAlignTolerancePx * 1.5f)
+                    return true;
+
+                var pos = finalPos.Value;
+                Logger.Warning(
+                    $"[移動診斷] 微步未達標 remaining={finalAdx:F2}px playerX={pos.X:F1} targetX={targetX:F1} " +
+                    $"attribution=程式-X未對齊 platform={platformContext?.PlatformId ?? "-"}");
+            }
+
+            return false;
+        }
 
         public void StopMovement()
         {
@@ -333,7 +497,8 @@ namespace ArtaleAI.Services
 
             // 3. 垂直爬升監控階段
             ushort climbKey = climbUp ? VK_UP : VK_DOWN;
-            return await MonitorRopeMovementAsync(climbKey, ropeX, getPlayerPosition, isReachedExternally, ct);
+            return await MonitorRopeMovementAsync(
+                climbKey, ropeX, targetY, getPlayerPosition, isReachedExternally, ct);
         }
 
         private async Task<bool> TryAlignWithRopeAsync(float ropeX, Func<PointF> getPlayerPosition, CancellationToken ct)
@@ -382,10 +547,17 @@ namespace ArtaleAI.Services
             return false;
         }
 
-        private async Task<bool> MonitorRopeMovementAsync(ushort climbKey, float ropeX, Func<PointF> getPlayerPosition, Func<bool>? isReachedExternally, CancellationToken ct)
+        private async Task<bool> MonitorRopeMovementAsync(
+            ushort climbKey,
+            float ropeX,
+            float landingTargetY,
+            Func<PointF> getPlayerPosition,
+            Func<bool>? isReachedExternally,
+            CancellationToken ct)
         {
             bool success = false;
             var climbPhase = System.Diagnostics.Stopwatch.StartNew();
+            float landingYTol = (float)AppConfig.Instance.Navigation.RopeLandingYTolerancePx;
 
             try
             {
@@ -402,8 +574,9 @@ namespace ArtaleAI.Services
                     var currentPos = getPlayerPosition();
                     float currentDx = Math.Abs(ropeX - currentPos.X);
 
-                    // 1. 外部熔斷（大腦判定已到達平台）
-                    if (isReachedExternally?.Invoke() == true)
+                    // 1. 外部熔斷：須同時通過 Tracker 驗收且 Y 已進入平台落點帶
+                    if (isReachedExternally?.Invoke() == true &&
+                        Math.Abs(currentPos.Y - landingTargetY) <= landingYTol)
                     {
                         Logger.Info("[爬繩] 外部熔斷觸發：已到達目標。");
                         success = true;
