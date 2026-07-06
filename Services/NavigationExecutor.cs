@@ -72,18 +72,33 @@ namespace ArtaleAI.Services
                 return await ExecuteWalkAsync(currentPos, targetPos, isReached, ct);
             }
 
+            // [智慧攔截] 偵測隱式爬繩標記
+            float? ropeX = null;
+            if (edge.InputSequence != null)
+            {
+                foreach (var seq in edge.InputSequence)
+                {
+                    if (seq.StartsWith("ropeX:") && float.TryParse(seq.Substring(6), out float rx))
+                    {
+                        ropeX = rx;
+                        break;
+                    }
+                }
+            }
+
+            if (ropeX.HasValue)
+            {
+                bool isUp = targetPos.Y < currentPos.Y;
+                Logger.Info($"[導航] 偵測到隱式爬繩標記 (X={ropeX:F1})，方向: {(isUp ? "上" : "下")}");
+                return await ExecuteClimbAsync(edge, currentPos, targetPos, isUp, isReached, ct);
+            }
+
             return edge.ActionType switch
             {
-                NavigationActionType.ClimbUp =>
-                    await ExecuteClimbAsync(edge, currentPos, targetPos, isUp: true, isReached, ct),
-                NavigationActionType.ClimbDown =>
-                    await ExecuteClimbAsync(edge, currentPos, targetPos, isUp: false, isReached, ct),
                 NavigationActionType.JumpDown =>
                     await ExecuteJumpDownAsync(ct),
-                NavigationActionType.JumpLeft =>
-                    await ExecuteDirectionalJumpAsync(-1, currentPos, targetPos, isReached, ct),
-                NavigationActionType.JumpRight =>
-                    await ExecuteDirectionalJumpAsync(1, currentPos, targetPos, isReached, ct),
+                NavigationActionType.SideJump =>
+                    await ExecuteDirectionalJumpAsync(targetPos.X > currentPos.X ? 1 : -1, currentPos, targetPos, isReached, ct),
                 NavigationActionType.Jump =>
                     await ExecuteDirectionalJumpAsync(0, currentPos, targetPos, isReached, ct),
                 NavigationActionType.Teleport =>
@@ -248,11 +263,23 @@ namespace ArtaleAI.Services
             if (landPos.HasValue)
             {
                 float fallYTol = FALL_Y_TOLERANCE;
-                float landDy = Math.Abs(landPos.Value.Y - targetPos.Y);
-                
-                if (landDy > fallYTol)
+                float currentLandY = landPos.Value.Y;
+                float absYDiff = Math.Abs(currentLandY - targetPos.Y);
+
+                // [優化] 向上的躍遷寬度判定
+                // 如果是「向上跳躍」，且最終落點比目標 Y 軸更「高」(數值更小)，則視為順利到達上層平台
+                bool isUpwardMission = targetPos.Y < currentPos.Y;
+                bool landedHigherThanTarget = currentLandY <= targetPos.Y + 2.0f; // 包含 2px 微小容差
+
+                if (isUpwardMission && landedHigherThanTarget && isReached())
                 {
-                    Logger.Warning($"[跳躍] 著地 Y 偏差過大，判定失敗。landDy={landDy:F1}, tol={fallYTol:F1}");
+                    Logger.Info($"[跳躍] 偵測到向上躍遷成功！落點({currentLandY:F1}) 高於目標({targetPos.Y:F1})。判定 Success。");
+                    return ExecutionResult.Completed;
+                }
+
+                if (absYDiff > fallYTol)
+                {
+                    Logger.Warning($"[跳躍] 著地 Y 偏差過大，判定失敗。diff={absYDiff:F1}, tol={fallYTol:F1}");
                     return ExecutionResult.Failed;
                 }
 

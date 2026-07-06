@@ -9,14 +9,12 @@ namespace ArtaleAI.Core.Domain.Navigation
     public enum NavigationActionType
     {
         None = 0,
-        Walk,
-        Jump,
-        JumpLeft,
-        JumpRight,
-        JumpDown,
-        ClimbUp,
-        ClimbDown,
-        Teleport
+        Walk = 1,
+        Jump = 2,           // 原地/向上跳
+        SideJump = 3,       // 側跳 (自動判定左右)
+        JumpDown = 4,       // 下跳
+        Teleport = 5        // 傳送
+        // 註：爬繩行為 (Climb) 現在由 NavigationExecutor 透過地圖標記自動判定，不再需要獨立 ID。
     }
 
     /// <summary>

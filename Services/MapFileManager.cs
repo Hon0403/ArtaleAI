@@ -207,76 +207,11 @@ namespace ArtaleAI.Services
 
             if (nodeById.Count == 0 || mapData.Edges.Count == 0) return true;
 
-            foreach (var edge in mapData.Edges)
-            {
-                if (!IsDirectionalJump(edge.ActionType)) continue;
-                if (!TryGetNodes(nodeById, edge, out var fromNode, out var toNode)) continue;
+            // [重構] 移除阻擋性檢查。導航系統現已支援動態方向判定，
+            // 且允許使用者建立單向跳躍（例如從高處跳下）。
+            // 未來若需要強健性檢查，可在此加入僅輸出 Log 的警告。
 
-                float dx = toNode.X - fromNode.X;
-                if (Math.Abs(dx) < 0.01f)
-                {
-                    errors.Add($"[方向錯誤] {edge.FromNodeId} -> {edge.ToNodeId} 為 {edge.ActionType}，但兩點 X 相同。");
-                    continue;
-                }
-
-                bool isDirectionConsistent =
-                    (edge.ActionType == NavigationActionType.JumpLeft && dx < 0) ||
-                    (edge.ActionType == NavigationActionType.JumpRight && dx > 0);
-
-                if (!isDirectionConsistent)
-                {
-                    var expected = dx < 0 ? NavigationActionType.JumpLeft : NavigationActionType.JumpRight;
-                    errors.Add($"[方向錯誤] {edge.FromNodeId} -> {edge.ToNodeId} 為 {edge.ActionType}，幾何方向應為 {expected}。");
-                }
-            }
-
-            foreach (var edge in mapData.Edges)
-            {
-                if (!IsDirectionalJump(edge.ActionType)) continue;
-                if (!TryGetNodes(nodeById, edge, out var fromNode, out var toNode)) continue;
-
-                float reverseDx = fromNode.X - toNode.X;
-                if (Math.Abs(reverseDx) < 0.01f) continue;
-
-                var expectedReverse = reverseDx < 0 ? NavigationActionType.JumpLeft : NavigationActionType.JumpRight;
-                bool hasReverse = mapData.Edges.Any(e =>
-                    string.Equals(e.FromNodeId, edge.ToNodeId, StringComparison.Ordinal) &&
-                    string.Equals(e.ToNodeId, edge.FromNodeId, StringComparison.Ordinal) &&
-                    e.ActionType == expectedReverse);
-
-                if (!hasReverse)
-                {
-                    errors.Add($"[缺反向邊] {edge.FromNodeId} -> {edge.ToNodeId} ({edge.ActionType}) 缺少 {edge.ToNodeId} -> {edge.FromNodeId} ({expectedReverse})。");
-                }
-            }
-
-            return errors.Count == 0;
-        }
-
-        private static bool IsDirectionalJump(NavigationActionType actionType)
-        {
-            return actionType == NavigationActionType.JumpLeft || actionType == NavigationActionType.JumpRight;
-        }
-
-        private static bool TryGetNodes(
-            Dictionary<string, NavNodeData> nodeById,
-            NavEdgeData edge,
-            out NavNodeData fromNode,
-            out NavNodeData toNode)
-        {
-            fromNode = null!;
-            toNode = null!;
-            if (!nodeById.TryGetValue(edge.FromNodeId, out fromNode!))
-            {
-                return false;
-            }
-
-            if (!nodeById.TryGetValue(edge.ToNodeId, out toNode!))
-            {
-                return false;
-            }
-
-            return true;
+            return true; 
         }
 
         private static string BuildValidationErrorMessage(IReadOnlyList<string> errors)

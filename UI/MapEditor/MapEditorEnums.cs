@@ -11,10 +11,10 @@ namespace ArtaleAI.UI.MapEditing
     public enum EditMode
     {
         None,
-        Waypoint,
+        Select,
+        Platform,
         Rope,
         Delete,
-        Select,
-        Link
+        ManualEdge
     }
 }

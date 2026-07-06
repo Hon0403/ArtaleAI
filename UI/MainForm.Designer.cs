@@ -327,8 +327,8 @@ namespace ArtaleAI
             // 
             // tabPage2
             // 
-            tabPage2.Controls.Add(panel4);
             tabPage2.Controls.Add(panel3);
+            tabPage2.Controls.Add(panel4);
             tabPage2.Location = new Point(4, 24);
             tabPage2.Name = "tabPage2";
             tabPage2.Padding = new Padding(3);
@@ -549,7 +549,7 @@ namespace ArtaleAI
             // panel3
             // 
             panel3.Controls.Add(pictureBoxMinimap);
-            panel3.Dock = DockStyle.Left;
+            panel3.Dock = DockStyle.Fill;
             panel3.Location = new Point(3, 3);
             panel3.Name = "panel3";
             panel3.Size = new Size(696, 575);

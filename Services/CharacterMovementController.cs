@@ -309,16 +309,41 @@ namespace ArtaleAI.Services
             await Task.Delay(cooldownMs, ct);
         }
 
+        /// <summary>由大腦調用的爬繩主進入點。拆解為對位、抓取、移動監控三個子系統。</summary>
         public async Task<bool> ClimbRopeAsync(PointF playerPos, float ropeX, float targetY, Func<PointF> getPlayerPosition, Func<bool>? isReachedExternally = null, CancellationToken ct = default, bool? forceDirectionIsUp = null)
         {
             FocusGameWindow();
+            await Task.Delay(100, ct); 
 
-            await Task.Delay(100, ct); // 原子化穩定等待 (固定值)
+            // 1. 水平對位階段
+            if (!await TryAlignWithRopeAsync(ropeX, getPlayerPosition, ct))
+            {
+                return false;
+            }
 
+            var pStable = getPlayerPosition();
+            bool climbUp = forceDirectionIsUp ?? (targetY < pStable.Y);
+            float dx = ropeX - pStable.X;
+
+            // 2. 發動抓取階段
+            if (!await TryGrabRopeAsync(dx, climbUp, ct))
+            {
+                return false;
+            }
+
+            // 3. 垂直爬升監控階段
+            ushort climbKey = climbUp ? VK_UP : VK_DOWN;
+            return await MonitorRopeMovementAsync(climbKey, ropeX, getPlayerPosition, isReachedExternally, ct);
+        }
+
+        private async Task<bool> TryAlignWithRopeAsync(float ropeX, Func<PointF> getPlayerPosition, CancellationToken ct)
+        {
             var pStable = getPlayerPosition();
             float dx = ropeX - pStable.X;
             float adx = Math.Abs(dx);
             float ropeSnapTol = GetRopeAlignTolerancePx();
+
+            // 如果偏離超過門檻但還在側跳範圍內 (8.5px)，嘗試微調
             for (int i = 0; i < 6 && adx > ropeSnapTol && adx <= 8.5f && !ct.IsCancellationRequested; i++)
             {
                 ushort k = pStable.X > ropeX ? VK_LEFT : VK_RIGHT;
@@ -329,43 +354,47 @@ namespace ArtaleAI.Services
                 adx = Math.Abs(dx);
             }
 
-            pStable = getPlayerPosition();
-            dx = ropeX - pStable.X;
-            bool climbUp = forceDirectionIsUp ?? (targetY < pStable.Y);
-            ushort climbKey = climbUp ? VK_UP : VK_DOWN;
+            return true; // 即使沒完全對齊，只要在側跳範圍內都嘗試發動
+        }
 
+        private async Task<bool> TryGrabRopeAsync(float dx, bool climbUp, CancellationToken ct)
+        {
             if (!climbUp)
             {
+                // 下跳抓繩
                 SendKeyInput(VK_DOWN, false);
-                await Task.Delay(150, ct);  
+                await Task.Delay(150, ct);
+                return true;
             }
             else if (Math.Abs(dx) <= 8.5f)
             {
-                SendKeyInput(VK_MENU, false);  
+                // 側跳咬繩序列 (Alt -> Up -> Release Alt)
+                SendKeyInput(VK_MENU, false);  // Alt (Jump)
                 await Task.Delay(100, ct);     
-                SendKeyInput(VK_UP, false);    
+                SendKeyInput(VK_UP, false);    // Up
                 await Task.Delay(60, ct);      
-                SendKeyInput(VK_MENU, true);   
-                await Task.Delay(200, ct);     
+                SendKeyInput(VK_MENU, true);   // Release Alt
+                await Task.Delay(200, ct);     // 等待動畫銜接
+                return true;
             }
-            else
-            {
-                Logger.Warning($"[爬繩] 對位偏移過大 ({dx:F1}px)，拒絕發動側跳，回傳 Failed。");
-                return false;
-            }
+            
+            Logger.Warning($"[爬繩] 對位偏移過大 ({dx:F1}px)，無法發動側跳。");
+            return false;
+        }
 
-            bool stillOnRope = true;
+        private async Task<bool> MonitorRopeMovementAsync(ushort climbKey, float ropeX, Func<PointF> getPlayerPosition, Func<bool>? isReachedExternally, CancellationToken ct)
+        {
             bool success = false;
             var climbPhase = System.Diagnostics.Stopwatch.StartNew();
 
             try
             {
                 SendKeyInput(climbKey, false);
-                while (stillOnRope && !ct.IsCancellationRequested)
+                while (!ct.IsCancellationRequested)
                 {
                     if (climbPhase.ElapsedMilliseconds > 12000)
                     {
-                        Logger.Warning("[爬繩] 爬升階段逾時（12s），停止以免 FSM 長時間卡在 Moving_Vertical。");
+                        Logger.Warning("[爬繩] 爬升逾時 (12s)，強制中止。");
                         break;
                     }
 
@@ -373,15 +402,22 @@ namespace ArtaleAI.Services
                     var currentPos = getPlayerPosition();
                     float currentDx = Math.Abs(ropeX - currentPos.X);
 
+                    // 1. 外部熔斷（大腦判定已到達平台）
                     if (isReachedExternally?.Invoke() == true)
                     {
-                        Logger.Info("[爬繩] 外部熔斷觸發：大腦判定已到達目標。");
+                        Logger.Info("[爬繩] 外部熔斷觸發：已到達目標。");
                         success = true;
                         break;
                     }
 
-                    if (currentDx > 10.0f) break;
-                    SendKeyInput(climbKey, false);
+                    // 2. 脫離判定（如果 X 軸偏移過大，說明掉下去了）
+                    if (currentDx > 12.0f)
+                    {
+                        Logger.Warning($"[爬繩] 偵測到脫離繩索 (X偏移:{currentDx:F1})。");
+                        break;
+                    }
+
+                    SendKeyInput(climbKey, false); // 持續確保按鍵按下
                 }
             }
             finally
@@ -391,7 +427,7 @@ namespace ArtaleAI.Services
                 SendKeyInput(VK_DOWN, true);
             }
 
-            await Task.Delay(200, ct);
+            await Task.Delay(200, ct); // 落地後的小緩衝
             return success;
         }
 

@@ -1,8 +1,48 @@
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
 
 namespace ArtaleAI.Models.Map
 {
+    /// <summary>
+    /// 折線平台頂點資料。
+    /// </summary>
+    public class PlatformPointData
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+    }
+
+    /// <summary>
+    /// 折線平台資料，代表地圖上一條可通行的多點折線幾何。
+    /// </summary>
+    public class PolylinePlatformData
+    {
+        /// <summary>平台唯一識別碼</summary>
+        public string Id { get; set; } = string.Empty;
+
+        /// <summary>折線點序列</summary>
+        public List<PlatformPointData> Points { get; set; } = new();
+    }
+
+    /// <summary>
+    /// 手動例外邊的幾何錨點。持久化語意為「在某平台的某個位置」，
+    /// 不綁定 runtime node ID，由 BuildHTopology.ResolveManualEdgeAnchors() 轉譯。
+    /// </summary>
+    public class ManualEdgeAnchor
+    {
+        public string FromPlatformId { get; set; } = string.Empty;
+        public float FromX { get; set; }
+        public float FromY { get; set; }
+        public int? FromSegmentIndex { get; set; }
+        public string ToPlatformId { get; set; } = string.Empty;
+        public float ToX { get; set; }
+        public float ToY { get; set; }
+        public int? ToSegmentIndex { get; set; }
+        public ArtaleAI.Core.Domain.Navigation.NavigationActionType ActionType { get; set; } =
+            ArtaleAI.Core.Domain.Navigation.NavigationActionType.Walk;
+    }
+
     /// <summary>
     /// 地圖資料
     /// 儲存地圖上的所有路徑點、區域標記等資訊
@@ -12,11 +52,19 @@ namespace ArtaleAI.Models.Map
         /// <summary>繩索位置列表</summary>
         public List<float[]> Ropes { get; set; } = new();
 
-        /// <summary>導航圖節點（座標與類型；導航與編輯器 SSOT）。</summary>
+        /// <summary>折線平台幾何列表</summary>
+        public List<PolylinePlatformData> PolylinePlatforms { get; set; } = new();
+
+        /// <summary>導航圖節點（由幾何自動推導生成，不進行 JSON 持久化以避免 Double SSOT）。</summary>
+        [JsonIgnore]
         public List<NavNodeData> Nodes { get; set; } = new();
 
-        /// <summary>導航圖邊（有向）。</summary>
+        /// <summary>導航圖邊（由幾何與手動邊自動推導生成，不進行 JSON 持久化以避免 Double SSOT）。</summary>
+        [JsonIgnore]
         public List<NavEdgeData> Edges { get; set; } = new();
+
+        /// <summary>手動例外邊幾何錨點（持久化 SSOT）</summary>
+        public List<ManualEdgeAnchor> ManualEdgeAnchors { get; set; } = new();
 
         /// <summary>安全區列表</summary>
         public List<float[]> SafeZones { get; set; } = new();
@@ -31,9 +79,6 @@ namespace ArtaleAI.Models.Map
         public float X { get; set; }
         public float Y { get; set; }
         public string Type { get; set; } = "Platform";
-
-        /// <summary>編輯器 UI 動作碼（與下拉選單一致）；導航仍以 <see cref="NavEdgeData"/> 為準。</summary>
-        public int EditorActionCode { get; set; }
     }
 
     public class NavEdgeData
