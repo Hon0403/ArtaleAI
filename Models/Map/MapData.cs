@@ -79,6 +79,7 @@ namespace ArtaleAI.Models.Map
         public float X { get; set; }
         public float Y { get; set; }
         public string Type { get; set; } = "Platform";
+        public string? PlatformId { get; set; }
     }
 
     public class NavEdgeData

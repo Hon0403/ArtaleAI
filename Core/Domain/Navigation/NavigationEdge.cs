@@ -10,11 +10,12 @@ namespace ArtaleAI.Core.Domain.Navigation
     {
         None = 0,
         Walk = 1,
-        Jump = 2,           // 原地/向上跳
+        Jump = 2,           // 手標跳躍；執行層依 ΔY 自動選原地/上跳或下跳
         SideJump = 3,       // 側跳 (自動判定左右)
         JumpDown = 4,       // 下跳
-        Teleport = 5        // 傳送
-        // 註：爬繩行為 (Climb) 現在由 NavigationExecutor 透過地圖標記自動判定，不再需要獨立 ID。
+        Teleport = 5,       // 傳送
+        ClimbUp = 6,        // 繩索：下平台 → 上平台
+        ClimbDown = 7       // 繩索：上平台 → 下平台
     }
 
     /// <summary>

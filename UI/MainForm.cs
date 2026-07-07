@@ -149,6 +149,7 @@ namespace ArtaleAI
                     () => _pathPlanningManager?.CurrentState?.CurrentPlayerPosition);
                 _navigationExecutor = new NavigationExecutor(
                     _movementController, positionProvider, _movementController);
+                _navigationExecutor.SetPathTracker(tracker);
                 _fsm = new NavigationStateMachine(_navigationExecutor, tracker);
                 _pathPlanningManager.Tracker.BindStateMachine(_fsm);
 
@@ -885,8 +886,9 @@ namespace ArtaleAI
                 if (currentEdge != null)
                 {
                     pathData.CurrentAction = currentEdge.ActionType.ToString();
-                    bool isImplicitClimb = currentEdge.InputSequence?.Any(s => s.StartsWith("ropeX:")) ?? false;
-                    if (isImplicitClimb)
+                    bool isClimbEdge = currentEdge.ActionType is NavigationActionType.ClimbUp
+                        or NavigationActionType.ClimbDown;
+                    if (isClimbEdge)
                     {
                         float ropeX = float.NaN;
                         foreach (var seq in currentEdge.InputSequence)
@@ -1581,25 +1583,73 @@ namespace ArtaleAI
                                 return;
                             _gamePipeline.VisionDataReady = false;
 
-                            NavigationEdge? currentEdge = _pathPlanningManager?.Tracker?.CurrentNavigationEdge;
+                            var tracker = _pathPlanningManager?.Tracker;
+                            if (tracker?.IsRescueCircuitBroken == true)
+                            {
+                                _fsm?.CancelNavigation("救援熔斷生效");
+                                return;
+                            }
+
+                            NavigationEdge? currentEdge = tracker?.CurrentNavigationEdge;
+                            NavigationEdge? edgeToExecute = currentEdge;
+                            var executeTarget = nextWaypoint;
+
+                            bool needsJumpApproach = currentEdge?.ActionType is
+                                NavigationActionType.Jump or NavigationActionType.SideJump or NavigationActionType.JumpDown;
+
+                            if (needsJumpApproach &&
+                                tracker != null &&
+                                currentEdge != null &&
+                                _fsm?.CurrentState != NavigationState.Jumping &&
+                                !tracker.IsSideJumpApproachInProgress)
+                            {
+                                if (!tracker.IsJumpTakeoffReachableByWalk(
+                                        (System.Drawing.PointF)playerPos, currentEdge))
+                                {
+                                    tracker.ClearSideJumpApproachState();
+                                    _fsm?.CancelNavigation("跨平台不可水平對位起跳點");
+                                    if (!tracker.IsRescueCircuitBroken)
+                                        tracker.TryRescuePath();
+                                    return;
+                                }
+
+                                if (tracker.TryGetSideJumpApproachWalk(
+                                    currentEdge,
+                                    out var approachEdge,
+                                    out var approachTarget))
+                                {
+                                    edgeToExecute = approachEdge;
+                                    executeTarget = approachTarget;
+                                    tracker.MarkSideJumpApproachStarted(currentEdge.FromNodeId);
+                                    Logger.Info($"[導航] {currentEdge.ActionType} 起跳點未對齊，先 Walk 至 ({approachTarget.X:F1},{approachTarget.Y:F1})");
+                                }
+                            }
+                            else if (!needsJumpApproach)
+                            {
+                                tracker?.ClearSideJumpApproachState();
+                            }
 
                             bool hasAction = currentEdge != null &&
                                            currentEdge.ActionType != NavigationActionType.Walk;
 
-                            if (currentEdge != null)
+                            if (edgeToExecute != null)
                             {
-                                Logger.Info($"[導航狀態] 玩家=({playerPos.X:F1},{playerPos.Y:F1}) 目標=({nextWaypoint.X},{nextWaypoint.Y}) Edge={currentEdge.FromNodeId}->{currentEdge.ToNodeId} Action={currentEdge.ActionType}");
+                                Logger.Info($"[導航狀態] 玩家=({playerPos.X:F1},{playerPos.Y:F1}) 目標=({executeTarget.X:F1},{executeTarget.Y:F1}) Edge={edgeToExecute.FromNodeId}->{edgeToExecute.ToNodeId} Action={edgeToExecute.ActionType}");
                             }
 
-                            bool isAtTarget = _pathPlanningManager?.Tracker?.IsPlayerAtTarget() ?? false;
+                            bool isAtTarget = tracker?.IsPlayerAtTarget() ?? false;
 
-                            bool walkEdge = currentEdge != null && currentEdge.ActionType == NavigationActionType.Walk;
+                            bool walkEdge = edgeToExecute != null && edgeToExecute.ActionType == NavigationActionType.Walk;
 
                             if (isAtTarget && !hasAction)
                             {
-                                if (!walkEdge) _fsm?.NotifyTargetReached();
+                                bool canIdleSupplement = _fsm?.CurrentState == NavigationState.Idle
+                                    && tracker != null
+                                    && !tracker.HasActiveNavigationFlight;
+                                if (canIdleSupplement)
+                                    _fsm?.NotifyTargetReached();
                             }
-                            else if (currentEdge == null)
+                            else if (edgeToExecute == null)
                             {
                                 Logger.Error($"[導航狀態] 無合法導航邊可執行，停止自動導航。玩家=({playerPos.X:F1},{playerPos.Y:F1})");
                                 _fsm?.CancelNavigation("無合法導航邊可執行");
@@ -1607,12 +1657,16 @@ namespace ArtaleAI
                             }
                             else
                             {
-                                if (_fsm != null)
+                                if (walkEdge &&
+                                    tracker != null &&
+                                    tracker.IsPlayerOnRope((System.Drawing.PointF)playerPos))
                                 {
-                                    if (_fsm.TryStartNavigation(currentEdge, (SdPointF)playerPos, (SdPointF)nextWaypoint))
-                                    {
-                                        ReportAction($"{currentEdge.ActionType}");
-                                    }
+                                    Logger.Debug($"[導航] 仍在繩上，暫不啟動 Walk player=({playerPos.X:F1},{playerPos.Y:F1})");
+                                }
+                                else if (_fsm != null &&
+                                    _fsm.TryStartNavigation(edgeToExecute, (SdPointF)playerPos, (SdPointF)executeTarget))
+                                {
+                                    ReportAction($"{edgeToExecute.ActionType}");
                                 }
                             }
                         }

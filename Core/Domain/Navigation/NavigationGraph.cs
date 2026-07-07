@@ -21,6 +21,7 @@ namespace ArtaleAI.Core.Domain.Navigation
 
         public string MapId { get; set; } = string.Empty;
         public string MapName { get; set; } = string.Empty;
+        public PlatformGeometryIndex PlatformGeometry { get; private set; } = PlatformGeometryIndex.Empty;
 
         /// <summary>由 <see cref="MapData"/> 建圖並套用繩索 H 拓撲。</summary>
         public static NavigationGraph FromMapData(MapData mapData)
@@ -29,15 +30,25 @@ namespace ArtaleAI.Core.Domain.Navigation
 
             MapGenerationService.BuildHTopology(mapData);
 
-            var graph = new NavigationGraph();
+            var graph = new NavigationGraph
+            {
+                PlatformGeometry = PlatformGeometryIndex.FromMapData(mapData)
+            };
 
             foreach (var node in mapData.Nodes)
             {
                 var navNode = new NavigationNode(node.X, node.Y)
                 {
                     Id = node.Id,
-                    Type = node.Type == "Rope" ? NavigationNodeType.Rope : NavigationNodeType.Platform
+                    Type = node.Type == "Rope" ? NavigationNodeType.Rope : NavigationNodeType.Platform,
+                    PlatformId = node.PlatformId
                 };
+
+                if (string.IsNullOrEmpty(navNode.PlatformId) &&
+                    NavigationNodeIdParser.TryParsePlatformId(node.Id, out var parsedPlatformId))
+                {
+                    navNode.PlatformId = parsedPlatformId;
+                }
 
                 if (navNode.Type == NavigationNodeType.Rope)
                     navNode.Hitbox = new BoundingBox(node.X, node.Y, RopeHitboxWidth, RopeHitboxHeight);

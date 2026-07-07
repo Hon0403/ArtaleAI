@@ -20,6 +20,27 @@ namespace ArtaleAI.Models.Config
         /// <summary>平台節點的到達判定高度 (px)</summary>
         public double PlatformHitboxHeight { get; set; } = 3.0;
 
+        /// <summary>走路終點 X 軸精準對齊容差 (px)，與爬繩對位一致。</summary>
+        public double WalkAlignTolerancePx { get; set; } = 1.0;
+
+        /// <summary>距目標 X 此距離內釋放長按，改由微步對齊以防 overshoot。</summary>
+        public double WalkBrakeDistancePx { get; set; } = 3.5;
+
+        /// <summary>平台折線投影 Y 容差 (px)；斜坡可站高度帶。</summary>
+        public double SlopeStandYTolerancePx { get; set; } = 4.5;
+
+        /// <summary>爬繩落地 Y 容差 (px)；嚴格於斜坡帶，避免繩上誤判。</summary>
+        public double RopeLandingYTolerancePx { get; set; } = 1.5;
+
+        /// <summary>繩段 X 軸判定容差 (px)；用於繩上狀態與 RopeLanding。</summary>
+        public double RopeSegmentXTolerancePx { get; set; } = 1.5;
+
+        /// <summary>Jump approach Walk 連續 Failed 次數達此值即熔斷 Rescue。</summary>
+        public int ApproachFailureRescueCutoff { get; set; } = 3;
+
+        /// <summary>同座標、同補給節點連續救援達此值即熔斷，避免 livelock。</summary>
+        public int RescueRepeatCutoff { get; set; } = 3;
+
         /// <summary>繩索節點的到達判定寬度 (px)</summary>
         public double RopeHitboxWidth { get; set; } = 6.0;
 

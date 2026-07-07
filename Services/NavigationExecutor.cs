@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using ArtaleAI.Core;
 using ArtaleAI.Core.Domain.Navigation;
 using ArtaleAI.Utils;
 using ArtaleAI.Models.Config;
@@ -21,9 +22,10 @@ namespace ArtaleAI.Services
         private const ushort VK_UP = 0x26;
         private const ushort VK_RIGHT = 0x27;
         private const ushort VK_DOWN = 0x28;
-        private const ushort VK_LMENU = 0xA4;  
+        private const ushort VK_JUMP = 0x12; // Alt，與 CharacterMovementController 爬繩一致
 
         private const float FALL_Y_TOLERANCE = 15.0f;
+        private const float JumpVerticalDirectionThresholdPx = 1.5f;
 
         private const int SideJumpPostLandingSettleMs = 200;
         private const int SideJumpMinAirborneMsBeforeLanding = 450;
@@ -39,6 +41,8 @@ namespace ArtaleAI.Services
             Error
         }
 
+        private PathPlanningTracker? _pathTracker;
+
         public NavigationExecutor(
             IKeyboardService keyboard,
             IPlayerPositionProvider positionProvider,
@@ -52,6 +56,11 @@ namespace ArtaleAI.Services
         public void SetSyncProvider(GamePipeline provider)
         {
             _syncProvider = provider;
+        }
+
+        public void SetPathTracker(PathPlanningTracker? tracker)
+        {
+            _pathTracker = tracker;
         }
 
         private async Task WaitForNextFrameAsync(CancellationToken ct)
@@ -72,35 +81,18 @@ namespace ArtaleAI.Services
                 return await ExecuteWalkAsync(currentPos, targetPos, isReached, ct);
             }
 
-            // [智慧攔截] 偵測隱式爬繩標記
-            float? ropeX = null;
-            if (edge.InputSequence != null)
-            {
-                foreach (var seq in edge.InputSequence)
-                {
-                    if (seq.StartsWith("ropeX:") && float.TryParse(seq.Substring(6), out float rx))
-                    {
-                        ropeX = rx;
-                        break;
-                    }
-                }
-            }
-
-            if (ropeX.HasValue)
-            {
-                bool isUp = targetPos.Y < currentPos.Y;
-                Logger.Info($"[導航] 偵測到隱式爬繩標記 (X={ropeX:F1})，方向: {(isUp ? "上" : "下")}");
-                return await ExecuteClimbAsync(edge, currentPos, targetPos, isUp, isReached, ct);
-            }
-
             return edge.ActionType switch
             {
+                NavigationActionType.ClimbUp =>
+                    await ExecuteClimbAsync(edge, currentPos, targetPos, isUp: true, isReached, ct),
+                NavigationActionType.ClimbDown =>
+                    await ExecuteClimbAsync(edge, currentPos, targetPos, isUp: false, isReached, ct),
                 NavigationActionType.JumpDown =>
-                    await ExecuteJumpDownAsync(ct),
+                    await ExecuteJumpDownAsync(currentPos, targetPos, isReached, ct),
                 NavigationActionType.SideJump =>
                     await ExecuteDirectionalJumpAsync(targetPos.X > currentPos.X ? 1 : -1, currentPos, targetPos, isReached, ct),
                 NavigationActionType.Jump =>
-                    await ExecuteDirectionalJumpAsync(0, currentPos, targetPos, isReached, ct),
+                    await ExecuteJumpAsync(currentPos, targetPos, isReached, ct),
                 NavigationActionType.Teleport =>
                     await ExecuteTeleportAsync(ct),
                 _ => await ExecuteWalkAsync(currentPos, targetPos, isReached, ct)
@@ -119,38 +111,49 @@ namespace ArtaleAI.Services
             return success ? ExecutionResult.Completed : ExecutionResult.Failed;
         }
 
-        /// <summary>走路至目標；移動層非 <see cref="MovementResult.Success"/> 時直接失敗，不以 isReached 覆寫。</summary>
+        /// <summary>走路至目標；長按後必經微步 X 對齊，再以 Hitbox 驗收 waypoint。</summary>
         private async Task<bool> MoveToTargetWithCorrectionAsync(
             SdPointF targetPos, float fallToleranceY, Func<bool> isReached, CancellationToken ct)
         {
+            var walkContext = _pathTracker?.GetWalkPlatformContextForActiveFlight();
+
             var moveResult = await _movementController.MoveToTargetAsync(
                 targetPos,
                 () => _positionProvider.GetCurrentPosition(),
                 fallToleranceY,
-                isReached,
-                ct);
+                ct,
+                walkContext);
 
             if (moveResult == MovementResult.Failed)
                 return false;
 
-            if (!isReached())
+            bool aligned = await _movementController.AlignHorizontallyAsync(
+                targetPos.X,
+                () => _positionProvider.GetCurrentPosition(),
+                ct,
+                walkContext);
+
+            if (!aligned)
             {
-                Logger.Info("[導航] 未進 Hitbox，啟動微步對齊...");
-                var p = _positionProvider.GetCurrentPosition();
-                if (p.HasValue)
+                var pos = _positionProvider.GetCurrentPosition();
+                if (pos.HasValue)
+                    Logger.Warning($"[導航] 微步 X 對齊未完全達標 playerX={pos.Value.X:F1} targetX={targetPos.X:F1}");
+            }
+
+            bool arrived = isReached();
+            var p = _positionProvider.GetCurrentPosition();
+            if (p.HasValue)
+            {
+                if (arrived)
+                    _pathTracker?.LogFrozenFlightArrivalDiagnostic(p.Value, asWarning: false);
+                else
                 {
-                    float dx = targetPos.X - p.Value.X;
-                    ushort corrKey = dx > 0 ? VK_RIGHT : VK_LEFT;
-                    for (int i = 0; i < 8; i++)
-                    {
-                        if (isReached()) break;
-                        await _keyboard.TapKeyAsync(corrKey, 30, ct);
-                        await WaitForNextFrameAsync(ct);
-                    }
+                    Logger.Info($"[導航] Walk 驗收未通過 player=({p.Value.X:F1},{p.Value.Y:F1}) target=({targetPos.X:F1},{targetPos.Y:F1})");
+                    _pathTracker?.LogFrozenFlightArrivalDiagnostic(p.Value, asWarning: true);
                 }
             }
 
-            return isReached();
+            return arrived;
         }
 
         private async Task<ExecutionResult> ExecuteClimbAsync(
@@ -158,7 +161,7 @@ namespace ArtaleAI.Services
             bool isUp, Func<bool> isReached, CancellationToken ct)
         {
             const float ropeAlignThreshold = 1.0f; // 統一門檻 (1.0px)
-            float ropeX = ExtractRopeX(edge, targetPos.X);
+            float ropeX = NavigationRopeHelper.ExtractRopeX(edge, targetPos.X);
             float ropeTargetY = targetPos.Y;
             float distanceToRopeX = Math.Abs(currentPos.X - ropeX);
 
@@ -197,15 +200,90 @@ namespace ArtaleAI.Services
             return climbSuccess ? ExecutionResult.Completed : ExecutionResult.Failed;
         }
 
-        private async Task<ExecutionResult> ExecuteJumpDownAsync(CancellationToken ct)
+        /// <summary>與 SideJump 左右推斷對稱：targetY 明顯較低（螢幕座標較大）→ 下跳。</summary>
+        private static bool IsDownwardJump(SdPointF from, SdPointF to)
+            => to.Y > from.Y + JumpVerticalDirectionThresholdPx;
+
+        private async Task<ExecutionResult> ExecuteJumpAsync(
+            SdPointF currentPos, SdPointF targetPos, Func<bool> isReached, CancellationToken ct)
         {
-            _keyboard.SendKey(VK_DOWN, false);      
+            if (IsDownwardJump(currentPos, targetPos))
+            {
+                Logger.Info($"[跳躍] 幾何判定為下跳 currentY={currentPos.Y:F1} targetY={targetPos.Y:F1}");
+                return await ExecuteJumpDownAsync(currentPos, targetPos, isReached, ct);
+            }
+
+            return await ExecuteDirectionalJumpAsync(0, currentPos, targetPos, isReached, ct);
+        }
+
+        private const int JumpDownDirectionLeadMs = 45;
+        private const int JumpDownMinAirborneMsBeforeLanding = 120;
+        private const float JumpDownTakeoffDeltaPx = 2.0f;
+
+        /// <summary>下跳：先按住 ↓，lead 後再按 Alt；Alt 放開後才放 ↓（與 SideJump 方向 lead 對稱）。</summary>
+        private async Task<ExecutionResult> ExecuteJumpDownAsync(
+            SdPointF currentPos, SdPointF targetPos, Func<bool> isReached, CancellationToken ct)
+        {
+            _movementController.StopMovement();
             await Task.Delay(50, ct);
-            _keyboard.SendKey(VK_LMENU, false);     
-            await Task.Delay(100, ct);
-            _keyboard.SendKey(VK_LMENU, true);      
-            await Task.Delay(50, ct);
-            _keyboard.SendKey(VK_DOWN, true);        
+
+            _movementController.FocusGameWindow();
+
+            _keyboard.HoldKey(VK_DOWN);
+            await Task.Delay(JumpDownDirectionLeadMs, ct);
+
+            _keyboard.SendKey(VK_JUMP, false);
+
+            int jumpHold = AppConfig.Instance.Navigation.SideJumpAltHoldMs;
+            await Task.Delay(jumpHold, ct);
+
+            _keyboard.SendKey(VK_JUMP, true);
+            await Task.Delay(65, ct);
+            _keyboard.SendKey(VK_DOWN, true);
+
+            int landingWaitMs = AppConfig.Instance.Navigation.StuckDetectionMs;
+            bool landedByProximity = await WaitForLandingAsync(
+                targetPos.Y,
+                landingWaitMs,
+                ct,
+                JumpDownMinAirborneMsBeforeLanding,
+                JumpDownTakeoffDeltaPx);
+
+            if (!landedByProximity)
+                Logger.Warning($"[下跳] WaitForLanding 逾時（{landingWaitMs}ms），將進行著陸驗收。targetY={targetPos.Y:F1}");
+
+            if (SideJumpPostLandingSettleMs > 0)
+                await Task.Delay(SideJumpPostLandingSettleMs, ct);
+
+            var landPos = _positionProvider.GetCurrentPosition();
+            if (landPos.HasValue)
+            {
+                float fallYTol = FALL_Y_TOLERANCE;
+                float currentLandY = landPos.Value.Y;
+                float absYDiff = Math.Abs(currentLandY - targetPos.Y);
+
+                bool isDownwardMission = targetPos.Y > currentPos.Y;
+                bool landedOnLowerPlatform = currentLandY >= targetPos.Y - 2.0f;
+
+                if (isDownwardMission && landedOnLowerPlatform && isReached())
+                {
+                    Logger.Info($"[下跳] 偵測到下跳成功！落點({currentLandY:F1}) 到達目標層({targetPos.Y:F1})。");
+                    return ExecutionResult.Completed;
+                }
+
+                if (absYDiff > fallYTol)
+                {
+                    Logger.Warning($"[下跳] 著地 Y 偏差過大，判定失敗。diff={absYDiff:F1}, tol={fallYTol:F1}");
+                    return ExecutionResult.Failed;
+                }
+
+                if (!isReached())
+                {
+                    _pathTracker?.LogFrozenFlightArrivalDiagnostic(landPos.Value, asWarning: true);
+                    return ExecutionResult.Failed;
+                }
+            }
+
             return ExecutionResult.Completed;
         }
 
@@ -238,12 +316,12 @@ namespace ArtaleAI.Services
             
             await Task.Delay(45, ct); // 原子化 Direction-Lead (固定值)
 
-            _keyboard.SendKey(VK_LMENU, false); // Alt
+            _keyboard.SendKey(VK_JUMP, false);
             
             int jumpHold = AppConfig.Instance.Navigation.SideJumpAltHoldMs;
             await Task.Delay(jumpHold, ct);
 
-            _keyboard.SendKey(VK_LMENU, true);
+            _keyboard.SendKey(VK_JUMP, true);
 
             await Task.Delay(65, ct); // 原子化 Release-Direction (固定值)
             
@@ -285,7 +363,14 @@ namespace ArtaleAI.Services
 
                 if (!isReached())
                 {
-                    Logger.Warning($"[跳躍] 著地位置不在目標 Hitbox 內，判定失敗。landPos={landPos.Value:F1}, targetPos={targetPos:F1}");
+                    if (landPos.HasValue)
+                    {
+                        float landXErr = Math.Abs(landPos.Value.X - targetPos.X);
+                        Logger.Warning(
+                            $"[跳躍診斷] 著地驗收未通過 land=({landPos.Value.X:F1},{landPos.Value.Y:F1}) " +
+                            $"target=({targetPos.X:F1},{targetPos.Y:F1}) xErr={landXErr:F2}");
+                        _pathTracker?.LogFrozenFlightArrivalDiagnostic(landPos.Value, asWarning: true);
+                    }
                     return ExecutionResult.Failed;
                 }
             }
@@ -301,19 +386,12 @@ namespace ArtaleAI.Services
             return ExecutionResult.Completed;
         }
 
-        private static float ExtractRopeX(NavigationEdge edge, float fallbackX)
-        {
-            if (edge.InputSequence == null) return fallbackX;
-            foreach (var seq in edge.InputSequence)
-            {
-                if (seq.StartsWith("ropeX:") && float.TryParse(seq.Substring(6), out float ropeX))
-                    return ropeX;
-            }
-            return fallbackX;
-        }
-
-
-        private async Task<bool> WaitForLandingAsync(float targetY, int timeoutMs, CancellationToken ct)
+        private async Task<bool> WaitForLandingAsync(
+            float targetY,
+            int timeoutMs,
+            CancellationToken ct,
+            int minAirborneMs = SideJumpMinAirborneMsBeforeLanding,
+            float takeoffDeltaPx = 5.0f)
         {
             var startTime = DateTime.UtcNow;
             float lastY = float.MinValue;
@@ -322,7 +400,6 @@ namespace ArtaleAI.Services
             float initialY = _positionProvider.GetCurrentPosition()?.Y ?? -9999f;
             bool hasTakenOff = false;
             DateTime? takeoffUtc = null;
-            int minAirborneMs = SideJumpMinAirborneMsBeforeLanding;
             float yBand = SideJumpLandingYProximityPx;
             float stableYDelta = SideJumpLandingStableYDeltaPx;
 
@@ -332,7 +409,7 @@ namespace ArtaleAI.Services
                 if (currentPos.HasValue)
                 {
                     float currentY = currentPos.Value.Y;
-                    if (!hasTakenOff && Math.Abs(currentY - initialY) > 5.0f)
+                    if (!hasTakenOff && Math.Abs(currentY - initialY) > takeoffDeltaPx)
                     {
                         hasTakenOff = true;
                         takeoffUtc = DateTime.UtcNow;

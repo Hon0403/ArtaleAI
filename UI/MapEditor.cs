@@ -24,6 +24,18 @@ namespace ArtaleAI.UI
 
         private const float PointRadius = 4.0f;
         private const float SelectionRadius = 5.0f;
+        /// <summary>手動邊為細線，刪除命中需比平台/繩索更寬，且優先於幾何底圖。</summary>
+        private const float ManualEdgeDeleteHitSlop = 8.0f;
+
+        private enum DeleteTargetKind { None, ManualEdge, Rope, Platform }
+
+        private sealed record DeleteTarget(
+            DeleteTargetKind Kind,
+            ManualEdgeAnchor? ManualEdge,
+            float[]? Rope,
+            int RopeIndex,
+            PolylinePlatformData? Platform,
+            PolylineHitResult? PlatformHit);
 
         private int _hoveredNodeIndex = -1;
         private int _currentActionType = 0;
@@ -644,7 +656,7 @@ namespace ArtaleAI.UI
         /// 取得自動/手動拓撲邊的渲染顏色。
         /// 顏色語意對照：
         /// - Magenta (洋紅): Walk (基礎自動通行步行的細邊)
-        /// - Cyan (青色): Rope (自動生成的攀爬繩索輔助邊)
+        /// - Cyan (青色): ClimbUp / ClimbDown (繩索垂直邊)
         /// - MediumPurple (粉紫): SideJump (平台兩端往外側跳的自動邊)
         /// - Yellow (黃色): JumpDown (平台邊緣往下跳的自動邊)
         /// - DeepSkyBlue (深天藍): Jump (向上或往前跳躍的自動邊)
@@ -658,11 +670,9 @@ namespace ArtaleAI.UI
                 return Color.Magenta;
             }
 
-            bool isRope = edge.InputSequence?.Any(s => s.StartsWith("ropeX:")) ?? false;
-            if (isRope) return Color.Cyan;
-
             return edge.ActionType switch
             {
+                NavigationActionType.ClimbUp or NavigationActionType.ClimbDown => Color.Cyan,
                 NavigationActionType.SideJump => Color.MediumPurple,
                 NavigationActionType.JumpDown => Color.Yellow,
                 NavigationActionType.Jump => Color.DeepSkyBlue,
@@ -802,24 +812,62 @@ namespace ArtaleAI.UI
             return result;
         }
 
-        private void HandleDeleteAction(PointF clickPosition)
+        private bool TryGetManualEdgeDrawSegment(ManualEdgeAnchor anchor, out PointF from, out PointF to)
         {
-            float threshold = SelectionRadius * 2.0f; // 10.0 像素 (以 SelectionRadius 的兩倍距離作為命中候選範圍)
-
-            PolylinePlatformData? bestPlatform = null;
-            float bestPlatformDist = float.MaxValue;
-
-            if (_currentMapData.PolylinePlatforms != null)
+            foreach (var edge in _currentMapData.Edges)
             {
-                foreach (var plat in _currentMapData.PolylinePlatforms)
+                if (!EdgeMatchesAnchor(edge, anchor))
+                    continue;
+
+                int fromIdx = FindNodeIndexById(edge.FromNodeId);
+                int toIdx = FindNodeIndexById(edge.ToNodeId);
+                if (fromIdx < 0 || toIdx < 0)
+                    break;
+
+                from = new PointF(_currentMapData.Nodes[fromIdx].X, _currentMapData.Nodes[fromIdx].Y);
+                to = new PointF(_currentMapData.Nodes[toIdx].X, _currentMapData.Nodes[toIdx].Y);
+                return true;
+            }
+
+            from = new PointF(anchor.FromX, anchor.FromY);
+            to = new PointF(anchor.ToX, anchor.ToY);
+            return true;
+        }
+
+        private float GetDistanceToManualEdgeAnchor(PointF p, ManualEdgeAnchor anchor)
+        {
+            TryGetManualEdgeDrawSegment(anchor, out PointF from, out PointF to);
+            return GetDistanceToSegment(p, from, to);
+        }
+
+        private DeleteTarget ResolveDeleteTarget(PointF clickPosition, float threshold)
+        {
+            ManualEdgeAnchor? bestManualEdge = null;
+            float bestManualEdgeDist = float.MaxValue;
+            float manualEdgeThreshold = Math.Max(threshold, ManualEdgeDeleteHitSlop);
+
+            if (_currentMapData.ManualEdgeAnchors != null)
+            {
+                foreach (var anchor in _currentMapData.ManualEdgeAnchors)
                 {
-                    var hit = GetDistanceToPolyline(clickPosition, plat);
-                    if (hit.Distance < threshold && hit.Distance < bestPlatformDist)
+                    float dist = GetDistanceToManualEdgeAnchor(clickPosition, anchor);
+                    if (dist < manualEdgeThreshold && dist < bestManualEdgeDist)
                     {
-                        bestPlatformDist = hit.Distance;
-                        bestPlatform = plat;
+                        bestManualEdgeDist = dist;
+                        bestManualEdge = anchor;
                     }
                 }
+            }
+
+            if (bestManualEdge != null)
+            {
+                return new DeleteTarget(
+                    DeleteTargetKind.ManualEdge,
+                    bestManualEdge,
+                    null,
+                    -1,
+                    null,
+                    null);
             }
 
             float[]? bestRope = null;
@@ -843,56 +891,104 @@ namespace ArtaleAI.UI
                 }
             }
 
-            ManualEdgeAnchor? bestManualEdgeAnchor = null;
-            float bestManualEdgeDist = float.MaxValue;
-
-            if (_currentMapData.ManualEdgeAnchors != null)
+            if (bestRope != null)
             {
-                foreach (var anchor in _currentMapData.ManualEdgeAnchors)
+                return new DeleteTarget(
+                    DeleteTargetKind.Rope,
+                    null,
+                    bestRope,
+                    bestRopeIdx,
+                    null,
+                    null);
+            }
+
+            PolylinePlatformData? bestPlatform = null;
+            PolylineHitResult? bestPlatformHit = null;
+            float bestPlatformDist = float.MaxValue;
+
+            if (_currentMapData.PolylinePlatforms != null)
+            {
+                foreach (var plat in _currentMapData.PolylinePlatforms)
                 {
-                    float dist = GetDistanceToAnchor(clickPosition, anchor);
-                    if (dist < threshold && dist < bestManualEdgeDist)
+                    var hit = GetDistanceToPolyline(clickPosition, plat);
+                    if (hit.Distance < threshold && hit.Distance < bestPlatformDist)
                     {
-                        bestManualEdgeDist = dist;
-                        bestManualEdgeAnchor = anchor;
+                        bestPlatformDist = hit.Distance;
+                        bestPlatform = plat;
+                        bestPlatformHit = hit;
                     }
                 }
             }
 
-            // 決定最近的命中幾何物件與例外邊
-            float minOfAll = Math.Min(bestPlatformDist, Math.Min(bestRopeDist, bestManualEdgeDist));
-
-            if (minOfAll >= threshold)
+            if (bestPlatform != null)
             {
-                Logger.Info("[編輯器] 未命中任何可刪除的幾何物件或手動邊");
+                return new DeleteTarget(
+                    DeleteTargetKind.Platform,
+                    null,
+                    null,
+                    -1,
+                    bestPlatform,
+                    bestPlatformHit);
+            }
+
+            return new DeleteTarget(DeleteTargetKind.None, null, null, -1, null, null);
+        }
+
+        private void PruneManualEdgeAnchorsForPlatform(string platformId)
+        {
+            if (_currentMapData.ManualEdgeAnchors == null || _currentMapData.ManualEdgeAnchors.Count == 0)
                 return;
-            }
 
-            if (bestPlatform != null && Math.Abs(bestPlatformDist - minOfAll) < 0.001f)
+            int removed = _currentMapData.ManualEdgeAnchors.RemoveAll(a =>
+                string.Equals(a.FromPlatformId, platformId, StringComparison.Ordinal) ||
+                string.Equals(a.ToPlatformId, platformId, StringComparison.Ordinal));
+
+            if (removed > 0)
             {
-                _currentMapData.PolylinePlatforms?.Remove(bestPlatform);
-                Logger.Info($"[編輯器] 刪除折線平台幾何: Id={bestPlatform.Id}");
-                MapGenerationService.BuildHTopology(_currentMapData);
-            }
-            else if (bestRope != null && bestRopeIdx >= 0 && Math.Abs(bestRopeDist - minOfAll) < 0.001f)
-            {
-                _currentMapData.Ropes?.RemoveAt(bestRopeIdx);
-                Logger.Info($"[編輯器] 刪除繩索幾何: X={bestRope[0]:F1}, Y={bestRope[1]:F1}~{bestRope[2]:F1}");
-                MapGenerationService.BuildHTopology(_currentMapData);
-            }
-            else if (bestManualEdgeAnchor != null && Math.Abs(bestManualEdgeDist - minOfAll) < 0.001f)
-            {
-                _currentMapData.ManualEdgeAnchors?.Remove(bestManualEdgeAnchor);
-                Logger.Info($"[編輯器] 刪除手動例外邊錨點: {bestManualEdgeAnchor.FromPlatformId} -> {bestManualEdgeAnchor.ToPlatformId}");
-                MapGenerationService.BuildHTopology(_currentMapData);
+                Logger.Info($"[編輯器] 連帶移除平台 {platformId} 相關的手動例外邊錨點: {removed} 條");
             }
         }
 
-        private static float GetDistanceToAnchor(PointF p, ManualEdgeAnchor anchor)
+        private void ApplyDeleteTarget(DeleteTarget target)
         {
-            var from = new PointF(anchor.FromX, anchor.FromY);
-            var to = new PointF(anchor.ToX, anchor.ToY);
-            return GetDistanceToSegment(p, from, to);
+            switch (target.Kind)
+            {
+                case DeleteTargetKind.ManualEdge when target.ManualEdge != null:
+                    _currentMapData.ManualEdgeAnchors?.Remove(target.ManualEdge);
+                    Logger.Info(
+                        $"[編輯器] 刪除手動例外邊錨點: {target.ManualEdge.FromPlatformId} -> {target.ManualEdge.ToPlatformId} Action={target.ManualEdge.ActionType}");
+                    MapGenerationService.BuildHTopology(_currentMapData);
+                    break;
+
+                case DeleteTargetKind.Rope when target.Rope != null && target.RopeIndex >= 0:
+                    _currentMapData.Ropes?.RemoveAt(target.RopeIndex);
+                    Logger.Info(
+                        $"[編輯器] 刪除繩索幾何: X={target.Rope[0]:F1}, Y={target.Rope[1]:F1}~{target.Rope[2]:F1}");
+                    MapGenerationService.BuildHTopology(_currentMapData);
+                    break;
+
+                case DeleteTargetKind.Platform when target.Platform != null:
+                    string platformId = target.Platform.Id;
+                    _currentMapData.PolylinePlatforms?.Remove(target.Platform);
+                    PruneManualEdgeAnchorsForPlatform(platformId);
+                    Logger.Info($"[編輯器] 刪除折線平台幾何: Id={platformId}");
+                    MapGenerationService.BuildHTopology(_currentMapData);
+                    break;
+            }
+        }
+
+        private void HandleDeleteAction(PointF clickPosition)
+        {
+            float threshold = SelectionRadius * 2.0f;
+            var target = ResolveDeleteTarget(clickPosition, threshold);
+
+            if (target.Kind == DeleteTargetKind.None)
+            {
+                Logger.Info("[編輯器] 未命中任何可刪除的標記（手動邊、繩索、平台）");
+                return;
+            }
+
+            ApplyDeleteTarget(target);
         }
 
         private static float GetDistanceToSegment(PointF p, PointF a, PointF b)
@@ -944,10 +1040,7 @@ namespace ArtaleAI.UI
 
         /// <summary>
         /// 更新目前滑鼠所在的 Hover 物件狀態。
-        /// 行為分層設計：
-        /// 1. Delete 模式下：以「真實幾何物件」（Platform、Rope）與「手動例外邊錨點」優先檢索。
-        /// 2. ManualEdge 模式下：Hover 平台投影點，作為建立手動邊的起訖點引導。
-        /// 3. 其他模式下：Hover 生成節點以作為資訊預覽。
+        /// Delete 模式命中順序：手動邊 → 繩索 → 平台（與 HandleDeleteAction 共用 ResolveDeleteTarget）。
         /// </summary>
         public void UpdateHoveredNode(PointF screenPoint)
         {
@@ -967,15 +1060,34 @@ namespace ArtaleAI.UI
 
             bool isPlatformModeNotDrawing = _currentEditMode == EditMode.Platform && _activeDrawingPoints.Count == 0;
 
-            if (_currentEditMode == EditMode.Delete || isPlatformModeNotDrawing)
+            if (_currentEditMode == EditMode.Delete)
             {
-                float threshold = SelectionRadius; // 5.0 像素
-                if (isPlatformModeNotDrawing)
+                var deleteTarget = ResolveDeleteTarget(relativePoint, SelectionRadius * 2.0f);
+                switch (deleteTarget.Kind)
                 {
-                    threshold = SelectionRadius * 2.0f; // 插點模式下，放寬命中範圍到 10 像素
+                    case DeleteTargetKind.ManualEdge:
+                        _hoveredManualEdgeAnchor = deleteTarget.ManualEdge;
+                        break;
+                    case DeleteTargetKind.Rope:
+                        _hoveredRope = deleteTarget.Rope;
+                        break;
+                    case DeleteTargetKind.Platform:
+                        _hoveredPlatform = deleteTarget.Platform;
+                        if (deleteTarget.PlatformHit != null)
+                        {
+                            _hoveredSegmentIndex = deleteTarget.PlatformHit.SegmentIndex;
+                            _hoveredProjectionPoint = deleteTarget.PlatformHit.ProjectionPoint;
+                        }
+                        break;
                 }
 
-                // 1. 檢索 Platform
+                return;
+            }
+
+            if (isPlatformModeNotDrawing)
+            {
+                float threshold = SelectionRadius * 2.0f;
+
                 PolylinePlatformData? bestPlatform = null;
                 PolylineHitResult? bestHitResult = null;
                 float bestPlatformDist = float.MaxValue;
@@ -993,92 +1105,31 @@ namespace ArtaleAI.UI
                     }
                 }
 
-                if (_currentEditMode == EditMode.Delete)
+                if (bestPlatform != null)
                 {
-                    // 2. 檢索 Rope
-                    float[]? bestRope = null;
-                    float bestRopeDist = float.MaxValue;
-                    if (_currentMapData.Ropes != null)
+                    bool isTooCloseToVertex = false;
+                    if (bestHitResult != null)
                     {
-                        foreach (var rope in _currentMapData.Ropes)
+                        foreach (var v in bestPlatform.Points)
                         {
-                            if (rope.Length < 3) continue;
-                            float dist = GetDistanceToRope(relativePoint, rope);
-                            if (dist < threshold && dist < bestRopeDist)
+                            float dx = bestHitResult.ProjectionPoint.X - v.X;
+                            float dy = bestHitResult.ProjectionPoint.Y - v.Y;
+                            float distToVertex = (float)Math.Sqrt(dx * dx + dy * dy);
+                            if (distToVertex <= 5.0f)
                             {
-                                bestRopeDist = dist;
-                                bestRope = rope;
+                                isTooCloseToVertex = true;
+                                break;
                             }
                         }
                     }
 
-                    ManualEdgeAnchor? bestManualEdgeAnchor = null;
-                    float bestManualEdgeDist = float.MaxValue;
-                    if (_currentMapData.ManualEdgeAnchors != null)
+                    if (!isTooCloseToVertex)
                     {
-                        foreach (var anchor in _currentMapData.ManualEdgeAnchors)
-                        {
-                            float dist = GetDistanceToAnchor(relativePoint, anchor);
-                            if (dist < threshold && dist < bestManualEdgeDist)
-                            {
-                                bestManualEdgeDist = dist;
-                                bestManualEdgeAnchor = anchor;
-                            }
-                        }
-                    }
-
-                    float minOfAll = Math.Min(bestPlatformDist, Math.Min(bestRopeDist, bestManualEdgeDist));
-                    if (minOfAll < threshold)
-                    {
-                        if (bestPlatform != null && Math.Abs(bestPlatformDist - minOfAll) < 0.001f)
-                        {
-                            _hoveredPlatform = bestPlatform;
-                            if (bestHitResult != null)
-                            {
-                                _hoveredSegmentIndex = bestHitResult.SegmentIndex;
-                                _hoveredProjectionPoint = bestHitResult.ProjectionPoint;
-                            }
-                        }
-                        else if (bestRope != null && Math.Abs(bestRopeDist - minOfAll) < 0.001f)
-                        {
-                            _hoveredRope = bestRope;
-                        }
-                        else if (bestManualEdgeAnchor != null && Math.Abs(bestManualEdgeDist - minOfAll) < 0.001f)
-                        {
-                            _hoveredManualEdgeAnchor = bestManualEdgeAnchor;
-                        }
-                    }
-                }
-                else
-                {
-                    // Platform 模式下的 Hover 命中
-                    if (bestPlatform != null)
-                    {
-                        // 防呆：如果命中點距離任何既有折點過近，也不高亮 segment 與 projection point
-                        bool isTooCloseToVertex = false;
+                        _hoveredPlatform = bestPlatform;
                         if (bestHitResult != null)
                         {
-                            foreach (var v in bestPlatform.Points)
-                            {
-                                float dx = bestHitResult.ProjectionPoint.X - v.X;
-                                float dy = bestHitResult.ProjectionPoint.Y - v.Y;
-                                float distToVertex = (float)Math.Sqrt(dx * dx + dy * dy);
-                                if (distToVertex <= 5.0f)
-                                {
-                                    isTooCloseToVertex = true;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (!isTooCloseToVertex)
-                        {
-                            _hoveredPlatform = bestPlatform;
-                            if (bestHitResult != null)
-                            {
-                                _hoveredSegmentIndex = bestHitResult.SegmentIndex;
-                                _hoveredProjectionPoint = bestHitResult.ProjectionPoint;
-                            }
+                            _hoveredSegmentIndex = bestHitResult.SegmentIndex;
+                            _hoveredProjectionPoint = bestHitResult.ProjectionPoint;
                         }
                     }
                 }
@@ -1136,6 +1187,8 @@ namespace ArtaleAI.UI
                 NavigationActionType.SideJump => "SideJump",
                 NavigationActionType.JumpDown => "JumpDown",
                 NavigationActionType.Teleport => "Teleport",
+                NavigationActionType.ClimbUp => "ClimbUp",
+                NavigationActionType.ClimbDown => "ClimbDown",
                 _ => $"Act:{action}"
             };
         }

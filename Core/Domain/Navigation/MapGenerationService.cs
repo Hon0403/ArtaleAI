@@ -62,20 +62,20 @@ namespace ArtaleAI.Core.Domain.Navigation
 
             foreach (var anchor in mapData.ManualEdgeAnchors)
             {
-                string fromId = BuildVirtualNodeId(anchor.FromPlatformId, anchor.FromX, anchor.FromY);
-                string toId = BuildVirtualNodeId(anchor.ToPlatformId, anchor.ToX, anchor.ToY);
-
-                if (!nodeById.ContainsKey(fromId))
+                if (!TryResolvePlatformNodeId(nodeById, anchor.FromPlatformId, anchor.FromX, anchor.FromY, out string fromId))
                 {
-                    Logger.Warning($"[拓撲] ResolveAnchor 失敗：找不到 fromNode {fromId}");
+                    Logger.Warning($"[拓撲] ResolveAnchor 失敗：找不到 fromNode（平台={anchor.FromPlatformId}, X={anchor.FromX:F1}, Y={anchor.FromY:F1}）");
                     continue;
                 }
 
-                if (!nodeById.ContainsKey(toId))
+                if (!TryResolvePlatformNodeId(nodeById, anchor.ToPlatformId, anchor.ToX, anchor.ToY, out string toId))
                 {
-                    Logger.Warning($"[拓撲] ResolveAnchor 失敗：找不到 toNode {toId}");
+                    Logger.Warning($"[拓撲] ResolveAnchor 失敗：找不到 toNode（平台={anchor.ToPlatformId}, X={anchor.ToX:F1}, Y={anchor.ToY:F1}）");
                     continue;
                 }
+
+                if (string.Equals(fromId, toId, StringComparison.Ordinal))
+                    continue;
 
                 bool duplicate = mapData.Edges.Any(e =>
                     string.Equals(e.FromNodeId, fromId, StringComparison.Ordinal) &&
@@ -93,6 +93,49 @@ namespace ArtaleAI.Core.Domain.Navigation
             }
         }
 
+        /// <summary>
+        /// 錨點座標 → runtime node ID。先精確匹配，再在同平台節點中找最近者
+        /// （cut point 合併容差會使 UI 點擊座標與實際節點差 0.1~1.0px）。
+        /// </summary>
+        private static bool TryResolvePlatformNodeId(
+            Dictionary<string, NavNodeData> nodeById,
+            string platformId,
+            float anchorX,
+            float anchorY,
+            out string nodeId)
+        {
+            nodeId = BuildVirtualNodeId(platformId, anchorX, anchorY);
+            if (nodeById.ContainsKey(nodeId))
+                return true;
+
+            string prefix = $"{VirtualNodePrefix}plat_{platformId}_";
+            const float maxDist = 1.5f;
+
+            NavNodeData? best = null;
+            float bestDist = maxDist;
+
+            foreach (var node in nodeById.Values)
+            {
+                if (!node.Id.StartsWith(prefix, StringComparison.Ordinal))
+                    continue;
+
+                float dx = node.X - anchorX;
+                float dy = node.Y - anchorY;
+                float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    best = node;
+                }
+            }
+
+            if (best == null)
+                return false;
+
+            nodeId = best.Id;
+            return true;
+        }
+
         /// <summary>Cost 由 ActionType + 幾何距離決定，不由 UI 預算。</summary>
         private static float ComputeAnchorCost(ManualEdgeAnchor anchor, NavNodeData from, NavNodeData to)
         {
@@ -106,6 +149,8 @@ namespace ArtaleAI.Core.Domain.Navigation
                 NavigationActionType.SideJump => 8.0f,
                 NavigationActionType.JumpDown => 2.0f,
                 NavigationActionType.Teleport => 1.0f,
+                NavigationActionType.ClimbUp => 5.0f,
+                NavigationActionType.ClimbDown => 3.0f,
                 _ => dist
             };
         }
@@ -283,7 +328,8 @@ namespace ArtaleAI.Core.Domain.Navigation
                         Id = $"{VirtualNodePrefix}plat_{plat.Id}_{Quantize(qX)}_{Quantize(qY)}",
                         X = qX,
                         Y = qY,
-                        Type = "Platform"
+                        Type = "Platform",
+                        PlatformId = plat.Id
                     };
                     platNodes.Add(node);
                     generatedNodes.Add(node);
@@ -351,22 +397,22 @@ namespace ArtaleAI.Core.Domain.Navigation
 
                 if (topNode != null && botNode != null)
                 {
-                    // 沿用原本 Walk 型態與 InputSequence 標註
+                    var ropeMeta = new List<string> { $"ropeX:{ropeX:F1}" };
                     generatedEdges.Add(new NavEdgeData
                     {
                         FromNodeId = botNode.Id,
                         ToNodeId = topNode.Id,
-                        ActionType = NavigationActionType.Walk,
+                        ActionType = NavigationActionType.ClimbUp,
                         Cost = 5.0f,
-                        InputSequence = new List<string> { $"ropeX:{ropeX:F1}" }
+                        InputSequence = ropeMeta
                     });
                     generatedEdges.Add(new NavEdgeData
                     {
                         FromNodeId = topNode.Id,
                         ToNodeId = botNode.Id,
-                        ActionType = NavigationActionType.Walk,
+                        ActionType = NavigationActionType.ClimbDown,
                         Cost = 3.0f,
-                        InputSequence = new List<string> { $"ropeX:{ropeX:F1}" }
+                        InputSequence = ropeMeta
                     });
                 }
             }
