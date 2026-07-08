@@ -890,21 +890,10 @@ namespace ArtaleAI
                         or NavigationActionType.ClimbDown;
                     if (isClimbEdge)
                     {
-                        float ropeX = float.NaN;
-                        foreach (var seq in currentEdge.InputSequence)
-                        {
-                            if (seq.StartsWith("ropeX:") &&
-                                float.TryParse(seq.Substring(6), out var parsedRopeX))
-                            {
-                                ropeX = parsedRopeX;
-                                break;
-                            }
-                        }
-
-                        if (!float.IsNaN(ropeX))
+                        if (NavigationRopeHelper.TryExtractRopeX(currentEdge, out float ropeX))
                         {
                             pathData.RopeAlignCenterX = ropeX;
-                            pathData.RopeAlignTolerance = 1.0f; // 統一對位視覺化門檻 (與執行層同步)
+                            pathData.RopeAlignTolerance = 1.0f;
                         }
                     }
                 }
@@ -1629,45 +1618,28 @@ namespace ArtaleAI
                                 tracker?.ClearSideJumpApproachState();
                             }
 
-                            bool hasAction = currentEdge != null &&
-                                           currentEdge.ActionType != NavigationActionType.Walk;
+                            Logger.Info($"[導航狀態] 玩家=({playerPos.X:F1},{playerPos.Y:F1}) 目標=({executeTarget.X:F1},{executeTarget.Y:F1}) Edge={edgeToExecute?.FromNodeId}->{edgeToExecute?.ToNodeId} Action={edgeToExecute?.ActionType}");
 
-                            if (edgeToExecute != null)
-                            {
-                                Logger.Info($"[導航狀態] 玩家=({playerPos.X:F1},{playerPos.Y:F1}) 目標=({executeTarget.X:F1},{executeTarget.Y:F1}) Edge={edgeToExecute.FromNodeId}->{edgeToExecute.ToNodeId} Action={edgeToExecute.ActionType}");
-                            }
+                            bool walkEdge = edgeToExecute != null &&
+                                            edgeToExecute.ActionType == NavigationActionType.Walk;
 
-                            bool isAtTarget = tracker?.IsPlayerAtTarget() ?? false;
-
-                            bool walkEdge = edgeToExecute != null && edgeToExecute.ActionType == NavigationActionType.Walk;
-
-                            if (isAtTarget && !hasAction)
-                            {
-                                bool canIdleSupplement = _fsm?.CurrentState == NavigationState.Idle
-                                    && tracker != null
-                                    && !tracker.HasActiveNavigationFlight;
-                                if (canIdleSupplement)
-                                    _fsm?.NotifyTargetReached();
-                            }
-                            else if (edgeToExecute == null)
+                            if (edgeToExecute == null)
                             {
                                 Logger.Error($"[導航狀態] 無合法導航邊可執行，停止自動導航。玩家=({playerPos.X:F1},{playerPos.Y:F1})");
                                 _fsm?.CancelNavigation("無合法導航邊可執行");
                                 return;
                             }
-                            else
+
+                            if (walkEdge &&
+                                tracker != null &&
+                                tracker.IsPlayerOnRope((System.Drawing.PointF)playerPos))
                             {
-                                if (walkEdge &&
-                                    tracker != null &&
-                                    tracker.IsPlayerOnRope((System.Drawing.PointF)playerPos))
-                                {
-                                    Logger.Debug($"[導航] 仍在繩上，暫不啟動 Walk player=({playerPos.X:F1},{playerPos.Y:F1})");
-                                }
-                                else if (_fsm != null &&
-                                    _fsm.TryStartNavigation(edgeToExecute, (SdPointF)playerPos, (SdPointF)executeTarget))
-                                {
-                                    ReportAction($"{edgeToExecute.ActionType}");
-                                }
+                                Logger.Debug($"[導航] 仍在繩上，暫不啟動 Walk player=({playerPos.X:F1},{playerPos.Y:F1})");
+                            }
+                            else if (_fsm != null &&
+                                _fsm.TryStartNavigation(edgeToExecute, (SdPointF)playerPos, (SdPointF)executeTarget))
+                            {
+                                ReportAction($"{edgeToExecute.ActionType}");
                             }
                         }
                         else if (!Config.Navigation.EnableAutoMovement)

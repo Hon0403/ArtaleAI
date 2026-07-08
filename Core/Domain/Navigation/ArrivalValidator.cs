@@ -135,6 +135,22 @@ namespace ArtaleAI.Core.Domain.Navigation
 
             if (strictX)
             {
+                if (!string.IsNullOrEmpty(target.PlatformId) && !hasProjection)
+                {
+                    return BuildPlatformDiagnostic(
+                        false, target, playerPos, xErr, yErrExp, yErrAnchor, xTol, yTol,
+                        expectedY, hasProjection, extrapolated, strictX,
+                        "NO_PLATFORM_PROJECTION", "標記-平台折線缺失");
+                }
+
+                if (!hasProjection && yErrAnchor > yTol)
+                {
+                    return BuildPlatformDiagnostic(
+                        false, target, playerPos, xErr, yErrExp, yErrAnchor, xTol, yTol,
+                        expectedY, hasProjection, extrapolated, strictX,
+                        "Y_ANCHOR_OVER", "標記-錨點Y偏差");
+                }
+
                 return BuildPlatformDiagnostic(
                     true, target, playerPos, xErr, yErrExp, yErrAnchor, xTol, yTol,
                     expectedY, hasProjection, extrapolated, strictX, "", "通過");

@@ -89,7 +89,7 @@ namespace ArtaleAI.Services
 
                 if (exeResult == NavigationExecutor.ExecutionResult.Failed || exeResult == NavigationExecutor.ExecutionResult.Error)
                 {
-                    bool shouldRescue = _tracker?.ShouldAcceptFailureRescue(flightToken) ?? true;
+                    bool shouldRescue = _tracker?.ShouldAcceptFailureRescue(flightToken) ?? false;
                     _tracker?.EndNavigationFlight();
 
                     if (!shouldRescue)
@@ -125,7 +125,7 @@ namespace ArtaleAI.Services
                 if (!token.IsCancellationRequested &&
                     exeResult == NavigationExecutor.ExecutionResult.Completed)
                 {
-                    if (_tracker == null || _tracker.TryAcknowledgeWaypointCompletion(flightToken))
+                    if (_tracker != null && _tracker.TryAcknowledgeWaypointCompletion(flightToken))
                     {
                         Logger.Debug("[FSM] 執行層完成且 waypoint 完成已確認，進入 Reached_Waypoint");
                         ChangeState(NavigationState.Reached_Waypoint);
@@ -171,26 +171,6 @@ namespace ArtaleAI.Services
                 ChangeState(NavigationState.Idle);
             }
         }
-
-        /// <inheritdoc />
-        public void NotifyTargetReached()
-        {
-            lock (_stateLock)
-            {
-                if (_currentState != NavigationState.Idle)
-                    return;
-
-                if (!(_tracker?.TryAcknowledgeWaypointCompletion(
-                        Guid.Empty,
-                        WaypointCompletionSource.IdleSupplement) ?? false))
-                    return;
-
-                Logger.Debug("[FSM] Idle 補推進：驗收成立且無 in-flight，推進 Waypoint");
-                ChangeState(NavigationState.Reached_Waypoint);
-                ChangeState(NavigationState.Idle);
-            }
-        }
-
 
         private void ChangeState(NavigationState newState)
         {

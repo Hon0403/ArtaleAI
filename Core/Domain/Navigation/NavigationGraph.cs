@@ -261,5 +261,52 @@ namespace ArtaleAI.Core.Domain.Navigation
             edges.Reverse();
             return new NavigationPath(edges);
         }
+
+        /// <summary>載入後診斷地圖拓撲問題（不修改圖，僅輸出警告）。</summary>
+        public void LogMapDataIssues()
+        {
+            float walkTol = (float)AppConfig.Instance.Navigation.WalkAlignTolerancePx;
+            float denseThreshold = walkTol * 2f;
+
+            foreach (var node in _nodes.Values)
+            {
+                foreach (var edge in GetOutgoingEdges(node.Id))
+                {
+                    if (edge.ActionType != NavigationActionType.Walk)
+                        continue;
+
+                    var toNode = GetNode(edge.ToNodeId);
+                    if (toNode == null || toNode.Type != NavigationNodeType.Platform)
+                        continue;
+                    if (node.Type != NavigationNodeType.Platform)
+                        continue;
+
+                    if (string.IsNullOrEmpty(node.PlatformId) ||
+                        !string.Equals(node.PlatformId, toNode.PlatformId, StringComparison.Ordinal))
+                        continue;
+
+                    float dx = Math.Abs(node.Position.X - toNode.Position.X);
+                    if (dx > 0f && dx < denseThreshold)
+                    {
+                        Logger.Warning(
+                            $"[地圖驗證] 同平台 Walk 節點過密 ΔX={dx:F2}px < {denseThreshold:F2}px：" +
+                            $"{node.Id} -> {toNode.Id}（易導致 Live 驗收重疊，建議合併 waypoint）");
+                    }
+                }
+
+                foreach (var edge in GetOutgoingEdges(node.Id))
+                {
+                    if (edge.ActionType is not (NavigationActionType.ClimbUp or NavigationActionType.ClimbDown))
+                        continue;
+
+                    if (!NavigationRopeHelper.TryExtractRopeX(edge, out _))
+                    {
+                        Logger.Warning(
+                            $"[地圖驗證] Climb 邊缺少 ropeX: metadata：" +
+                            $"{edge.FromNodeId} -> {edge.ToNodeId} action={edge.ActionType}");
+                    }
+                }
+            }
+        }
     }
 }

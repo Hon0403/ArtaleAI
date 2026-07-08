@@ -46,6 +46,12 @@ namespace ArtaleAI.Core
         private ExecutionTarget? _frozenFlightTarget;
         private bool _waypointCompletionAcknowledged;
 
+        private enum ExecutionTargetResolveMode
+        {
+            Live,
+            Frozen
+        }
+
         /// <summary>是否有進行中且尚未宣告完成的導航飛行。</summary>
         public bool HasActiveNavigationFlight
         {
@@ -83,7 +89,7 @@ namespace ArtaleAI.Core
         /// <summary>診斷目前路徑點驗收狀態。</summary>
         public ArrivalDiagnostic? DiagnoseCurrentTarget(PointF playerPos)
         {
-            var target = ResolveCurrentExecutionTarget();
+            var target = ResolveExecutionTarget(edge: null, ExecutionTargetResolveMode.Live);
             return target == null ? null : ArrivalValidator.Diagnose(playerPos, target, _platformGeometry);
         }
 
@@ -102,7 +108,7 @@ namespace ArtaleAI.Core
 
             if (target == null)
             {
-                LogCurrentArrivalDiagnostic(playerPos, asWarning);
+                Logger.Warning("[導航] 凍結目標為 null，無法輸出 flight 驗收診斷");
                 return;
             }
 
@@ -114,7 +120,7 @@ namespace ArtaleAI.Core
         /// <summary>目前路徑點是否通過執行層驗收（<see cref="ArrivalValidator"/>）。</summary>
         public bool IsPlayerAtTarget()
         {
-            var target = ResolveCurrentExecutionTarget();
+            var target = ResolveExecutionTarget(edge: null, ExecutionTargetResolveMode.Live);
             if (target == null) return false;
 
             var state = CurrentPathState;
@@ -135,7 +141,7 @@ namespace ArtaleAI.Core
                 target = _frozenFlightTarget;
 
             if (target == null)
-                return IsPlayerAtTarget();
+                return false;
 
             var state = CurrentPathState;
             if (state?.CurrentPlayerPosition is not { } playerPos)
@@ -159,49 +165,103 @@ namespace ArtaleAI.Core
                     edge.FromNodeId,
                     edge.ToNodeId,
                     edge.ActionType);
-                _frozenFlightTarget = ResolveFrozenTargetForFlight(edge);
+                _frozenFlightTarget = ResolveExecutionTarget(edge, ExecutionTargetResolveMode.Frozen);
+                if (_frozenFlightTarget == null)
+                {
+                    Logger.Error(
+                        $"[導航] 飛行啟動但凍結目標解析失敗 " +
+                        $"edge={edge.FromNodeId}->{edge.ToNodeId} action={edge.ActionType}");
+                }
+
                 _waypointCompletionAcknowledged = false;
                 return token;
             }
         }
 
-        private ExecutionTarget? ResolveFrozenTargetForFlight(NavigationEdge edge)
+        /// <summary>
+        /// 唯一執行目標解析入口。
+        /// Live：編排層即時驗收；Frozen：BeginNavigationFlight 當下凍結，缺失資料 fail-fast。
+        /// </summary>
+        private ExecutionTarget? ResolveExecutionTarget(NavigationEdge? edge, ExecutionTargetResolveMode mode)
         {
-            if (_navGraph == null)
-                return ResolveCurrentExecutionTarget();
+            bool frozen = mode == ExecutionTargetResolveMode.Frozen;
 
-            if (_sideJumpApproachInProgress &&
-                !string.IsNullOrEmpty(_sideJumpApproachFromNodeId) &&
-                edge.ActionType == NavigationActionType.Walk)
+            if (_navGraph == null)
             {
-                var approachFrom = _navGraph.GetNode(_sideJumpApproachFromNodeId);
-                if (approachFrom != null)
-                    return ExecutionTargetTranslator.ForJumpTakeoff(approachFrom);
+                Logger.Error(
+                    $"[導航] 執行目標解析失敗：NavGraph 未載入 " +
+                    $"edge={FormatEdgeLabel(edge)} mode={mode}");
+                return null;
             }
 
-            if (edge.ActionType is NavigationActionType.Jump or NavigationActionType.SideJump or NavigationActionType.JumpDown)
+            if (_sideJumpApproachInProgress && !string.IsNullOrEmpty(_sideJumpApproachFromNodeId))
+            {
+                bool useTakeoff = frozen
+                    ? edge?.ActionType == NavigationActionType.Walk
+                    : true;
+
+                if (useTakeoff)
+                {
+                    var approachFrom = _navGraph.GetNode(_sideJumpApproachFromNodeId);
+                    if (approachFrom != null)
+                        return ExecutionTargetTranslator.ForJumpTakeoff(approachFrom);
+
+                    Logger.Error(
+                        $"[導航] 執行目標解析失敗：找不到 approach 節點 " +
+                        $"{_sideJumpApproachFromNodeId} edge={FormatEdgeLabel(edge)} mode={mode}");
+                    return null;
+                }
+            }
+
+            if (frozen && edge != null &&
+                edge.ActionType is NavigationActionType.Jump or NavigationActionType.SideJump or NavigationActionType.JumpDown)
             {
                 var landingNode = _navGraph.GetNode(edge.ToNodeId);
                 if (landingNode != null)
                     return ExecutionTargetTranslator.ForJumpLanding(landingNode);
+
+                Logger.Error(
+                    $"[導航] 凍結執行目標失敗：Jump 落地節點不存在 to={edge.ToNodeId}");
+                return null;
             }
 
-            if (edge.ActionType is NavigationActionType.ClimbUp or NavigationActionType.ClimbDown)
+            if (!frozen)
             {
-                var waypointNode = GetWaypointNodeAtCurrentIndex();
-                if (waypointNode != null)
-                {
-                    float ropeX = NavigationRopeHelper.ExtractRopeX(edge, waypointNode.Position.X);
-                    return ExecutionTargetTranslator.ForRopeLanding(waypointNode, ropeX);
-                }
+                var state = CurrentPathState;
+                if (state == null || state.IsPathCompleted ||
+                    state.PlannedPathNodes == null ||
+                    state.CurrentWaypointIndex >= state.PlannedPathNodes.Count)
+                    return null;
             }
 
-            var waypoint = GetWaypointNodeAtCurrentIndex();
-            if (waypoint != null)
-                return ExecutionTargetTranslator.ForWaypoint(waypoint);
+            var waypointNode = GetWaypointNodeAtCurrentIndex();
+            if (waypointNode == null)
+            {
+                Logger.Error(
+                    $"[導航] 執行目標解析失敗：無有效 waypoint " +
+                    $"edge={FormatEdgeLabel(edge)} index={CurrentPathState?.CurrentWaypointIndex} mode={mode}");
+                return null;
+            }
 
-            return ResolveCurrentExecutionTarget();
+            NavigationEdge? policyEdge = frozen ? edge : CurrentNavigationEdge;
+            if (policyEdge?.ActionType is NavigationActionType.ClimbUp or NavigationActionType.ClimbDown)
+            {
+                if (!NavigationRopeHelper.TryExtractRopeX(policyEdge, out float ropeX))
+                {
+                    Logger.Error(
+                        $"[導航] 執行目標解析失敗：Climb 邊缺少 ropeX metadata " +
+                        $"edge={FormatEdgeLabel(policyEdge)}");
+                    return null;
+                }
+
+                return ExecutionTargetTranslator.ForRopeLanding(waypointNode, ropeX);
+            }
+
+            return ExecutionTargetTranslator.ForWaypoint(waypointNode);
         }
+
+        private static string FormatEdgeLabel(NavigationEdge? edge) =>
+            edge == null ? "-" : $"{edge.FromNodeId}->{edge.ToNodeId}({edge.ActionType})";
 
         private NavigationNode? GetWaypointNodeAtCurrentIndex()
         {
@@ -223,12 +283,9 @@ namespace ArtaleAI.Core
         }
 
         /// <summary>
-        /// 宣告目前 waypoint 完成；同一飛行生命週期僅生效一次。
-        /// Idle 補推進使用 <see cref="WaypointCompletionSource.IdleSupplement"/> 且不可有 in-flight。
+        /// 宣告目前 waypoint 完成；同一飛行生命週期僅生效一次（僅 Executor 路徑）。
         /// </summary>
-        public bool TryAcknowledgeWaypointCompletion(
-            Guid token,
-            WaypointCompletionSource source = WaypointCompletionSource.Executor)
+        public bool TryAcknowledgeWaypointCompletion(Guid token)
         {
             lock (_flightLock)
             {
@@ -238,34 +295,23 @@ namespace ArtaleAI.Core
                     return false;
                 }
 
-                if (source == WaypointCompletionSource.IdleSupplement)
+                if (_activeFlight == null || _activeFlight.Token != token)
                 {
-                    if (_activeFlight != null)
-                    {
-                        Logger.Debug("[導航] Idle 補推進忽略：仍有 in-flight 導航");
-                        return false;
-                    }
-
-                    if (!IsPlayerAtTarget())
-                        return false;
+                    Logger.Debug("[導航] 完成 token 不符，忽略延遲回報");
+                    return false;
                 }
-                else
-                {
-                    if (_activeFlight == null || _activeFlight.Token != token)
-                    {
-                        Logger.Debug("[導航] 完成 token 不符，忽略延遲回報");
-                        return false;
-                    }
 
-                    var state = CurrentPathState;
-                    if (state == null || state.CurrentWaypointIndex != _activeFlight.WaypointIndex)
-                    {
-                        Logger.Debug("[導航] waypoint index 已變更，忽略過期 executor 回報");
-                        return false;
-                    }
+                var state = CurrentPathState;
+                if (state == null || state.CurrentWaypointIndex != _activeFlight.WaypointIndex)
+                {
+                    Logger.Debug("[導航] waypoint index 已變更，忽略過期 executor 回報");
+                    return false;
                 }
 
                 _waypointCompletionAcknowledged = true;
+                Logger.Info(
+                    $"[導航] waypoint 完成確認 source=Executor " +
+                    $"token={token} index={_activeFlight.WaypointIndex}");
                 return true;
             }
         }
@@ -282,7 +328,7 @@ namespace ArtaleAI.Core
         {
             ExecutionTarget? target;
             lock (_flightLock)
-                target = _frozenFlightTarget ?? ResolveCurrentExecutionTarget();
+                target = _frozenFlightTarget;
 
             if (target == null || string.IsNullOrEmpty(target.PlatformId))
                 return null;
@@ -298,7 +344,7 @@ namespace ArtaleAI.Core
         /// <summary>供 Walk 移動層使用的平台幾何上下文。</summary>
         public WalkPlatformContext? GetCurrentWalkPlatformContext()
         {
-            var target = ResolveCurrentExecutionTarget();
+            var target = ResolveExecutionTarget(edge: null, ExecutionTargetResolveMode.Live);
             if (target == null || string.IsNullOrEmpty(target.PlatformId))
                 return null;
 
@@ -311,35 +357,8 @@ namespace ArtaleAI.Core
         }
 
         /// <summary>目前生效的 Runtime 執行目標。</summary>
-        public ExecutionTarget? GetCurrentExecutionTarget() => ResolveCurrentExecutionTarget();
-
-        private ExecutionTarget? ResolveCurrentExecutionTarget()
-        {
-            if (_sideJumpApproachInProgress && !string.IsNullOrEmpty(_sideJumpApproachFromNodeId))
-            {
-                var fromNode = _navGraph?.GetNode(_sideJumpApproachFromNodeId);
-                if (fromNode != null)
-                    return ExecutionTargetTranslator.ForJumpTakeoff(fromNode);
-            }
-
-            var state = CurrentPathState;
-            if (state == null || state.IsPathCompleted ||
-                state.CurrentWaypointIndex >= state.PlannedPathNodes.Count)
-                return null;
-
-            var waypointNode = _navGraph?.GetNode(state.PlannedPathNodes[state.CurrentWaypointIndex]);
-            if (waypointNode == null)
-                return null;
-
-            var edge = CurrentNavigationEdge;
-            if (edge?.ActionType is NavigationActionType.ClimbUp or NavigationActionType.ClimbDown)
-            {
-                float ropeX = NavigationRopeHelper.ExtractRopeX(edge, waypointNode.Position.X);
-                return ExecutionTargetTranslator.ForRopeLanding(waypointNode, ropeX);
-            }
-
-            return ExecutionTargetTranslator.ForWaypoint(waypointNode);
-        }
+        public ExecutionTarget? GetCurrentExecutionTarget() =>
+            ResolveExecutionTarget(edge: null, ExecutionTargetResolveMode.Live);
 
         /// <summary>玩家是否仍掛在繩索段上（不可啟動水平 Walk）。</summary>
         public bool IsPlayerOnRope(PointF playerPos)
@@ -578,24 +597,25 @@ namespace ArtaleAI.Core
                         ClearSideJumpApproachState();
                         Logger.Info("[路徑追蹤] 跳躍起跳點已對齊，下帧執行跳躍動作。");
                         OnPathStateChanged?.Invoke(CurrentPathState);
-                        return;
                     }
-
-                    Logger.Info($"[路徑追蹤] FSM 驗收成功，正式推進進度。");
-
-                    var reachedIndex = CurrentPathState.CurrentWaypointIndex;
-                    if (reachedIndex >= 0 && reachedIndex < CurrentPathState.PlannedPath.Count)
-                        OnWaypointReached?.Invoke(CurrentPathState.PlannedPath[reachedIndex]);
-
-                    CurrentPathState.CurrentWaypointIndex++;
-
-                    if (CurrentPathState.CurrentWaypointIndex >= CurrentPathState.PlannedPath.Count)
+                    else
                     {
-                        Logger.Info("[路徑追蹤] 已完成整段路徑，觸發隨機巡邏規劃。");
-                        SelectRandomPhysicalTarget();
+                        Logger.Info($"[路徑追蹤] FSM 驗收成功，正式推進進度。");
+
+                        var reachedIndex = CurrentPathState.CurrentWaypointIndex;
+                        if (reachedIndex >= 0 && reachedIndex < CurrentPathState.PlannedPath.Count)
+                            OnWaypointReached?.Invoke(CurrentPathState.PlannedPath[reachedIndex]);
+
+                        CurrentPathState.CurrentWaypointIndex++;
+
+                        if (CurrentPathState.CurrentWaypointIndex >= CurrentPathState.PlannedPath.Count)
+                        {
+                            Logger.Info("[路徑追蹤] 已完成整段路徑，觸發隨機巡邏規劃。");
+                            SelectRandomPhysicalTarget();
+                        }
+
+                        OnPathStateChanged?.Invoke(CurrentPathState);
                     }
-                    
-                    OnPathStateChanged?.Invoke(CurrentPathState);
                 }
 
                 EndNavigationFlight();
@@ -637,6 +657,7 @@ namespace ArtaleAI.Core
 
             _navGraph = NavigationGraph.FromMapData(mapData);
             _platformGeometry = _navGraph.PlatformGeometry;
+            _navGraph.LogMapDataIssues();
             _approachCutoffNodes.Clear();
             _approachFailNodeId = null;
             _approachFailCount = 0;
@@ -893,8 +914,14 @@ namespace ArtaleAI.Core
                 return false;
             }
 
-            var updatedPath = new List<SdPointF> { currentPos };
+            var updatedPath = new List<SdPointF> { nearestNode.Position };
             var updatedNodes = new List<string> { nearestNode.Id };
+
+            if (dist > 1f)
+            {
+                Logger.Warning(
+                    $"[導航救援] 路徑起點對齊節點 {nearestNode.Id}，玩家偏移 {dist:F1}px");
+            }
 
             if (pathObj != null)
             {

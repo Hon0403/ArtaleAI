@@ -1,22 +1,28 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using ArtaleAI.Utils;
 
 namespace ArtaleAI.Core.Domain.Navigation
 {
     /// <summary>爬繩邊的繩 X 解析與繩段幾何判定。</summary>
     public static class NavigationRopeHelper
     {
-        public static float ExtractRopeX(NavigationEdge edge, float fallbackX)
+        /// <summary>從 Climb 邊 <c>InputSequence</c> 解析 ropeX；缺標記時回傳 false。</summary>
+        public static bool TryExtractRopeX(NavigationEdge edge, out float ropeX)
         {
-            if (edge.InputSequence == null) return fallbackX;
+            ropeX = 0f;
+            if (edge.InputSequence == null)
+                return false;
+
             foreach (var seq in edge.InputSequence)
             {
                 if (seq.StartsWith("ropeX:", StringComparison.Ordinal) &&
-                    float.TryParse(seq.AsSpan(6), out float ropeX))
-                    return ropeX;
+                    float.TryParse(seq.AsSpan(6), out ropeX))
+                    return true;
             }
-            return fallbackX;
+
+            return false;
         }
 
         /// <summary>

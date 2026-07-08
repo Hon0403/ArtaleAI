@@ -28,10 +28,4 @@ namespace ArtaleAI.Core.Domain.Navigation
         public string RescueKey(string ultimateTargetNodeId) =>
             $"{FromNodeId}->{ToNodeId}|{ActionType}|{ultimateTargetNodeId}";
     }
-
-    public enum WaypointCompletionSource
-    {
-        Executor,
-        IdleSupplement
-    }
 }
