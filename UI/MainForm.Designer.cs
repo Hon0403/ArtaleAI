@@ -35,26 +35,38 @@ namespace ArtaleAI
             tabControl1 = new TabControl();
             tabPage1 = new TabPage();
             tabPage2 = new TabPage();
+            panel3 = new Panel();
+            pictureBoxMinimap = new PictureBox();
             panel4 = new Panel();
+            panel4BottomHost = new Panel();
+            lbl_MapStatus = new Label();
+            splitSidebar = new SplitContainer();
+            panelToolsScroll = new Panel();
+            flowToolsStack = new FlowLayoutPanel();
+            groupBox_Layers = new GroupBox();
+            tableLayoutPanel_Layers = new TableLayoutPanel();
+            chk_LayerPlatforms = new CheckBox();
+            chk_LayerRopes = new CheckBox();
+            chk_LayerManualAnchors = new CheckBox();
+            chk_LayerNodes = new CheckBox();
+            chk_LayerEdges = new CheckBox();
+            chk_LayerValidation = new CheckBox();
+            groupBox_PropertyPanel = new GroupBox();
+            chk_AdvancedMode = new CheckBox();
             lbl_MouseCoords = new Label();
             groupBox_Action = new GroupBox();
             cbo_ActionType = new ComboBox();
             lbl_Action = new Label();
             groupBox3 = new GroupBox();
+            rdo_TwoPointLink = new RadioButton();
             rdo_DeleteMarker = new RadioButton();
             rdo_RopeMarker = new RadioButton();
             rdo_PathMarker = new RadioButton();
             rdo_SelectMode = new RadioButton();
-            rdo_TwoPointLink = new RadioButton();
-            groupBox2 = new GroupBox();
-            labelZoomFactor = new Label();
-            numericUpDownZoom = new NumericUpDown();
             groupBox1 = new GroupBox();
             btn_New = new Button();
             btn_SaveMap = new Button();
             cbo_MapFiles = new ComboBox();
-            panel3 = new Panel();
-            pictureBoxMinimap = new PictureBox();
             tabPage3 = new TabPage();
             pictureBoxLiveView = new PictureBox();
             panel1.SuspendLayout();
@@ -65,14 +77,21 @@ namespace ArtaleAI
             tabControl1.SuspendLayout();
             tabPage1.SuspendLayout();
             tabPage2.SuspendLayout();
-            panel4.SuspendLayout();
-            groupBox_Action.SuspendLayout();
-            groupBox3.SuspendLayout();
-            groupBox2.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)numericUpDownZoom).BeginInit();
-            groupBox1.SuspendLayout();
             panel3.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)pictureBoxMinimap).BeginInit();
+            panel4.SuspendLayout();
+            panel4BottomHost.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)splitSidebar).BeginInit();
+            splitSidebar.Panel1.SuspendLayout();
+            splitSidebar.Panel2.SuspendLayout();
+            panelToolsScroll.SuspendLayout();
+            flowToolsStack.SuspendLayout();
+            groupBox_Layers.SuspendLayout();
+            tableLayoutPanel_Layers.SuspendLayout();
+            groupBox_PropertyPanel.SuspendLayout();
+            groupBox_Action.SuspendLayout();
+            groupBox3.SuspendLayout();
+            groupBox1.SuspendLayout();
             tabPage3.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)pictureBoxLiveView).BeginInit();
             SuspendLayout();
@@ -337,42 +356,267 @@ namespace ArtaleAI
             tabPage2.Text = "路徑編輯";
             tabPage2.UseVisualStyleBackColor = true;
             // 
+            // panel3
+            // 
+            panel3.Controls.Add(pictureBoxMinimap);
+            panel3.Dock = DockStyle.Fill;
+            panel3.Location = new Point(3, 3);
+            panel3.Name = "panel3";
+            panel3.Size = new Size(686, 575);
+            panel3.TabIndex = 1;
+            // 
+            // pictureBoxMinimap
+            // 
+            pictureBoxMinimap.Dock = DockStyle.Fill;
+            pictureBoxMinimap.Location = new Point(0, 0);
+            pictureBoxMinimap.Name = "pictureBoxMinimap";
+            pictureBoxMinimap.Size = new Size(686, 575);
+            pictureBoxMinimap.SizeMode = PictureBoxSizeMode.Zoom;
+            pictureBoxMinimap.TabIndex = 0;
+            pictureBoxMinimap.TabStop = false;
+            pictureBoxMinimap.Paint += pictureBoxMinimap_Paint;
+            pictureBoxMinimap.MouseClick += pictureBoxMinimap_Click;
+            pictureBoxMinimap.MouseDown += pictureBoxMinimap_MouseDown;
+            pictureBoxMinimap.MouseUp += pictureBoxMinimap_MouseUp;
+            pictureBoxMinimap.MouseLeave += pictureBoxMinimap_MouseLeave;
+            pictureBoxMinimap.MouseMove += pictureBoxMinimap_MouseMove;
+            // 
             // panel4
             // 
-            panel4.Controls.Add(lbl_MouseCoords);
-            panel4.Controls.Add(groupBox_Action);
-            panel4.Controls.Add(groupBox3);
-            panel4.Controls.Add(groupBox2);
-            panel4.Controls.Add(groupBox1);
+            panel4.Controls.Add(splitSidebar);
+            panel4.Controls.Add(panel4BottomHost);
             panel4.Dock = DockStyle.Right;
-            panel4.Location = new Point(707, 3);
+            panel4.Location = new Point(689, 3);
+            panel4.MinimumSize = new Size(300, 200);
             panel4.Name = "panel4";
-            panel4.Size = new Size(198, 575);
+            panel4.Size = new Size(300, 575);
             panel4.TabIndex = 2;
+            // 
+            // panel4BottomHost
+            // 
+            panel4BottomHost.Controls.Add(lbl_MouseCoords);
+            panel4BottomHost.Controls.Add(lbl_MapStatus);
+            panel4BottomHost.Dock = DockStyle.Bottom;
+            panel4BottomHost.Location = new Point(0, 527);
+            panel4BottomHost.Name = "panel4BottomHost";
+            panel4BottomHost.Size = new Size(300, 48);
+            panel4BottomHost.TabIndex = 2;
+            // 
+            // lbl_MapStatus
+            // 
+            lbl_MapStatus.BackColor = Color.FromArgb(50, 50, 50);
+            lbl_MapStatus.Dock = DockStyle.Top;
+            lbl_MapStatus.ForeColor = Color.Gainsboro;
+            lbl_MapStatus.Location = new Point(0, 0);
+            lbl_MapStatus.Name = "lbl_MapStatus";
+            lbl_MapStatus.Padding = new Padding(4, 0, 0, 0);
+            lbl_MapStatus.Size = new Size(300, 20);
+            lbl_MapStatus.TabIndex = 0;
+            lbl_MapStatus.Text = "—";
+            lbl_MapStatus.TextAlign = ContentAlignment.MiddleLeft;
+            // 
+            // splitSidebar
+            // 
+            splitSidebar.Dock = DockStyle.Fill;
+            splitSidebar.FixedPanel = FixedPanel.Panel2;
+            splitSidebar.Location = new Point(0, 0);
+            splitSidebar.Name = "splitSidebar";
+            splitSidebar.Orientation = Orientation.Horizontal;
+            // 
+            // splitSidebar.Panel1
+            // 
+            splitSidebar.Panel1.Controls.Add(panelToolsScroll);
+            splitSidebar.Panel1MinSize = 120;
+            // 
+            // splitSidebar.Panel2
+            // 
+            splitSidebar.Panel2.Controls.Add(groupBox_PropertyPanel);
+            splitSidebar.Panel2MinSize = 160;
+            splitSidebar.Size = new Size(300, 527);
+            splitSidebar.SplitterDistance = 280;
+            splitSidebar.TabIndex = 0;
+            // 
+            // panelToolsScroll
+            // 
+            panelToolsScroll.AutoScroll = true;
+            panelToolsScroll.Controls.Add(flowToolsStack);
+            panelToolsScroll.Dock = DockStyle.Fill;
+            panelToolsScroll.Location = new Point(0, 0);
+            panelToolsScroll.Name = "panelToolsScroll";
+            panelToolsScroll.Padding = new Padding(0, 0, 0, 2);
+            panelToolsScroll.Size = new Size(300, 280);
+            panelToolsScroll.TabIndex = 0;
+            // 
+            // flowToolsStack
+            // 
+            flowToolsStack.AutoSize = true;
+            flowToolsStack.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            flowToolsStack.Controls.Add(groupBox1);
+            flowToolsStack.Controls.Add(groupBox3);
+            flowToolsStack.Controls.Add(groupBox_Action);
+            flowToolsStack.Controls.Add(groupBox_Layers);
+            flowToolsStack.Dock = DockStyle.Top;
+            flowToolsStack.FlowDirection = FlowDirection.TopDown;
+            flowToolsStack.Location = new Point(0, 0);
+            flowToolsStack.Name = "flowToolsStack";
+            flowToolsStack.Size = new Size(283, 400);
+            flowToolsStack.TabIndex = 0;
+            flowToolsStack.WrapContents = false;
+            // 
+            // groupBox_Layers
+            // 
+            groupBox_Layers.AutoSize = true;
+            groupBox_Layers.Controls.Add(tableLayoutPanel_Layers);
+            groupBox_Layers.Location = new Point(3, 313);
+            groupBox_Layers.Margin = new Padding(0, 0, 0, 4);
+            groupBox_Layers.MaximumSize = new Size(320, 0);
+            groupBox_Layers.MinimumSize = new Size(280, 0);
+            groupBox_Layers.Name = "groupBox_Layers";
+            groupBox_Layers.Padding = new Padding(4);
+            groupBox_Layers.Size = new Size(280, 84);
+            groupBox_Layers.TabIndex = 3;
+            groupBox_Layers.TabStop = false;
+            groupBox_Layers.Text = "圖層";
+            // 
+            // tableLayoutPanel_Layers
+            // 
+            tableLayoutPanel_Layers.AutoSize = true;
+            tableLayoutPanel_Layers.ColumnCount = 2;
+            tableLayoutPanel_Layers.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tableLayoutPanel_Layers.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tableLayoutPanel_Layers.Controls.Add(chk_LayerPlatforms, 0, 0);
+            tableLayoutPanel_Layers.Controls.Add(chk_LayerRopes, 1, 0);
+            tableLayoutPanel_Layers.Controls.Add(chk_LayerManualAnchors, 0, 1);
+            tableLayoutPanel_Layers.Controls.Add(chk_LayerNodes, 1, 1);
+            tableLayoutPanel_Layers.Controls.Add(chk_LayerEdges, 0, 2);
+            tableLayoutPanel_Layers.Controls.Add(chk_LayerValidation, 1, 2);
+            tableLayoutPanel_Layers.Dock = DockStyle.Fill;
+            tableLayoutPanel_Layers.Location = new Point(4, 20);
+            tableLayoutPanel_Layers.Name = "tableLayoutPanel_Layers";
+            tableLayoutPanel_Layers.RowCount = 3;
+            tableLayoutPanel_Layers.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tableLayoutPanel_Layers.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tableLayoutPanel_Layers.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tableLayoutPanel_Layers.Size = new Size(272, 60);
+            tableLayoutPanel_Layers.TabIndex = 0;
+            // 
+            // chk_LayerPlatforms
+            // 
+            chk_LayerPlatforms.AutoSize = true;
+            chk_LayerPlatforms.Checked = true;
+            chk_LayerPlatforms.CheckState = CheckState.Checked;
+            chk_LayerPlatforms.Location = new Point(3, 3);
+            chk_LayerPlatforms.Name = "chk_LayerPlatforms";
+            chk_LayerPlatforms.Size = new Size(50, 19);
+            chk_LayerPlatforms.TabIndex = 0;
+            chk_LayerPlatforms.Text = "平台";
+            chk_LayerPlatforms.UseVisualStyleBackColor = true;
+            chk_LayerPlatforms.CheckedChanged += OnLayerCheckboxChanged;
+            // 
+            // chk_LayerRopes
+            // 
+            chk_LayerRopes.AutoSize = true;
+            chk_LayerRopes.Checked = true;
+            chk_LayerRopes.CheckState = CheckState.Checked;
+            chk_LayerRopes.Location = new Point(139, 3);
+            chk_LayerRopes.Name = "chk_LayerRopes";
+            chk_LayerRopes.Size = new Size(50, 19);
+            chk_LayerRopes.TabIndex = 1;
+            chk_LayerRopes.Text = "繩索";
+            chk_LayerRopes.UseVisualStyleBackColor = true;
+            chk_LayerRopes.CheckedChanged += OnLayerCheckboxChanged;
+            // 
+            // chk_LayerManualAnchors
+            // 
+            chk_LayerManualAnchors.AutoSize = true;
+            chk_LayerManualAnchors.Checked = true;
+            chk_LayerManualAnchors.CheckState = CheckState.Checked;
+            chk_LayerManualAnchors.Location = new Point(3, 28);
+            chk_LayerManualAnchors.Name = "chk_LayerManualAnchors";
+            chk_LayerManualAnchors.Size = new Size(62, 19);
+            chk_LayerManualAnchors.TabIndex = 2;
+            chk_LayerManualAnchors.Text = "手動邊";
+            chk_LayerManualAnchors.UseVisualStyleBackColor = true;
+            chk_LayerManualAnchors.CheckedChanged += OnLayerCheckboxChanged;
+            // 
+            // chk_LayerNodes
+            // 
+            chk_LayerNodes.AutoSize = true;
+            chk_LayerNodes.Checked = true;
+            chk_LayerNodes.CheckState = CheckState.Checked;
+            chk_LayerNodes.Location = new Point(139, 28);
+            chk_LayerNodes.Name = "chk_LayerNodes";
+            chk_LayerNodes.Size = new Size(50, 19);
+            chk_LayerNodes.TabIndex = 3;
+            chk_LayerNodes.Text = "節點";
+            chk_LayerNodes.UseVisualStyleBackColor = true;
+            chk_LayerNodes.CheckedChanged += OnLayerCheckboxChanged;
+            // 
+            // chk_LayerEdges
+            // 
+            chk_LayerEdges.AutoSize = true;
+            chk_LayerEdges.Checked = true;
+            chk_LayerEdges.CheckState = CheckState.Checked;
+            chk_LayerEdges.Location = new Point(3, 53);
+            chk_LayerEdges.Name = "chk_LayerEdges";
+            chk_LayerEdges.Size = new Size(38, 19);
+            chk_LayerEdges.TabIndex = 4;
+            chk_LayerEdges.Text = "邊";
+            chk_LayerEdges.UseVisualStyleBackColor = true;
+            chk_LayerEdges.CheckedChanged += OnLayerCheckboxChanged;
+            // 
+            // chk_LayerValidation
+            // 
+            chk_LayerValidation.AutoSize = true;
+            chk_LayerValidation.Checked = true;
+            chk_LayerValidation.CheckState = CheckState.Checked;
+            chk_LayerValidation.Location = new Point(139, 53);
+            chk_LayerValidation.Name = "chk_LayerValidation";
+            chk_LayerValidation.Size = new Size(62, 19);
+            chk_LayerValidation.TabIndex = 5;
+            chk_LayerValidation.Text = "驗證層";
+            chk_LayerValidation.UseVisualStyleBackColor = true;
+            chk_LayerValidation.CheckedChanged += OnLayerCheckboxChanged;
+            // 
+            // groupBox_PropertyPanel
+            // 
+            groupBox_PropertyPanel.Dock = DockStyle.Fill;
+            groupBox_PropertyPanel.Location = new Point(0, 0);
+            groupBox_PropertyPanel.Name = "groupBox_PropertyPanel";
+            groupBox_PropertyPanel.Padding = new Padding(4);
+            groupBox_PropertyPanel.Size = new Size(300, 243);
+            groupBox_PropertyPanel.TabIndex = 0;
+            groupBox_PropertyPanel.TabStop = false;
+            groupBox_PropertyPanel.Text = "屬性面板";
             // 
             // lbl_MouseCoords
             // 
-            lbl_MouseCoords.AutoSize = true;
+            lbl_MouseCoords.AutoSize = false;
             lbl_MouseCoords.BackColor = Color.FromArgb(40, 40, 40);
+            lbl_MouseCoords.Dock = DockStyle.Fill;
             lbl_MouseCoords.ForeColor = Color.White;
-            lbl_MouseCoords.Location = new Point(6, 531);
+            lbl_MouseCoords.Location = new Point(0, 20);
             lbl_MouseCoords.Name = "lbl_MouseCoords";
-            lbl_MouseCoords.Padding = new Padding(3);
-            lbl_MouseCoords.Size = new Size(67, 21);
+            lbl_MouseCoords.Padding = new Padding(4, 4, 3, 3);
+            lbl_MouseCoords.Size = new Size(300, 28);
             lbl_MouseCoords.TabIndex = 1;
             lbl_MouseCoords.Text = "座標: (-, -)";
+            lbl_MouseCoords.TextAlign = ContentAlignment.MiddleLeft;
             // 
             // groupBox_Action
             // 
+            groupBox_Action.AutoSize = true;
             groupBox_Action.Controls.Add(cbo_ActionType);
             groupBox_Action.Controls.Add(lbl_Action);
-            groupBox_Action.Dock = DockStyle.Top;
-            groupBox_Action.Location = new Point(0, 263);
+            groupBox_Action.Location = new Point(3, 242);
+            groupBox_Action.Margin = new Padding(0, 0, 0, 4);
+            groupBox_Action.MaximumSize = new Size(320, 0);
+            groupBox_Action.MinimumSize = new Size(280, 0);
             groupBox_Action.Name = "groupBox_Action";
-            groupBox_Action.Size = new Size(198, 67);
-            groupBox_Action.TabIndex = 4;
+            groupBox_Action.Size = new Size(280, 67);
+            groupBox_Action.TabIndex = 2;
             groupBox_Action.TabStop = false;
-            groupBox_Action.Text = "節點動作設定";
+            groupBox_Action.Text = "動作類型（ManualEdge）";
             // 
             // cbo_ActionType
             // 
@@ -396,18 +640,44 @@ namespace ArtaleAI
             // groupBox3
             // 
             groupBox3.AutoSize = true;
+            groupBox3.Controls.Add(chk_AdvancedMode);
             groupBox3.Controls.Add(rdo_TwoPointLink);
             groupBox3.Controls.Add(rdo_DeleteMarker);
             groupBox3.Controls.Add(rdo_RopeMarker);
             groupBox3.Controls.Add(rdo_PathMarker);
             groupBox3.Controls.Add(rdo_SelectMode);
-            groupBox3.Dock = DockStyle.Top;
-            groupBox3.Location = new Point(0, 175);
+            groupBox3.Location = new Point(3, 115);
+            groupBox3.Margin = new Padding(0, 0, 0, 4);
+            groupBox3.MaximumSize = new Size(320, 0);
+            groupBox3.MinimumSize = new Size(280, 0);
             groupBox3.Name = "groupBox3";
-            groupBox3.Size = new Size(198, 113);
-            groupBox3.TabIndex = 3;
+            groupBox3.Size = new Size(280, 123);
+            groupBox3.TabIndex = 1;
             groupBox3.TabStop = false;
             groupBox3.Text = "標記編輯模式";
+            // 
+            // chk_AdvancedMode
+            // 
+            chk_AdvancedMode.AutoSize = true;
+            chk_AdvancedMode.Location = new Point(8, 90);
+            chk_AdvancedMode.Name = "chk_AdvancedMode";
+            chk_AdvancedMode.Size = new Size(134, 19);
+            chk_AdvancedMode.TabIndex = 7;
+            chk_AdvancedMode.Text = "啟用進階例外邊模式";
+            chk_AdvancedMode.UseVisualStyleBackColor = true;
+            chk_AdvancedMode.CheckedChanged += chk_AdvancedMode_CheckedChanged;
+            // 
+            // rdo_TwoPointLink
+            // 
+            rdo_TwoPointLink.AutoSize = true;
+            rdo_TwoPointLink.Location = new Point(8, 72);
+            rdo_TwoPointLink.Name = "rdo_TwoPointLink";
+            rdo_TwoPointLink.Size = new Size(73, 19);
+            rdo_TwoPointLink.TabIndex = 6;
+            rdo_TwoPointLink.TabStop = true;
+            rdo_TwoPointLink.Text = "兩點連線";
+            rdo_TwoPointLink.UseVisualStyleBackColor = true;
+            rdo_TwoPointLink.CheckedChanged += OnEditModeChanged;
             // 
             // rdo_DeleteMarker
             // 
@@ -447,58 +717,12 @@ namespace ArtaleAI
             rdo_SelectMode.AutoSize = true;
             rdo_SelectMode.Location = new Point(119, 47);
             rdo_SelectMode.Name = "rdo_SelectMode";
-            rdo_SelectMode.Size = new Size(73, 19);
+            rdo_SelectMode.Size = new Size(49, 19);
             rdo_SelectMode.TabIndex = 5;
             rdo_SelectMode.TabStop = true;
-            rdo_SelectMode.Text = "選取節點";
+            rdo_SelectMode.Text = "選取";
             rdo_SelectMode.UseVisualStyleBackColor = true;
             rdo_SelectMode.CheckedChanged += rdo_SelectMode_CheckedChanged;
-            // 
-            // rdo_TwoPointLink
-            // 
-            rdo_TwoPointLink.AutoSize = true;
-            rdo_TwoPointLink.Location = new Point(8, 72);
-            rdo_TwoPointLink.Name = "rdo_TwoPointLink";
-            rdo_TwoPointLink.Size = new Size(85, 19);
-            rdo_TwoPointLink.TabIndex = 6;
-            rdo_TwoPointLink.TabStop = true;
-            rdo_TwoPointLink.Text = "兩點連線";
-            rdo_TwoPointLink.UseVisualStyleBackColor = true;
-            rdo_TwoPointLink.CheckedChanged += OnEditModeChanged;
-            // 
-            // groupBox2
-            // 
-            groupBox2.AutoSize = true;
-            groupBox2.Controls.Add(labelZoomFactor);
-            groupBox2.Controls.Add(numericUpDownZoom);
-            groupBox2.Dock = DockStyle.Top;
-            groupBox2.Location = new Point(0, 108);
-            groupBox2.Name = "groupBox2";
-            groupBox2.Size = new Size(198, 67);
-            groupBox2.TabIndex = 2;
-            groupBox2.TabStop = false;
-            groupBox2.Text = "放大鏡";
-            // 
-            // labelZoomFactor
-            // 
-            labelZoomFactor.AutoSize = true;
-            labelZoomFactor.Font = new Font("Microsoft JhengHei UI", 9F, FontStyle.Bold);
-            labelZoomFactor.Location = new Point(-2, 24);
-            labelZoomFactor.Name = "labelZoomFactor";
-            labelZoomFactor.Size = new Size(58, 15);
-            labelZoomFactor.TabIndex = 0;
-            labelZoomFactor.Text = "放大倍率:";
-            // 
-            // numericUpDownZoom
-            // 
-            numericUpDownZoom.AutoSize = true;
-            numericUpDownZoom.Location = new Point(62, 22);
-            numericUpDownZoom.Maximum = new decimal(new int[] { 20, 0, 0, 0 });
-            numericUpDownZoom.Minimum = new decimal(new int[] { 2, 0, 0, 0 });
-            numericUpDownZoom.Name = "numericUpDownZoom";
-            numericUpDownZoom.Size = new Size(130, 23);
-            numericUpDownZoom.TabIndex = 1;
-            numericUpDownZoom.Value = new decimal(new int[] { 2, 0, 0, 0 });
             // 
             // groupBox1
             // 
@@ -506,10 +730,12 @@ namespace ArtaleAI
             groupBox1.Controls.Add(btn_New);
             groupBox1.Controls.Add(btn_SaveMap);
             groupBox1.Controls.Add(cbo_MapFiles);
-            groupBox1.Dock = DockStyle.Top;
-            groupBox1.Location = new Point(0, 0);
+            groupBox1.Location = new Point(3, 3);
+            groupBox1.Margin = new Padding(0, 0, 0, 4);
+            groupBox1.MaximumSize = new Size(320, 0);
+            groupBox1.MinimumSize = new Size(280, 0);
             groupBox1.Name = "groupBox1";
-            groupBox1.Size = new Size(198, 108);
+            groupBox1.Size = new Size(280, 108);
             groupBox1.TabIndex = 0;
             groupBox1.TabStop = false;
             groupBox1.Text = "路徑檔管理";
@@ -545,29 +771,6 @@ namespace ArtaleAI
             cbo_MapFiles.Size = new Size(141, 23);
             cbo_MapFiles.TabIndex = 0;
             cbo_MapFiles.SelectedIndexChanged += cbo_MapFiles_SelectedIndexChanged;
-            // 
-            // panel3
-            // 
-            panel3.Controls.Add(pictureBoxMinimap);
-            panel3.Dock = DockStyle.Fill;
-            panel3.Location = new Point(3, 3);
-            panel3.Name = "panel3";
-            panel3.Size = new Size(696, 575);
-            panel3.TabIndex = 1;
-            // 
-            // pictureBoxMinimap
-            // 
-            pictureBoxMinimap.Dock = DockStyle.Fill;
-            pictureBoxMinimap.Location = new Point(0, 0);
-            pictureBoxMinimap.Name = "pictureBoxMinimap";
-            pictureBoxMinimap.Size = new Size(696, 575);
-            pictureBoxMinimap.SizeMode = PictureBoxSizeMode.Zoom;
-            pictureBoxMinimap.TabIndex = 0;
-            pictureBoxMinimap.TabStop = false;
-            pictureBoxMinimap.Paint += pictureBoxMinimap_Paint;
-            pictureBoxMinimap.MouseClick += pictureBoxMinimap_Click;
-            pictureBoxMinimap.MouseLeave += pictureBoxMinimap_MouseLeave;
-            pictureBoxMinimap.MouseMove += pictureBoxMinimap_MouseMove;
             // 
             // tabPage3
             // 
@@ -610,19 +813,28 @@ namespace ArtaleAI
             tabControl1.ResumeLayout(false);
             tabPage1.ResumeLayout(false);
             tabPage2.ResumeLayout(false);
+            panel3.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)pictureBoxMinimap).EndInit();
             panel4.ResumeLayout(false);
-            panel4.PerformLayout();
+            panel4BottomHost.ResumeLayout(false);
+            splitSidebar.Panel1.ResumeLayout(false);
+            splitSidebar.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)splitSidebar).EndInit();
+            splitSidebar.ResumeLayout(false);
+            panelToolsScroll.ResumeLayout(false);
+            flowToolsStack.ResumeLayout(false);
+            flowToolsStack.PerformLayout();
+            groupBox_Layers.ResumeLayout(false);
+            groupBox_Layers.PerformLayout();
+            tableLayoutPanel_Layers.ResumeLayout(false);
+            tableLayoutPanel_Layers.PerformLayout();
+            groupBox_PropertyPanel.ResumeLayout(false);
             groupBox_Action.ResumeLayout(false);
             groupBox_Action.PerformLayout();
             groupBox3.ResumeLayout(false);
             groupBox3.PerformLayout();
-            groupBox2.ResumeLayout(false);
-            groupBox2.PerformLayout();
-            ((System.ComponentModel.ISupportInitialize)numericUpDownZoom).EndInit();
             groupBox1.ResumeLayout(false);
             groupBox1.PerformLayout();
-            panel3.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)pictureBoxMinimap).EndInit();
             tabPage3.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)pictureBoxLiveView).EndInit();
             ResumeLayout(false);
@@ -642,9 +854,6 @@ namespace ArtaleAI
         private System.Windows.Forms.Panel panel3;
         private System.Windows.Forms.GroupBox groupBox1;
         private System.Windows.Forms.ComboBox cbo_MapFiles;
-        private System.Windows.Forms.NumericUpDown numericUpDownZoom;
-        private Label labelZoomFactor;
-        private GroupBox groupBox2;
         private GroupBox groupBox3;
         private RadioButton rdo_DeleteMarker;
         private RadioButton rdo_RopeMarker;
@@ -677,6 +886,21 @@ namespace ArtaleAI
         private GroupBox groupBox_Action;
         private ComboBox cbo_ActionType;
         private Label lbl_Action;
+        private Label lbl_MapStatus;
+        private SplitContainer splitSidebar;
+        private Panel panelToolsScroll;
+        private FlowLayoutPanel flowToolsStack;
+        private GroupBox groupBox_Layers;
+        private TableLayoutPanel tableLayoutPanel_Layers;
+        private CheckBox chk_LayerPlatforms;
+        private CheckBox chk_LayerRopes;
+        private CheckBox chk_LayerManualAnchors;
+        private CheckBox chk_LayerNodes;
+        private CheckBox chk_LayerEdges;
+        private CheckBox chk_LayerValidation;
+        private GroupBox groupBox_PropertyPanel;
+        private Panel panel4BottomHost;
+        private CheckBox chk_AdvancedMode;
         private Label lbl_MouseCoords;
     }
 }

@@ -36,7 +36,10 @@ namespace ArtaleAI
 
         #region Private Fields
         private MapEditor? _mapEditor;
-        private CheckBox? chk_AdvancedMode;
+        private MapEditorPropertyPanel? _mapPropertyPanel;
+        private string? _lastMapFileSelection;
+        private bool _suppressMapFileSelectionChange;
+        private string _mapEditorTitleBase = "地圖編輯器";
         private Rectangle minimapBounds = Rectangle.Empty;
         private GameVisionCore? gameVision;
         private AppConfig Config => AppConfig.Instance;
@@ -74,6 +77,7 @@ namespace ArtaleAI
 
 
         private string _lastReportedAction = "";
+        private bool _skipNextMapClick;
 
         /// <summary>路徑動作狀態列去重（執行緒安全）。</summary>
         private void ReportAction(string action)
@@ -139,6 +143,7 @@ namespace ArtaleAI
 
                 InitializeActionComboBox();
                 InitializeAdvancedModeCheckBox();
+                InitializeMapEditorPropertyPanel();
 
                 var tracker = new PathPlanningTracker(gameVision);
                 _pathPlanningManager = new PathPlanningManager(tracker, Config);
@@ -176,7 +181,6 @@ namespace ArtaleAI
 
                 liveViewManager = new LiveViewManager(config);
                 liveViewManager.OnFrameReady += OnFrameAvailable;
-                numericUpDownZoom.Value = Config.General.ZoomFactor;
 
                 MsgLog.ShowStatus(textBox1, " 所有服務初始化完成");
             }
@@ -290,7 +294,6 @@ namespace ArtaleAI
         private void BindEvents()
         {
             tabControl1.SelectedIndexChanged += TabControl1_SelectedIndexChanged;
-            numericUpDownZoom.ValueChanged += numericUpDownZoom_ValueChanged;
 
             rdo_PathMarker.CheckedChanged += OnEditModeChanged;
             rdo_RopeMarker.CheckedChanged += OnEditModeChanged;
@@ -310,12 +313,38 @@ namespace ArtaleAI
         {
             if (_mapEditor == null) return;
 
+            if (_isPathEditingTabActive && e.Control)
+            {
+                if (e.KeyCode == Keys.Z)
+                {
+                    _mapEditor.Undo();
+                    pictureBoxMinimap.Invalidate();
+                    RefreshMapEditorPropertyPanel();
+                    RefreshMapEditorStatusBar();
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    return;
+                }
+
+                if (e.KeyCode == Keys.Y)
+                {
+                    _mapEditor.Redo();
+                    pictureBoxMinimap.Invalidate();
+                    RefreshMapEditorPropertyPanel();
+                    RefreshMapEditorStatusBar();
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    return;
+                }
+            }
+
             if (_mapEditor.GetCurrentEditMode() == EditMode.Platform)
             {
                 if (e.KeyCode == Keys.Enter)
                 {
                     _mapEditor.FinishCurrentPolyline();
                     pictureBoxMinimap.Invalidate();
+                    RefreshMapEditorPropertyPanel();
                     e.Handled = true;
                     e.SuppressKeyPress = true;
                 }
@@ -341,7 +370,6 @@ namespace ArtaleAI
                 return;
             }
 
-            numericUpDownZoom.Value = Config.General.ZoomFactor;
             MsgLog.ShowStatus(textBox1, "配置檔案載入完成");
         }
 
@@ -353,7 +381,9 @@ namespace ArtaleAI
                 return;
             }
 
-            UpdateWindowTitle($"地圖編輯器 - {fileName}");
+            _mapEditor?.ClearDirty();
+            _lastMapFileSelection = fileName;
+            RefreshMapEditorStatusBar();
 
             if (isNewFile)
             {
@@ -361,6 +391,8 @@ namespace ArtaleAI
             }
 
             RefreshMinimap();
+            RefreshMapEditorPropertyPanel();
+            UpdateMapEditorWindowTitle();
             string message = isNewFile ? "新地圖儲存成功！" : "儲存成功！";
             MessageBox.Show(message, "地圖檔案管理", MessageBoxButtons.OK, MessageBoxIcon.Information);
             MsgLog.ShowStatus(textBox1, $"地圖儲存: {fileName}");
@@ -477,13 +509,6 @@ namespace ArtaleAI
 
         #region UI 事件處理
 
-        private void numericUpDownZoom_ValueChanged(object? sender, EventArgs e)
-        {
-            Config.General.ZoomFactor = numericUpDownZoom.Value;
-            Config.Save();
-
-        }
-
         private async void TabControl1_SelectedIndexChanged(object? sender, EventArgs e)
         {
             _isLiveViewTabActive = tabControl1.SelectedIndex == 2;
@@ -517,6 +542,8 @@ namespace ArtaleAI
                 case 1:
                     await StartPathEditingModeAsync();
                     _minimapViewer?.Hide();
+                    UpdateMapEditorWindowTitle();
+                    RefreshMapEditorPropertyPanel();
                     break;
                 case 2:
                     UpdateWindowTitle("ArtaleAI - 即時顯示");
@@ -772,6 +799,8 @@ namespace ArtaleAI
             }
 
             RefreshMinimap();
+            RefreshMapEditorPropertyPanel();
+            UpdateMapEditorWindowTitle();
             MsgLog.ShowStatus(textBox1, $"載入地圖: {fileName}");
         }
 
@@ -890,21 +919,10 @@ namespace ArtaleAI
                         or NavigationActionType.ClimbDown;
                     if (isClimbEdge)
                     {
-                        float ropeX = float.NaN;
-                        foreach (var seq in currentEdge.InputSequence)
-                        {
-                            if (seq.StartsWith("ropeX:") &&
-                                float.TryParse(seq.Substring(6), out var parsedRopeX))
-                            {
-                                ropeX = parsedRopeX;
-                                break;
-                            }
-                        }
-
-                        if (!float.IsNaN(ropeX))
+                        if (NavigationRopeHelper.TryExtractRopeX(currentEdge, out float ropeX))
                         {
                             pathData.RopeAlignCenterX = ropeX;
-                            pathData.RopeAlignTolerance = 1.0f; // 統一對位視覺化門檻 (與執行層同步)
+                            pathData.RopeAlignTolerance = 1.0f;
                         }
                     }
                 }
@@ -937,24 +955,180 @@ namespace ArtaleAI
 
         private void InitializeAdvancedModeCheckBox()
         {
-            chk_AdvancedMode = new CheckBox
-            {
-                Text = "啟用進階例外邊模式",
-                AutoSize = true,
-                Location = new System.Drawing.Point(8, 90),
-                Checked = false
-            };
-            chk_AdvancedMode.CheckedChanged += (s, e) =>
-            {
-                if (!chk_AdvancedMode.Checked && _mapEditor?.GetCurrentEditMode() == EditMode.ManualEdge)
-                {
-                    rdo_SelectMode.Checked = true;
-                }
-                UpdateEditModeAndActionUi();
-            };
-            groupBox3.Controls.Add(chk_AdvancedMode);
-
             rdo_TwoPointLink.Enabled = false;
+        }
+
+        private void chk_AdvancedMode_CheckedChanged(object? sender, EventArgs e)
+        {
+            if (!chk_AdvancedMode.Checked && _mapEditor?.GetCurrentEditMode() == EditMode.ManualEdge)
+                rdo_SelectMode.Checked = true;
+
+            UpdateEditModeAndActionUi();
+        }
+
+        private void InitializeMapEditorPropertyPanel()
+        {
+            _mapPropertyPanel = new MapEditorPropertyPanel
+            {
+                Dock = DockStyle.Fill
+            };
+            groupBox_PropertyPanel.Controls.Add(_mapPropertyPanel);
+
+            panelToolsScroll.Resize += (_, _) => SyncSidebarToolsLayout();
+            panel4.Resize += (_, _) => SyncSidebarToolsLayout();
+            splitSidebar.SplitterMoved += (_, _) => SyncSidebarToolsLayout();
+            SyncSidebarToolsLayout();
+
+            if (_mapEditor == null) return;
+
+            _mapEditor.SelectionChanged += OnMapEditorSelectionChanged;
+            _mapEditor.DirtyStateChanged += OnMapEditorDirtyStateChanged;
+            _mapEditor.MapMutated += OnMapEditorMapMutated;
+            _mapEditor.ValidationChanged += OnMapEditorValidationChanged;
+            _mapEditor.HistoryChanged += OnMapEditorHistoryChanged;
+            _mapEditor.Layers.Changed += OnMapEditorLayersChanged;
+            _mapEditor.ConfirmDestructiveAction = message =>
+                MessageBox.Show(message, "確認刪除", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) ==
+                DialogResult.Yes;
+
+            _mapPropertyPanel.Bind(_mapEditor);
+            _mapPropertyPanel.ValidationIssueActivated += OnValidationIssueActivated;
+            RefreshMapEditorStatusBar();
+        }
+
+        private void SyncSidebarToolsLayout()
+        {
+            int width = Math.Max(280, panelToolsScroll.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 4);
+            flowToolsStack.Width = width;
+            foreach (Control child in flowToolsStack.Controls)
+                child.Width = width;
+
+            flowToolsStack.PerformLayout();
+            panelToolsScroll.AutoScrollMinSize = new SdSize(0, flowToolsStack.PreferredSize.Height + 6);
+        }
+
+        private void OnLayerCheckboxChanged(object? sender, EventArgs e)
+        {
+            if (_mapEditor == null) return;
+
+            _mapEditor.Layers.ShowPlatforms = chk_LayerPlatforms.Checked;
+            _mapEditor.Layers.ShowRopes = chk_LayerRopes.Checked;
+            _mapEditor.Layers.ShowManualAnchors = chk_LayerManualAnchors.Checked;
+            _mapEditor.Layers.ShowNodes = chk_LayerNodes.Checked;
+            _mapEditor.Layers.ShowEdges = chk_LayerEdges.Checked;
+            _mapEditor.Layers.ShowValidationOverlays = chk_LayerValidation.Checked;
+            _mapEditor.Layers.NotifyChanged();
+        }
+
+        private void OnMapEditorLayersChanged()
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(OnMapEditorLayersChanged);
+                return;
+            }
+
+            pictureBoxMinimap.Invalidate();
+        }
+
+        private void OnMapEditorHistoryChanged()
+        {
+            RefreshMapEditorStatusBar();
+        }
+
+        private void RefreshMapEditorStatusBar()
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(RefreshMapEditorStatusBar);
+                return;
+            }
+
+            if (_mapEditor == null)
+            {
+                lbl_MapStatus.Text = "—";
+                return;
+            }
+
+            string undo = _mapEditor.CanUndo ? "可復原" : "—";
+            lbl_MapStatus.Text =
+                $"{_mapEditor.GetCurrentEditMode()} | {_mapEditor.FormatStatusSummary()} | Undo:{undo}";
+        }
+
+        private bool ConfirmDiscardUnsavedChanges(string actionDescription)
+        {
+            if (_mapEditor?.IsDirty != true)
+                return true;
+
+            var result = MessageBox.Show(
+                $"目前有未儲存的地圖變更，確定要{actionDescription}嗎？",
+                "未儲存變更",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            return result == DialogResult.Yes;
+        }
+
+        private void OnMapEditorMapMutated()
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(OnMapEditorMapMutated);
+                return;
+            }
+
+            pictureBoxMinimap.Invalidate();
+            RefreshMapEditorPropertyPanel();
+        }
+
+        private void OnMapEditorValidationChanged()
+        {
+            RefreshMapEditorPropertyPanel();
+            RefreshMapEditorStatusBar();
+        }
+
+        private void OnValidationIssueActivated(MapEditorValidationIssue issue)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(() => OnValidationIssueActivated(issue));
+                return;
+            }
+
+            pictureBoxMinimap.Invalidate();
+            RefreshMapEditorPropertyPanel();
+        }
+
+        private void OnMapEditorSelectionChanged()
+        {
+            RefreshMapEditorPropertyPanel();
+            RefreshMapEditorStatusBar();
+        }
+
+        private void OnMapEditorDirtyStateChanged()
+        {
+            RefreshMapEditorPropertyPanel();
+            UpdateMapEditorWindowTitle();
+            RefreshMapEditorStatusBar();
+        }
+
+        private void RefreshMapEditorPropertyPanel()
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(RefreshMapEditorPropertyPanel);
+                return;
+            }
+
+            _mapPropertyPanel?.RefreshFromEditor(_mapEditor);
+        }
+
+        private void UpdateMapEditorWindowTitle()
+        {
+            if (tabControl1.SelectedTab != tabPage2) return;
+
+            string fileName = _mapFileManager?.CurrentMapFileName ?? "未命名";
+            string dirtySuffix = _mapEditor?.IsDirty == true ? " *" : string.Empty;
+            UpdateWindowTitle($"{_mapEditorTitleBase} - {fileName}{dirtySuffix}");
         }
 
         private void UpdateEditModeAndActionUi()
@@ -966,7 +1140,7 @@ namespace ArtaleAI
             else if (rdo_SelectMode.Checked) selectedMode = EditMode.Select;
             else if (rdo_TwoPointLink.Checked) selectedMode = EditMode.ManualEdge;
 
-            bool advancedActive = chk_AdvancedMode != null && chk_AdvancedMode.Checked;
+            bool advancedActive = chk_AdvancedMode.Checked;
 
             rdo_TwoPointLink.Enabled = advancedActive;
             groupBox_Action.Enabled = (selectedMode == EditMode.ManualEdge) && advancedActive;
@@ -976,6 +1150,7 @@ namespace ArtaleAI
                 _mapEditor.SetEditMode(selectedMode);
             }
             pictureBoxMinimap.Invalidate();
+            RefreshMapEditorPropertyPanel();
         }
 
         private void OnEditModeChanged(object? sender, EventArgs e)
@@ -984,6 +1159,7 @@ namespace ArtaleAI
                 return;
 
             UpdateEditModeAndActionUi();
+            RefreshMapEditorStatusBar();
 
             EditMode selectedMode = _mapEditor?.GetCurrentEditMode() ?? EditMode.None;
             MsgLog.ShowStatus(textBox1, $"編輯模式切換至: {selectedMode}");
@@ -1024,10 +1200,28 @@ namespace ArtaleAI
 
         private void cbo_MapFiles_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (cbo_MapFiles.SelectedItem == null) return;
+            if (_suppressMapFileSelectionChange || cbo_MapFiles.SelectedItem == null) return;
+
             string selectedFile = cbo_MapFiles.SelectedItem.ToString() ?? "";
             if (selectedFile == "null" || string.IsNullOrEmpty(selectedFile)) return;
 
+            if (!ConfirmDiscardUnsavedChanges("載入另一張地圖"))
+            {
+                _suppressMapFileSelectionChange = true;
+                try
+                {
+                    if (!string.IsNullOrEmpty(_lastMapFileSelection) &&
+                        cbo_MapFiles.Items.Contains(_lastMapFileSelection))
+                        cbo_MapFiles.SelectedItem = _lastMapFileSelection;
+                }
+                finally
+                {
+                    _suppressMapFileSelectionChange = false;
+                }
+                return;
+            }
+
+            _lastMapFileSelection = selectedFile;
             MsgLog.ShowStatus(textBox1, $"載入地圖檔案: {selectedFile}");
             _mapFileManager?.LoadMapFile(selectedFile);
         }
@@ -1115,12 +1309,32 @@ namespace ArtaleAI
                 var imagePoint = TranslatePictureBoxPointToImage(new PointF(e.X, e.Y), pictureBoxMinimap);
                 var screenPoint = new PointF(minimapBounds.X + imagePoint.X, minimapBounds.Y + imagePoint.Y);
 
+                if (_mapEditor.IsVertexDragging)
+                {
+                    _mapEditor.UpdateVertexDrag(screenPoint);
+                    pictureBoxMinimap.Invalidate();
+                    lbl_MouseCoords.Text =
+                        $"座標: ({imagePoint.X:F1}, {imagePoint.Y:F1}) | 拖曳折點";
+                    return;
+                }
+
+                bool preferNode = (ModifierKeys & Keys.Shift) != 0;
                 _mapEditor.UpdateMousePosition(screenPoint);
-                _mapEditor.UpdateHoveredNode(screenPoint);
+                _mapEditor.UpdateHoveredNode(screenPoint, preferNode);
                 pictureBoxMinimap.Invalidate();
 
-                lbl_MouseCoords.Text = $"座標: ({imagePoint.X:F1}, {imagePoint.Y:F1})";
+                var hover = _mapEditor.GetHoverInfo();
+                string segmentText = hover.HasSegmentContext ? $" | Seg {hover.SegmentIndex}" : string.Empty;
+                string projText = hover.HasProjection
+                    ? $" | Proj ({hover.ProjectionPoint.X:F1},{hover.ProjectionPoint.Y:F1})"
+                    : string.Empty;
+                string nodeText = hover.HasRuntimeNode ? $" | Node #{hover.RuntimeNodeIndex}" : string.Empty;
+                string hintText = preferNode ? " | Shift:節點優先" : string.Empty;
+                lbl_MouseCoords.Text =
+                    $"座標: ({imagePoint.X:F1}, {imagePoint.Y:F1}){segmentText}{projText}{nodeText}{hintText}";
             }
+
+            RefreshMapEditorStatusBar();
         }
 
         private void pictureBoxMinimap_Paint(object sender, PaintEventArgs e)
@@ -1279,18 +1493,47 @@ namespace ArtaleAI
         }
 
 
+        private void pictureBoxMinimap_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (_mapEditor == null || minimapBounds.IsEmpty || e.Button != MouseButtons.Left)
+                return;
+
+            var imagePoint = TranslatePictureBoxPointToImage(new PointF(e.X, e.Y), pictureBoxMinimap);
+            var screenPoint = new PointF(minimapBounds.X + imagePoint.X, minimapBounds.Y + imagePoint.Y);
+            if (_mapEditor.TryBeginVertexDrag(screenPoint))
+                _skipNextMapClick = true;
+        }
+
+        private void pictureBoxMinimap_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (_mapEditor == null || !_mapEditor.IsVertexDragging)
+                return;
+
+            _mapEditor.EndVertexDrag();
+            _skipNextMapClick = true;
+            pictureBoxMinimap.Invalidate();
+            RefreshMapEditorPropertyPanel();
+        }
+
         private void pictureBoxMinimap_Click(object sender, MouseEventArgs e)
         {
+            if (_skipNextMapClick)
+            {
+                _skipNextMapClick = false;
+                return;
+            }
             if (_mapEditor == null || minimapBounds.IsEmpty) return;
             var imagePoint = TranslatePictureBoxPointToImage(new PointF(e.X, e.Y), pictureBoxMinimap);
             var screenPoint = new PointF(minimapBounds.X + imagePoint.X, minimapBounds.Y + imagePoint.Y);
-            _mapEditor.HandleClick(screenPoint, e.Button);
+            bool preferNode = (ModifierKeys & Keys.Shift) != 0;
+            _mapEditor.HandleClick(screenPoint, e.Button, preferNode, preferNode);
             pictureBoxMinimap.Invalidate();
+            RefreshMapEditorPropertyPanel();
         }
 
         private PointF TranslatePictureBoxPointToImage(PointF pbPoint, PictureBox pb)
         {
-            if (pb.Image == null) return pbPoint;
+            if (pb.Image == null || _mapEditor == null) return pbPoint;
             float pbW = pb.ClientSize.Width, pbH = pb.ClientSize.Height;
             float imgW = pb.Image.Width, imgH = pb.Image.Height;
             float scale, offsetX = 0f, offsetY = 0f;
@@ -1311,7 +1554,7 @@ namespace ArtaleAI
 
         private void pictureBoxMinimap_MouseWheel(object? sender, MouseEventArgs e)
         {
-            if (ModifierKeys != Keys.Control) return;
+            if (ModifierKeys != Keys.Control || _mapEditor == null) return;
 
             float oldZoom = _mapEditor.ZoomScale;
             if (e.Delta > 0)
@@ -1385,7 +1628,10 @@ namespace ArtaleAI
         {
             try
             {
-                var result = MessageBox.Show("確定要清空當前地圖並建立新檔案嗎？\n(未儲存的變更將會遺失)",
+                if (!ConfirmDiscardUnsavedChanges("建立新地圖"))
+                    return;
+
+                var result = MessageBox.Show("確定要清空當前地圖並建立新檔案嗎？",
                     "建立新地圖", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
                 if (result == DialogResult.Yes)
@@ -1406,6 +1652,23 @@ namespace ArtaleAI
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            if (_mapEditor?.IsDirty == true && e.CloseReason == CloseReason.UserClosing)
+            {
+                var result = MessageBox.Show(
+                    "目前有未儲存的地圖變更，確定要離開嗎？",
+                    "未儲存變更",
+                    MessageBoxButtons.YesNoCancel,
+                    MessageBoxIcon.Warning);
+
+                if (result == DialogResult.Cancel)
+                    e.Cancel = true;
+                else if (result == DialogResult.No)
+                    e.Cancel = false;
+            }
+
+            if (e.Cancel)
+                return;
+
             try
             {
                 AppConfig.Instance.Save();
@@ -1583,6 +1846,9 @@ namespace ArtaleAI
                                 return;
                             _gamePipeline.VisionDataReady = false;
 
+                            if (_gamePipeline.BlocksNavigationInput)
+                                return;
+
                             var tracker = _pathPlanningManager?.Tracker;
                             if (tracker?.IsRescueCircuitBroken == true)
                             {
@@ -1629,45 +1895,28 @@ namespace ArtaleAI
                                 tracker?.ClearSideJumpApproachState();
                             }
 
-                            bool hasAction = currentEdge != null &&
-                                           currentEdge.ActionType != NavigationActionType.Walk;
+                            Logger.Info($"[導航狀態] 玩家=({playerPos.X:F1},{playerPos.Y:F1}) 目標=({executeTarget.X:F1},{executeTarget.Y:F1}) Edge={edgeToExecute?.FromNodeId}->{edgeToExecute?.ToNodeId} Action={edgeToExecute?.ActionType}");
 
-                            if (edgeToExecute != null)
-                            {
-                                Logger.Info($"[導航狀態] 玩家=({playerPos.X:F1},{playerPos.Y:F1}) 目標=({executeTarget.X:F1},{executeTarget.Y:F1}) Edge={edgeToExecute.FromNodeId}->{edgeToExecute.ToNodeId} Action={edgeToExecute.ActionType}");
-                            }
+                            bool walkEdge = edgeToExecute != null &&
+                                            edgeToExecute.ActionType == NavigationActionType.Walk;
 
-                            bool isAtTarget = tracker?.IsPlayerAtTarget() ?? false;
-
-                            bool walkEdge = edgeToExecute != null && edgeToExecute.ActionType == NavigationActionType.Walk;
-
-                            if (isAtTarget && !hasAction)
-                            {
-                                bool canIdleSupplement = _fsm?.CurrentState == NavigationState.Idle
-                                    && tracker != null
-                                    && !tracker.HasActiveNavigationFlight;
-                                if (canIdleSupplement)
-                                    _fsm?.NotifyTargetReached();
-                            }
-                            else if (edgeToExecute == null)
+                            if (edgeToExecute == null)
                             {
                                 Logger.Error($"[導航狀態] 無合法導航邊可執行，停止自動導航。玩家=({playerPos.X:F1},{playerPos.Y:F1})");
                                 _fsm?.CancelNavigation("無合法導航邊可執行");
                                 return;
                             }
-                            else
+
+                            if (walkEdge &&
+                                tracker != null &&
+                                tracker.IsPlayerOnRope((System.Drawing.PointF)playerPos))
                             {
-                                if (walkEdge &&
-                                    tracker != null &&
-                                    tracker.IsPlayerOnRope((System.Drawing.PointF)playerPos))
-                                {
-                                    Logger.Debug($"[導航] 仍在繩上，暫不啟動 Walk player=({playerPos.X:F1},{playerPos.Y:F1})");
-                                }
-                                else if (_fsm != null &&
-                                    _fsm.TryStartNavigation(edgeToExecute, (SdPointF)playerPos, (SdPointF)executeTarget))
-                                {
-                                    ReportAction($"{edgeToExecute.ActionType}");
-                                }
+                                Logger.Debug($"[導航] 仍在繩上，暫不啟動 Walk player=({playerPos.X:F1},{playerPos.Y:F1})");
+                            }
+                            else if (_fsm != null &&
+                                _fsm.TryStartNavigation(edgeToExecute, (SdPointF)playerPos, (SdPointF)executeTarget))
+                            {
+                                ReportAction($"{edgeToExecute.ActionType}");
                             }
                         }
                         else if (!Config.Navigation.EnableAutoMovement)

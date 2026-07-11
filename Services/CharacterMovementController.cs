@@ -110,6 +110,15 @@ namespace ArtaleAI.Services
         }
 
 
+        private bool IsNavigationInputBlocked() => _syncProvider?.BlocksNavigationInput == true;
+
+        private async Task YieldNavigationInputAsync(CancellationToken cancellationToken)
+        {
+            StopMovement();
+            await WaitForNextFrameAsync(cancellationToken);
+        }
+
+
         private static float WalkAlignTolerancePx =>
             (float)AppConfig.Instance.Navigation.WalkAlignTolerancePx;
 
@@ -170,6 +179,12 @@ namespace ArtaleAI.Services
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
+                    if (IsNavigationInputBlocked())
+                    {
+                        await YieldNavigationInputAsync(cancellationToken);
+                        continue;
+                    }
+
                     var currentPosNullable = getPlayerPosition();
                     if (!currentPosNullable.HasValue)
                     {
@@ -336,6 +351,13 @@ namespace ArtaleAI.Services
 
             for (int i = 0; i < maxSteps && !cancellationToken.IsCancellationRequested; i++)
             {
+                if (IsNavigationInputBlocked())
+                {
+                    await YieldNavigationInputAsync(cancellationToken);
+                    i--;
+                    continue;
+                }
+
                 var pos = getPlayerPosition();
                 if (!pos.HasValue)
                 {
@@ -389,6 +411,8 @@ namespace ArtaleAI.Services
 
         public bool HoldKey(ushort key)
         {
+            if (IsNavigationInputBlocked()) return false;
+
             lock (_lockObject)
             {
                 if (_currentPressedKey != 0 && _currentPressedKey != key)

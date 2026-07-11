@@ -20,8 +20,5 @@ namespace ArtaleAI.Services
 
         /// <summary>取消目前導航並回 Idle（reason 寫入日誌）。</summary>
         void CancelNavigation(string reason = "使用者強制中斷");
-
-        /// <summary>Idle 補推進：僅在無 in-flight 且 SSOT 成立時推進 waypoint（單次去重）。</summary>
-        void NotifyTargetReached();
     }
 }

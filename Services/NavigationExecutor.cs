@@ -160,8 +160,13 @@ namespace ArtaleAI.Services
             NavigationEdge edge, SdPointF currentPos, SdPointF targetPos,
             bool isUp, Func<bool> isReached, CancellationToken ct)
         {
-            const float ropeAlignThreshold = 1.0f; // 統一門檻 (1.0px)
-            float ropeX = NavigationRopeHelper.ExtractRopeX(edge, targetPos.X);
+            const float ropeAlignThreshold = 1.0f;
+            if (!NavigationRopeHelper.TryExtractRopeX(edge, out float ropeX))
+            {
+                Logger.Error(
+                    $"[爬梯] Climb 邊缺少 ropeX metadata：{edge.FromNodeId}->{edge.ToNodeId}");
+                return ExecutionResult.Error;
+            }
             float ropeTargetY = targetPos.Y;
             float distanceToRopeX = Math.Abs(currentPos.X - ropeX);
 

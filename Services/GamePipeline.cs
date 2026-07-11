@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using ArtaleAI.Models.Config;
 using ArtaleAI.Core;
@@ -52,6 +53,8 @@ namespace ArtaleAI.Services
         private DateTime _lastMonsterDetection = DateTime.MinValue;
 
         private volatile bool _isAttacking = false;
+        private int _attackInputLease;
+        private int _monsterDetectionInFlight;
         private DateTime _lastAttackTime = DateTime.MinValue;
         private DateTime _lastDirectionChangeTime = DateTime.MinValue;
         private const int AttackCooldownMs = 500;
@@ -96,6 +99,10 @@ namespace ArtaleAI.Services
 
         /// <summary>攻擊中狀態（供外部查詢）</summary>
         public bool IsAttacking => _isAttacking;
+
+        /// <summary>攻擊或攻擊輸入租約進行中時，導航 Walk 應讓出鍵盤。</summary>
+        public bool BlocksNavigationInput =>
+            _isAttacking || Volatile.Read(ref _attackInputLease) > 0;
 
         /// <summary>每幀處理完成後觸發，攜帶所有偵測結果的快照</summary>
         public event Action<FrameProcessingResult>? OnFrameProcessed;
@@ -172,20 +179,18 @@ namespace ArtaleAI.Services
 
                 double msAfterMinimap = sw.Elapsed.TotalMilliseconds;
 
+                if (trackingResult != null)
+                    FeedPlayerTracking(trackingResult);
+
                 bool attackTriggered = false;
                 if (AutoAttackEnabled)
-                {
                     attackTriggered = ProcessAutoAttackDecision();
-                }
 
                 if (!attackTriggered)
-                {
                     _isAttacking = false;
-                    if (trackingResult != null)
-                    {
-                        ProcessPathPlanningUpdate(trackingResult);
-                    }
-                }
+
+                if (trackingResult != null && !BlocksNavigationInput)
+                    SignalNavigationOrchestration(trackingResult);
 
                 double msAfterPathAttack = sw.Elapsed.TotalMilliseconds;
 
@@ -193,7 +198,7 @@ namespace ArtaleAI.Services
 
                 double msAfterBlood = sw.Elapsed.TotalMilliseconds;
 
-                ProcessMonsterDetection(frameMat, config, now);
+                ScheduleMonsterDetection(frameMat, config, now);
 
                 double msAfterMonster = sw.Elapsed.TotalMilliseconds;
 
@@ -281,46 +286,56 @@ namespace ArtaleAI.Services
             if (targets.Any())
             {
                 _isAttacking = true;
-                PerformAutoAttack(playerAttackBox, targets);
+                _ = PerformAutoAttackAsync(playerAttackBox, targets);
                 return true;
             }
 
             return false;
         }
 
-        /// <summary>轉向最近目標並送出攻擊鍵。</summary>
-        private async void PerformAutoAttack(SdRect playerBox, List<DetectionResult> targets)
+        /// <summary>轉向最近目標並送出攻擊鍵；租約期間導航輸入讓出。</summary>
+        private async Task PerformAutoAttackAsync(SdRect playerBox, List<DetectionResult> targets)
         {
             if (targets == null || targets.Count == 0) return;
             if (_movementController == null) return;
 
-            var now = DateTime.UtcNow;
-            if ((now - _lastAttackTime).TotalMilliseconds < AttackCooldownMs) return;
-
-            var playerCenter = new SdPoint(
-                playerBox.X + playerBox.Width / 2,
-                playerBox.Y + playerBox.Height / 2);
-            var target = targets.OrderBy(m =>
-                Math.Abs((m.BoundingBox.X + m.BoundingBox.Width / 2) - playerCenter.X)).FirstOrDefault();
-            if (target == null) return;
-
-            if ((now - _lastDirectionChangeTime).TotalMilliseconds > DirectionChangeCooldownMs)
+            Interlocked.Increment(ref _attackInputLease);
+            try
             {
-                int monsterCenterX = target.BoundingBox.X + target.BoundingBox.Width / 2;
-                ushort directionKey = monsterCenterX < playerCenter.X ? VK_LEFT : VK_RIGHT;
+                _movementController.StopMovement();
 
-                _movementController.SendKeyInput(directionKey, false);
+                var now = DateTime.UtcNow;
+                if ((now - _lastAttackTime).TotalMilliseconds < AttackCooldownMs) return;
+
+                var playerCenter = new SdPoint(
+                    playerBox.X + playerBox.Width / 2,
+                    playerBox.Y + playerBox.Height / 2);
+                var target = targets.OrderBy(m =>
+                    Math.Abs((m.BoundingBox.X + m.BoundingBox.Width / 2) - playerCenter.X)).FirstOrDefault();
+                if (target == null) return;
+
+                if ((now - _lastDirectionChangeTime).TotalMilliseconds > DirectionChangeCooldownMs)
+                {
+                    int monsterCenterX = target.BoundingBox.X + target.BoundingBox.Width / 2;
+                    ushort directionKey = monsterCenterX < playerCenter.X ? VK_LEFT : VK_RIGHT;
+
+                    _movementController.SendKeyInput(directionKey, false);
+                    await Task.Delay(20);
+                    _movementController.SendKeyInput(directionKey, true);
+                    _lastDirectionChangeTime = now;
+                }
+
+                _movementController.SendKeyInput(VK_CONTROL, false);
                 await Task.Delay(20);
-                _movementController.SendKeyInput(directionKey, true);
-                _lastDirectionChangeTime = now;
+                _movementController.SendKeyInput(VK_CONTROL, true);
+
+                _lastAttackTime = now;
+                OnStatusMessage?.Invoke($"自動攻擊: 鎖定 {target.Name}");
             }
-
-            _movementController.SendKeyInput(VK_CONTROL, false);
-            await Task.Delay(20);
-            _movementController.SendKeyInput(VK_CONTROL, true);
-
-            _lastAttackTime = now;
-            OnStatusMessage?.Invoke($"自動攻擊: 鎖定 {target.Name}");
+            finally
+            {
+                Interlocked.Decrement(ref _attackInputLease);
+            }
         }
 
         /// <summary>停止移動、執行攻擊、冷卻後恢復。</summary>
@@ -347,24 +362,34 @@ namespace ArtaleAI.Services
             }
         }
 
-        private void ProcessPathPlanningUpdate(MinimapTrackingResult result)
+        /// <summary>每幀更新玩家座標 SSOT（攻擊期間仍執行）。</summary>
+        private void FeedPlayerTracking(MinimapTrackingResult result)
         {
             if (_pathPlanningManager == null || !_pathPlanningManager.IsRunning) return;
 
             try
             {
-                if (_isAttacking) return;
-
-                if (result != null)
-                {
-                    _pathPlanningManager.ProcessTrackingResult(result);
-                    _visionDataReady = true;
-                    OnPathTrackingResult?.Invoke(result);
-                }
+                _pathPlanningManager.ProcessTrackingResult(result);
             }
             catch (Exception ex)
             {
-                Logger.Error($"[GamePipeline] ProcessPathPlanning 錯誤: {ex.Message}");
+                Logger.Error($"[GamePipeline] 追蹤座標更新錯誤: {ex.Message}");
+            }
+        }
+
+        /// <summary>攻擊未佔用輸入時，才推進導航 FSM tick。</summary>
+        private void SignalNavigationOrchestration(MinimapTrackingResult result)
+        {
+            if (_pathPlanningManager == null || !_pathPlanningManager.IsRunning) return;
+
+            try
+            {
+                _visionDataReady = true;
+                OnPathTrackingResult?.Invoke(result);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"[GamePipeline] 導航編排信號錯誤: {ex.Message}");
             }
         }
 
@@ -402,7 +427,8 @@ namespace ArtaleAI.Services
             }
         }
 
-        private void ProcessMonsterDetection(Mat frameMat, AppConfig config, DateTime now)
+        /// <summary>節流並非同步排程怪物辨識，避免阻塞 ProcessFrame。</summary>
+        private void ScheduleMonsterDetection(Mat frameMat, AppConfig config, DateTime now)
         {
             var elapsed = (now - _lastMonsterDetection).TotalMilliseconds;
             int monsterCount;
@@ -413,66 +439,110 @@ namespace ArtaleAI.Services
             if (!_currentDetectionBoxes.Any()) return;
             if (string.IsNullOrEmpty(SelectedMonsterName) || !MonsterTemplates.Any()) return;
 
+            if (Interlocked.CompareExchange(ref _monsterDetectionInFlight, 1, 0) != 0)
+            {
+                Logger.Debug("[GamePipeline] 怪物辨識進行中，略過本幀排程");
+                return;
+            }
+
+            Mat frameClone;
             try
             {
-                var allResults = new List<DetectionResult>();
-                var frameBounds = new Rect(0, 0, frameMat.Width, frameMat.Height);
-
-                var detectionModeString = config.Vision.DetectionMode ?? "Color";
-                if (!Enum.TryParse<MonsterDetectionMode>(detectionModeString, out var detectionMode))
-                    detectionMode = MonsterDetectionMode.Color;
-
-                foreach (var detectionBox in _currentDetectionBoxes)
-                {
-                    var cropRect = new Rect(detectionBox.X, detectionBox.Y, detectionBox.Width, detectionBox.Height);
-                    var validCropRect = frameBounds.Intersect(cropRect);
-
-                    if (validCropRect.Width < 10 || validCropRect.Height < 10) continue;
-
-                    using var croppedMat = frameMat[validCropRect].Clone();
-
-                    double detectionThreshold = config.Vision.DefaultThreshold;
-
-                    var results = _gameVision.FindMonsters(
-                        croppedMat, MonsterTemplates, detectionMode,
-                        detectionThreshold, SelectedMonsterName)
-                        ?? new List<DetectionResult>();
-
-                    foreach (var r in results)
-                    {
-                        allResults.Add(new DetectionResult(
-                            r.Name,
-                            new SdPoint(r.Position.X + validCropRect.X, r.Position.Y + validCropRect.Y),
-                            r.Size, r.Confidence,
-                            new SdRect(r.Position.X + validCropRect.X, r.Position.Y + validCropRect.Y,
-                                r.Size.Width, r.Size.Height)));
-                    }
-                }
-
-                if (allResults.Count > 1)
-                {
-                    var dedupedResults = GameVisionCore.ApplyNMS(allResults, iouThreshold: 0.3, higherIsBetter: true)
-                        .OrderByDescending(r => r.Confidence).ToList();
-
-                    if (config.Vision.MaxDetectionResults > 0 && dedupedResults.Count > config.Vision.MaxDetectionResults)
-                        dedupedResults = dedupedResults.Take(config.Vision.MaxDetectionResults).ToList();
-
-                    lock (_monsterLock) { _currentMonsters = dedupedResults; }
-                    OnStatusMessage?.Invoke($"檢測到 {dedupedResults.Count} 個怪物 (原始: {allResults.Count})");
-                }
-                else
-                {
-                    lock (_monsterLock) { _currentMonsters = allResults; }
-                }
-
-                _lastMonsterDetection = DateTime.UtcNow;
-
-                CheckAutoAttackCondition();
+                frameClone = frameMat.Clone();
             }
             catch (Exception ex)
             {
-                OnStatusMessage?.Invoke($"怪物檢測錯誤: {ex.Message}");
+                Interlocked.Exchange(ref _monsterDetectionInFlight, 0);
+                Logger.Warning($"[GamePipeline] 怪物辨識幀複製失敗: {ex.Message}");
+                return;
             }
+
+            var detectionBoxes = _currentDetectionBoxes.ToList();
+            var templates = MonsterTemplates.ToList();
+            var monsterName = SelectedMonsterName;
+            var detectionModeString = config.Vision.DetectionMode ?? "Color";
+            if (!Enum.TryParse<MonsterDetectionMode>(detectionModeString, out var detectionMode))
+                detectionMode = MonsterDetectionMode.Color;
+            double detectionThreshold = config.Vision.DefaultThreshold;
+            int maxResults = config.Vision.MaxDetectionResults;
+
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    RunMonsterDetection(
+                        frameClone, detectionBoxes, templates, detectionMode,
+                        detectionThreshold, monsterName, maxResults);
+                }
+                catch (Exception ex)
+                {
+                    OnStatusMessage?.Invoke($"怪物檢測錯誤: {ex.Message}");
+                }
+                finally
+                {
+                    frameClone.Dispose();
+                    Interlocked.Exchange(ref _monsterDetectionInFlight, 0);
+                }
+            });
+        }
+
+        private void RunMonsterDetection(
+            Mat frameMat,
+            List<SdRect> detectionBoxes,
+            List<Mat> templates,
+            MonsterDetectionMode detectionMode,
+            double detectionThreshold,
+            string monsterName,
+            int maxResults)
+        {
+            var allResults = new List<DetectionResult>();
+            var frameBounds = new Rect(0, 0, frameMat.Width, frameMat.Height);
+
+            foreach (var detectionBox in detectionBoxes)
+            {
+                var cropRect = new Rect(detectionBox.X, detectionBox.Y, detectionBox.Width, detectionBox.Height);
+                var validCropRect = frameBounds.Intersect(cropRect);
+
+                if (validCropRect.Width < 10 || validCropRect.Height < 10) continue;
+
+                using var croppedMat = frameMat[validCropRect].Clone();
+
+                var results = _gameVision.FindMonsters(
+                    croppedMat, templates, detectionMode,
+                    detectionThreshold, monsterName)
+                    ?? new List<DetectionResult>();
+
+                foreach (var r in results)
+                {
+                    allResults.Add(new DetectionResult(
+                        r.Name,
+                        new SdPoint(r.Position.X + validCropRect.X, r.Position.Y + validCropRect.Y),
+                        r.Size, r.Confidence,
+                        new SdRect(r.Position.X + validCropRect.X, r.Position.Y + validCropRect.Y,
+                            r.Size.Width, r.Size.Height)));
+                }
+            }
+
+            List<DetectionResult> finalResults;
+            if (allResults.Count > 1)
+            {
+                finalResults = GameVisionCore.ApplyNMS(allResults, iouThreshold: 0.3, higherIsBetter: true)
+                    .OrderByDescending(r => r.Confidence).ToList();
+
+                if (maxResults > 0 && finalResults.Count > maxResults)
+                    finalResults = finalResults.Take(maxResults).ToList();
+
+                OnStatusMessage?.Invoke($"檢測到 {finalResults.Count} 個怪物 (原始: {allResults.Count})");
+            }
+            else
+            {
+                finalResults = allResults;
+            }
+
+            lock (_monsterLock) { _currentMonsters = finalResults; }
+            _lastMonsterDetection = DateTime.UtcNow;
+
+            CheckAutoAttackCondition();
         }
 
         /// <summary>怪物與攻擊範圍相交時觸發攻擊序列。</summary>

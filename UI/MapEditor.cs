@@ -4,11 +4,12 @@ using ArtaleAI.Models.Map;
 using ArtaleAI.UI.MapEditing;
 using ArtaleAI.Utils;
 using System.Drawing.Drawing2D;
+using System.Linq;
 
 namespace ArtaleAI.UI
 {
     /// <summary>小地圖路徑幾何標記工具 (Geometry Marker)；以 Platforms 與 Ropes 為主要真實來源 (SSOT)。</summary>
-    public class MapEditor
+    public partial class MapEditor
     {
         private MapData _currentMapData = new MapData();
         private EditMode _currentEditMode = EditMode.None;
@@ -24,6 +25,10 @@ namespace ArtaleAI.UI
 
         private const float PointRadius = 4.0f;
         private const float SelectionRadius = 5.0f;
+        /// <summary>runtime 節點命中範圍（地圖像素）；大於視覺半徑以便選取。</summary>
+        private const float RuntimeNodeHitSlop = 12.0f;
+        /// <summary>Shift 點擊循環選節點時，判定為「同一區域」的錨點容差。</summary>
+        private const float RuntimeNodeCycleAnchorSlop = 18.0f;
         /// <summary>手動邊為細線，刪除命中需比平台/繩索更寬，且優先於幾何底圖。</summary>
         private const float ManualEdgeDeleteHitSlop = 8.0f;
 
@@ -47,6 +52,19 @@ namespace ArtaleAI.UI
         private List<PointF> _activeDrawingPoints = new();
         private int _hoveredSegmentIndex = -1;
         private PointF _hoveredProjectionPoint = PointF.Empty;
+
+        private MapEditorSelection _selection = MapEditorSelection.Empty;
+        private bool _isDirty;
+        private PointF _lastMousePosition = new(-1000, -1000);
+        private PointF _lastNodeCyclePoint = PointF.Empty;
+        private List<int> _nodeCycleCandidates = new();
+        private int _nodeCycleIndex = -1;
+
+        public event Action? SelectionChanged;
+        public event Action? DirtyStateChanged;
+
+        public bool IsDirty => _isDirty;
+        public MapEditorSelection Selection => _selection;
 
         public float ZoomScale { get; set; } = 1.0f;
 
@@ -116,6 +134,265 @@ namespace ArtaleAI.UI
             return -1;
         }
 
+        public MapEditorHoverInfo GetHoverInfo()
+        {
+            if (_hoveredSegmentIndex < 0 && _hoveredProjectionPoint == PointF.Empty && _hoveredNodeIndex < 0)
+                return MapEditorHoverInfo.Empty;
+
+            return new MapEditorHoverInfo
+            {
+                SegmentIndex = _hoveredSegmentIndex,
+                ProjectionPoint = _hoveredProjectionPoint,
+                RuntimeNodeIndex = _hoveredNodeIndex
+            };
+        }
+
+        public void MarkDirty()
+        {
+            if (_isDirty) return;
+            _isDirty = true;
+            DirtyStateChanged?.Invoke();
+        }
+
+        public void ClearDirty()
+        {
+            if (!_isDirty) return;
+            _isDirty = false;
+            DirtyStateChanged?.Invoke();
+        }
+
+        private void SetSelection(MapEditorSelection selection)
+        {
+            if (SelectionsEqual(_selection, selection)) return;
+            _selection = selection;
+            SelectionChanged?.Invoke();
+        }
+
+        private void ClearSelection()
+        {
+            SetSelection(MapEditorSelection.Empty);
+        }
+
+        private static bool SelectionsEqual(MapEditorSelection a, MapEditorSelection b)
+        {
+            if (a.Kind != b.Kind) return false;
+            return a.Kind switch
+            {
+                MapEditorSelectionKind.None => true,
+                MapEditorSelectionKind.Platform => ReferenceEquals(a.Platform, b.Platform)
+                    && a.SegmentIndex == b.SegmentIndex,
+                MapEditorSelectionKind.Rope => a.RopeIndex == b.RopeIndex,
+                MapEditorSelectionKind.ManualEdge => ReferenceEquals(a.ManualEdge, b.ManualEdge),
+                MapEditorSelectionKind.RuntimeNode => a.RuntimeNodeIndex == b.RuntimeNodeIndex,
+                _ => false
+            };
+        }
+
+        private void ApplySelectionFromPick(DeleteTarget pick)
+        {
+            switch (pick.Kind)
+            {
+                case DeleteTargetKind.ManualEdge when pick.ManualEdge != null:
+                    SetSelection(MapEditorSelection.ForManualEdge(pick.ManualEdge));
+                    break;
+                case DeleteTargetKind.Rope when pick.RopeIndex >= 0:
+                    SetSelection(MapEditorSelection.ForRope(pick.RopeIndex));
+                    break;
+                case DeleteTargetKind.Platform when pick.Platform != null:
+                    SetSelection(MapEditorSelection.ForPlatform(
+                        pick.Platform,
+                        pick.PlatformHit?.SegmentIndex ?? -1,
+                        pick.PlatformHit?.ProjectionPoint ?? PointF.Empty));
+                    break;
+                default:
+                    ClearSelection();
+                    break;
+            }
+        }
+
+        private void InvalidateSelectionIfNeeded(DeleteTarget deleted)
+        {
+            if (_selection.IsEmpty) return;
+
+            bool lost = deleted.Kind switch
+            {
+                DeleteTargetKind.ManualEdge =>
+                    _selection.Kind == MapEditorSelectionKind.ManualEdge &&
+                    ReferenceEquals(_selection.ManualEdge, deleted.ManualEdge),
+                DeleteTargetKind.Rope =>
+                    _selection.Kind == MapEditorSelectionKind.Rope &&
+                    _selection.RopeIndex == deleted.RopeIndex,
+                DeleteTargetKind.Platform =>
+                    _selection.Kind == MapEditorSelectionKind.Platform &&
+                    ReferenceEquals(_selection.Platform, deleted.Platform),
+                _ => false
+            };
+
+            if (lost) ClearSelection();
+        }
+
+        public string FormatInspectorText()
+        {
+            var lines = new List<string>
+            {
+                "── 地圖摘要 ──",
+                $"平台: {_currentMapData.PolylinePlatforms?.Count ?? 0}",
+                $"繩索: {_currentMapData.Ropes?.Count ?? 0}",
+                $"手動邊: {_currentMapData.ManualEdgeAnchors?.Count ?? 0}",
+                $"Runtime 節點: {_currentMapData.Nodes.Count}",
+                $"Runtime 邊: {_currentMapData.Edges.Count}",
+                string.Empty
+            };
+
+            if (_selection.IsEmpty)
+            {
+                lines.Add("── 選取 ──");
+                lines.Add("（無）點選平台、繩索或手動邊以檢視詳情。");
+                lines.Add("密集節點：Shift+點擊循環選取；節點比幾何更近時可直接點選。");
+                lines.Add("Runtime 節點／邊僅供預覽，不可直接編輯。");
+                AppendHoverContext(lines);
+                return string.Join(Environment.NewLine, lines);
+            }
+
+            lines.Add("── 選取 ──");
+            switch (_selection.Kind)
+            {
+                case MapEditorSelectionKind.Platform:
+                    AppendPlatformInspector(lines, _selection.Platform!, _selection.SegmentIndex);
+                    break;
+                case MapEditorSelectionKind.Rope:
+                    AppendRopeInspector(lines, _selection.RopeIndex);
+                    break;
+                case MapEditorSelectionKind.ManualEdge:
+                    AppendManualEdgeInspector(lines, _selection.ManualEdge!);
+                    break;
+                case MapEditorSelectionKind.RuntimeNode:
+                    AppendRuntimeNodeInspector(lines, _selection.RuntimeNodeIndex);
+                    break;
+            }
+
+            AppendHoverContext(lines);
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        private void AppendHoverContext(List<string> lines)
+        {
+            var hover = GetHoverInfo();
+            if (!hover.HasSegmentContext && !hover.HasProjection) return;
+
+            lines.Add(string.Empty);
+            lines.Add("── 游標上下文 ──");
+            if (hover.HasSegmentContext)
+                lines.Add($"Segment index: {hover.SegmentIndex}");
+            if (hover.HasRuntimeNode)
+            {
+                var node = _currentMapData.Nodes[hover.RuntimeNodeIndex];
+                lines.Add($"Hover 節點 [{hover.RuntimeNodeIndex}]: {node.Id}");
+            }
+            if (hover.HasProjection)
+                lines.Add($"投影點: ({hover.ProjectionPoint.X:F1}, {hover.ProjectionPoint.Y:F1})");
+        }
+
+        private void AppendPlatformInspector(List<string> lines, PolylinePlatformData platform, int segmentIndex)
+        {
+            lines.Add($"類型: Platform");
+            lines.Add($"Id: {platform.Id}");
+            lines.Add($"點數: {platform.Points?.Count ?? 0}");
+            if (segmentIndex >= 0)
+                lines.Add($"選取 segment: {segmentIndex}");
+
+            if (platform.Points != null)
+            {
+                for (int i = 0; i < platform.Points.Count; i++)
+                {
+                    var p = platform.Points[i];
+                    lines.Add($"  [{i}] ({p.X:F1}, {p.Y:F1})");
+                }
+            }
+
+            int dependentEdges = _currentMapData.ManualEdgeAnchors?.Count(a =>
+                string.Equals(a.FromPlatformId, platform.Id, StringComparison.Ordinal) ||
+                string.Equals(a.ToPlatformId, platform.Id, StringComparison.Ordinal)) ?? 0;
+            if (dependentEdges > 0)
+                lines.Add($"相依 ManualEdge: {dependentEdges} 條");
+
+            int walkEdges = _currentMapData.Edges.Count(e => e.ActionType == NavigationActionType.Walk);
+            lines.Add($"（全圖 Walk 邊: {walkEdges}，runtime 唯讀）");
+        }
+
+        private void AppendRopeInspector(List<string> lines, int ropeIndex)
+        {
+            lines.Add("類型: Rope");
+            if (_currentMapData.Ropes == null || ropeIndex < 0 || ropeIndex >= _currentMapData.Ropes.Count)
+            {
+                lines.Add("（繩索已不存在）");
+                return;
+            }
+
+            var rope = _currentMapData.Ropes[ropeIndex];
+            if (rope.Length < 3)
+            {
+                lines.Add("資料格式無效");
+                return;
+            }
+
+            lines.Add($"索引: {ropeIndex}");
+            lines.Add($"ropeX: {rope[0]:F1}");
+            lines.Add($"topY: {rope[1]:F1}");
+            lines.Add($"bottomY: {rope[2]:F1}");
+
+            int climbEdges = _currentMapData.Edges.Count(e =>
+                e.ActionType is NavigationActionType.ClimbUp or NavigationActionType.ClimbDown);
+            lines.Add($"Climb 邊（全圖）: {climbEdges}（runtime 唯讀）");
+        }
+
+        private void AppendManualEdgeInspector(List<string> lines, ManualEdgeAnchor anchor)
+        {
+            lines.Add("類型: ManualEdgeAnchor");
+            lines.Add($"From: {anchor.FromPlatformId} ({anchor.FromX:F1}, {anchor.FromY:F1})");
+            lines.Add($"To:   {anchor.ToPlatformId} ({anchor.ToX:F1}, {anchor.ToY:F1})");
+            lines.Add($"ActionType: {anchor.ActionType} ({GetActionName((int)anchor.ActionType)})");
+
+            string fromNodeId = MapGenerationService.BuildVirtualNodeId(
+                anchor.FromPlatformId, anchor.FromX, anchor.FromY);
+            string toNodeId = MapGenerationService.BuildVirtualNodeId(
+                anchor.ToPlatformId, anchor.ToX, anchor.ToY);
+
+            bool resolved = _currentMapData.Edges.Any(e =>
+                string.Equals(e.FromNodeId, fromNodeId, StringComparison.Ordinal) &&
+                string.Equals(e.ToNodeId, toNodeId, StringComparison.Ordinal));
+
+            lines.Add(resolved
+                ? $"解析: 成功 → {fromNodeId} → {toNodeId}"
+                : "解析: 失敗（無對應 runtime 邊）");
+
+            bool hasReverse = _currentMapData.ManualEdgeAnchors?.Any(a =>
+                !ReferenceEquals(a, anchor) &&
+                string.Equals(a.FromPlatformId, anchor.ToPlatformId, StringComparison.Ordinal) &&
+                string.Equals(a.ToPlatformId, anchor.FromPlatformId, StringComparison.Ordinal)) == true;
+
+            lines.Add(hasReverse ? "反向邊: 已存在其他 ManualEdge" : "反向邊: 無（單向）");
+        }
+
+        private void AppendRuntimeNodeInspector(List<string> lines, int nodeIndex)
+        {
+            lines.Add("類型: Runtime Node（唯讀預覽）");
+            lines.Add($"索引: {nodeIndex} / {_currentMapData.Nodes.Count - 1}");
+            if (nodeIndex < 0 || nodeIndex >= _currentMapData.Nodes.Count)
+            {
+                lines.Add("（節點已不存在）");
+                return;
+            }
+
+            var node = _currentMapData.Nodes[nodeIndex];
+            lines.Add($"Id: {node.Id}");
+            lines.Add($"座標: ({node.X:F1}, {node.Y:F1})");
+            lines.Add($"PlatformId: {node.PlatformId ?? "—"}");
+            if (_nodeCycleCandidates.Count > 1 && _nodeCycleIndex >= 0)
+                lines.Add($"Shift 循環: {_nodeCycleIndex + 1}/{_nodeCycleCandidates.Count}（同區域再 Shift+點擊切換）");
+            lines.Add("※ 不可直接編輯；請修改對應 Platform / Rope / ManualEdge。");
+        }
+
         public void SetCurrentActionType(int actionType)
         {
             _currentActionType = actionType;
@@ -141,12 +418,16 @@ namespace ArtaleAI.UI
             _previewPoint = null;
 
             // 載入時立即跑一次拓撲生成以確保 UI 能正確顯示預覽
-            MapGenerationService.BuildHTopology(_currentMapData);
+            RebuildTopology();
+            ClearSelection();
+            ClearDirty();
+            ClearHistory();
+            SelectionChanged?.Invoke();
         }
 
         public MapData GetCurrentMapData()
         {
-            MapGenerationService.BuildHTopology(_currentMapData);
+            RebuildTopology();
             return _currentMapData;
         }
 
@@ -208,6 +489,7 @@ namespace ArtaleAI.UI
             _previewPoint = new PointF(
                 screenPoint.X - minimapBounds.X,
                 screenPoint.Y - minimapBounds.Y);
+            _lastMousePosition = _previewPoint.Value;
         }
 
         public void CancelCurrentDrawing()
@@ -261,7 +543,7 @@ namespace ArtaleAI.UI
                 Logger.Info($"[編輯器] 建立折線平台幾何: Id={newPlat.Id}, 頂點數={newPlat.Points.Count}");
 
                 CancelCurrentDrawing();
-                MapGenerationService.BuildHTopology(_currentMapData);
+                CommitTopologyChange(raiseMutated: false);
             }
             else
             {
@@ -270,7 +552,11 @@ namespace ArtaleAI.UI
             }
         }
 
-        public void HandleClick(PointF screenPoint, MouseButtons button = MouseButtons.Left)
+        public void HandleClick(
+            PointF screenPoint,
+            MouseButtons button = MouseButtons.Left,
+            bool preferRuntimeNode = false,
+            bool cycleRuntimeNodes = false)
         {
             if (minimapBounds.IsEmpty) return;
 
@@ -280,7 +566,7 @@ namespace ArtaleAI.UI
 
             if (_currentEditMode == EditMode.Select)
             {
-                // Select 模式僅供檢視，不寫入任何資料；Hover 由 UpdateHoveredNode 處理
+                HandleSelectClick(relativePoint, preferRuntimeNode, cycleRuntimeNodes);
             }
             else if (_currentEditMode == EditMode.Platform)
             {
@@ -350,7 +636,7 @@ namespace ArtaleAI.UI
                                 hitPlat.Points.Insert(hitResult.SegmentIndex + 1, newPt);
                                 Logger.Info($"[編輯器] 於折線平台 {hitPlat.Id} 的段 {hitResult.SegmentIndex} 插入折點: ({newPt.X:F1}, {newPt.Y:F1})");
                                 
-                                MapGenerationService.BuildHTopology(_currentMapData);
+                                CommitTopologyChange();
                                 return; // 結束，不進入繪製起點
                             }
                             else
@@ -415,7 +701,7 @@ namespace ArtaleAI.UI
                         _startPoint = null;
                         _previewPoint = null;
 
-                        MapGenerationService.BuildHTopology(_currentMapData);
+                        CommitTopologyChange();
                     }
                 }
             }
@@ -490,7 +776,7 @@ namespace ArtaleAI.UI
                         _startPoint = null;
                         _previewPoint = null;
 
-                        MapGenerationService.BuildHTopology(_currentMapData);
+                        CommitTopologyChange();
                     }
                 }
             }
@@ -512,87 +798,133 @@ namespace ArtaleAI.UI
         {
             if (minimapBounds.IsEmpty) return;
 
-            // 1. 繪製實際的 Platforms 幾何線段 (萊姆綠粗線，Hover時以亮萊姆綠且加粗高亮，被選中的Segment特別高亮)
-            if (_currentMapData.PolylinePlatforms?.Any() == true)
+            DrawValidationOverlays(g, convert);
+
+            if (Layers.ShowPlatforms)
+                DrawPlatformsLayer(g, convert);
+
+            if (Layers.ShowRopes)
+                DrawRopesLayer(g, convert);
+
+            if (Layers.ShowManualAnchors)
+                DrawManualEdgeAnchors(g, convert);
+
+            if (Layers.ShowEdges)
+                DrawEdgesLayer(g, convert);
+
+            if (Layers.ShowNodes)
+                DrawNodesLayer(g, convert);
+        }
+
+        private void DrawPlatformsLayer(Graphics g, Func<PointF, PointF> convert)
+        {
+            if (_currentMapData.PolylinePlatforms?.Any() != true)
+                return;
+
+            foreach (var plat in _currentMapData.PolylinePlatforms)
             {
-                foreach (var plat in _currentMapData.PolylinePlatforms)
+                if (plat.Points == null || plat.Points.Count < 2) continue;
+
+                bool isSelected = _selection.Kind == MapEditorSelectionKind.Platform &&
+                    ReferenceEquals(plat, _selection.Platform);
+                bool isPlatHovered = plat == _hoveredPlatform;
+                Color platColor = isSelected ? Color.DeepSkyBlue :
+                    isPlatHovered ? Color.Chartreuse : Color.Lime;
+                float platWidth = isSelected ? 7.0f :
+                    isPlatHovered ? 6.0f : 4.0f;
+
+                for (int i = 0; i < plat.Points.Count - 1; i++)
                 {
-                    if (plat.Points == null || plat.Points.Count < 2) continue;
+                    var p1 = convert(new PointF(minimapBounds.X + plat.Points[i].X, minimapBounds.Y + plat.Points[i].Y));
+                    var p2 = convert(new PointF(minimapBounds.X + plat.Points[i + 1].X, minimapBounds.Y + plat.Points[i + 1].Y));
 
-                    bool isPlatHovered = (plat == _hoveredPlatform);
-                    Color platColor = isPlatHovered ? Color.Chartreuse : Color.Lime;
-                    float platWidth = isPlatHovered ? 6.0f : 4.0f;
+                    bool isSegSelected = isSelected &&
+                        _selection.SegmentIndex >= 0 &&
+                        i == _selection.SegmentIndex;
+                    bool isSegHovered = isPlatHovered && i == _hoveredSegmentIndex;
+                    float currentWidth = isSegSelected ? 9.0f :
+                        isSegHovered ? 8.0f : platWidth;
+                    Color currentColor = isSegSelected ? Color.White :
+                        isSegHovered ? Color.Gold : platColor;
 
-                    for (int i = 0; i < plat.Points.Count - 1; i++)
-                    {
-                        var p1 = convert(new PointF(minimapBounds.X + plat.Points[i].X, minimapBounds.Y + plat.Points[i].Y));
-                        var p2 = convert(new PointF(minimapBounds.X + plat.Points[i + 1].X, minimapBounds.Y + plat.Points[i + 1].Y));
-
-                        bool isSegHovered = isPlatHovered && (i == _hoveredSegmentIndex);
-                        float currentWidth = isSegHovered ? 8.0f : platWidth;
-                        Color currentColor = isSegHovered ? Color.Gold : platColor;
-
-                        using (var pen = new Pen(currentColor, currentWidth))
-                        {
-                            g.DrawLine(pen, p1, p2);
-                        }
-
-                        g.FillRectangle(Brushes.White, p1.X - 2, p1.Y - 2, 4, 4);
-                        if (i == plat.Points.Count - 2)
-                        {
-                            g.FillRectangle(Brushes.White, p2.X - 2, p2.Y - 2, 4, 4);
-                        }
-                    }
-
-                    if (isPlatHovered && _hoveredProjectionPoint != PointF.Empty)
-                    {
-                        var pProj = convert(new PointF(minimapBounds.X + _hoveredProjectionPoint.X, minimapBounds.Y + _hoveredProjectionPoint.Y));
-                        using (var projBrush = new SolidBrush(Color.FromArgb(200, Color.White)))
-                        {
-                            g.FillEllipse(projBrush, pProj.X - 4f, pProj.Y - 4f, 8f, 8f);
-                        }
-                        g.DrawEllipse(Pens.Black, pProj.X - 4f, pProj.Y - 4f, 8f, 8f);
-                    }
-                }
-            }
-
-            // 2. 繪製拓撲邊 (細線代表自動生成，醒目橘線代表手動例外，Hover手動邊時以亮紅粗線高亮)
-            if (_currentMapData.Edges.Count > 0)
-            {
-                foreach (var edge in _currentMapData.Edges)
-                {
-                    int fromIdx = FindNodeIndexById(edge.FromNodeId);
-                    int toIdx = FindNodeIndexById(edge.ToNodeId);
-                    if (fromIdx < 0 || toIdx < 0) continue;
-
-                    var p1Data = _currentMapData.Nodes[fromIdx];
-                    var p2Data = _currentMapData.Nodes[toIdx];
-
-                    bool isManual = _currentMapData.ManualEdgeAnchors != null &&
-                        _currentMapData.ManualEdgeAnchors.Any(a => EdgeMatchesAnchor(edge, a));
-
-                    bool isEdgeHovered = isManual && _hoveredManualEdgeAnchor != null &&
-                        EdgeMatchesAnchor(edge, _hoveredManualEdgeAnchor);
-
-                    Color lineColor = GetEdgeDrawColor(edge);
-                    var p1 = convert(new PointF(minimapBounds.X + p1Data.X, minimapBounds.Y + p1Data.Y));
-                    var p2 = convert(new PointF(minimapBounds.X + p2Data.X, minimapBounds.Y + p2Data.Y));
-
-                    float penWidth = isEdgeHovered ? 4.0f : (isManual ? 2.5f : 1.5f);
-                    Color drawColor = isEdgeHovered ? Color.Red : (isManual ? Color.OrangeRed : Color.FromArgb(120, lineColor));
-
-                    using (var pen = new Pen(drawColor, penWidth))
+                    using (var pen = new Pen(currentColor, currentWidth))
                     {
                         g.DrawLine(pen, p1, p2);
+                    }
 
-                        float midX = (p1.X + p2.X) / 2;
-                        float midY = (p1.Y + p2.Y) / 2;
-                        DrawArrow(g, p1, p2, new PointF(midX, midY), isEdgeHovered ? Brushes.Red : (isManual ? Brushes.OrangeRed : Brushes.Cyan));
+                    g.FillRectangle(Brushes.White, p1.X - 2, p1.Y - 2, 4, 4);
+                    if (isSelected && _currentEditMode == EditMode.Select)
+                    {
+                        g.DrawEllipse(Pens.DeepSkyBlue, p1.X - 5f, p1.Y - 5f, 10f, 10f);
+                    }
+                    if (i == plat.Points.Count - 2)
+                    {
+                        g.FillRectangle(Brushes.White, p2.X - 2, p2.Y - 2, 4, 4);
+                        if (isSelected && _currentEditMode == EditMode.Select)
+                        {
+                            g.DrawEllipse(Pens.DeepSkyBlue, p2.X - 5f, p2.Y - 5f, 10f, 10f);
+                        }
                     }
                 }
-            }
 
-            // 3. 繪製自動生成的拓撲節點 (灰色小點代表自動生成，黃/白代表選取/Hover高亮，橘紅代表例外邊端點)
+                if (plat == _hoveredPlatform && _hoveredProjectionPoint != PointF.Empty)
+                {
+                    var pProj = convert(new PointF(minimapBounds.X + _hoveredProjectionPoint.X, minimapBounds.Y + _hoveredProjectionPoint.Y));
+                    using (var projBrush = new SolidBrush(Color.FromArgb(200, Color.White)))
+                    {
+                        g.FillEllipse(projBrush, pProj.X - 4f, pProj.Y - 4f, 8f, 8f);
+                    }
+                    g.DrawEllipse(Pens.Black, pProj.X - 4f, pProj.Y - 4f, 8f, 8f);
+                }
+            }
+        }
+
+        private void DrawEdgesLayer(Graphics g, Func<PointF, PointF> convert)
+        {
+            if (_currentMapData.Edges.Count == 0)
+                return;
+
+            foreach (var edge in _currentMapData.Edges)
+            {
+                int fromIdx = FindNodeIndexById(edge.FromNodeId);
+                int toIdx = FindNodeIndexById(edge.ToNodeId);
+                if (fromIdx < 0 || toIdx < 0) continue;
+
+                var p1Data = _currentMapData.Nodes[fromIdx];
+                var p2Data = _currentMapData.Nodes[toIdx];
+
+                bool isManual = _currentMapData.ManualEdgeAnchors != null &&
+                    _currentMapData.ManualEdgeAnchors.Any(a => EdgeMatchesAnchor(edge, a));
+
+                bool isEdgeHovered = isManual && _hoveredManualEdgeAnchor != null &&
+                    EdgeMatchesAnchor(edge, _hoveredManualEdgeAnchor);
+                bool isEdgeSelected = isManual && _selection.Kind == MapEditorSelectionKind.ManualEdge &&
+                    _selection.ManualEdge != null &&
+                    EdgeMatchesAnchor(edge, _selection.ManualEdge);
+
+                Color lineColor = GetEdgePreviewColor(edge, isManual);
+                var p1 = convert(new PointF(minimapBounds.X + p1Data.X, minimapBounds.Y + p1Data.Y));
+                var p2 = convert(new PointF(minimapBounds.X + p2Data.X, minimapBounds.Y + p2Data.Y));
+
+                float penWidth = isEdgeSelected ? 4.5f :
+                    isEdgeHovered ? 4.0f : (isManual ? 2.5f : 1.8f);
+                Color drawColor = isEdgeSelected ? Color.DeepSkyBlue :
+                    isEdgeHovered ? Color.Red : lineColor;
+
+                using (var pen = new Pen(drawColor, penWidth) { DashStyle = GetEdgeDashStyle(edge.ActionType) })
+                {
+                    g.DrawLine(pen, p1, p2);
+
+                    float midX = (p1.X + p2.X) / 2;
+                    float midY = (p1.Y + p2.Y) / 2;
+                    using var arrowBrush = new SolidBrush(drawColor);
+                    DrawArrow(g, p1, p2, new PointF(midX, midY), arrowBrush);
+                }
+            }
+        }
+
+        private void DrawNodesLayer(Graphics g, Func<PointF, PointF> convert)
+        {
             for (int i = 0; i < _currentMapData.Nodes.Count; i++)
             {
                 var nav = _currentMapData.Nodes[i];
@@ -605,11 +937,22 @@ namespace ArtaleAI.UI
 
                 Color nodeColor = Color.FromArgb(180, Color.DarkGray);
                 float radius = PointRadius - 0.5f;
+                bool isSelectedNode = _selection.Kind == MapEditorSelectionKind.RuntimeNode &&
+                    _selection.RuntimeNodeIndex == i;
 
-                if (i == _hoveredNodeIndex)
+                if (isSelectedNode)
+                {
+                    nodeColor = Color.DeepSkyBlue;
+                    float ring = radius + 4f;
+                    using var ringPen = new Pen(Color.White, 2f);
+                    g.DrawEllipse(ringPen, pos.X - ring, pos.Y - ring, ring * 2, ring * 2);
+                }
+                else if (i == _hoveredNodeIndex)
                 {
                     nodeColor = Color.White;
-                    g.DrawEllipse(Pens.White, pos.X - radius - 1, pos.Y - radius - 1, (radius + 1) * 2, (radius + 1) * 2);
+                    float ring = radius + 3f;
+                    using var ringPen = new Pen(Color.Gold, 1.5f);
+                    g.DrawEllipse(ringPen, pos.X - ring, pos.Y - ring, ring * 2, ring * 2);
                 }
                 else if (isManualEndpoint)
                 {
@@ -624,62 +967,45 @@ namespace ArtaleAI.UI
                 if (i == 0) DrawLabel(g, pos, "Start", Color.Lime);
                 else if (i == _currentMapData.Nodes.Count - 1) DrawLabel(g, pos, "End", Color.Red);
             }
-
-            // 4. 繪製繩索幾何 (黃色粗線，Hover時以亮黃色且加粗高亮)
-            if (_currentMapData.Ropes?.Any() == true)
-            {
-                foreach (var rope in _currentMapData.Ropes)
-                {
-                    if (rope.Length < 3) continue;
-
-                    float x = rope[0];
-                    float topY = rope[1];
-                    float bottomY = rope[2];
-
-                    var pTop = convert(new PointF(minimapBounds.X + x, minimapBounds.Y + topY));
-                    var pBottom = convert(new PointF(minimapBounds.X + x, minimapBounds.Y + bottomY));
-
-                    bool isRopeHovered = (rope == _hoveredRope);
-                    Color ropeColor = isRopeHovered ? Color.LightYellow : Color.Yellow;
-                    float ropeWidth = isRopeHovered ? 5.5f : 3.5f;
-
-                    using var pen = new Pen(ropeColor, ropeWidth);
-                    g.DrawLine(pen, pTop, pBottom);
-
-                    g.FillRectangle(Brushes.Red, pTop.X - 3, pTop.Y - 3, 6, 6);
-                    g.FillRectangle(Brushes.Green, pBottom.X - 3, pBottom.Y - 3, 6, 6);
-                }
-            }
         }
 
-        /// <summary>
-        /// 取得自動/手動拓撲邊的渲染顏色。
-        /// 顏色語意對照：
-        /// - Magenta (洋紅): Walk (基礎自動通行步行的細邊)
-        /// - Cyan (青色): ClimbUp / ClimbDown (繩索垂直邊)
-        /// - MediumPurple (粉紫): SideJump (平台兩端往外側跳的自動邊)
-        /// - Yellow (黃色): JumpDown (平台邊緣往下跳的自動邊)
-        /// - DeepSkyBlue (深天藍): Jump (向上或往前跳躍的自動邊)
-        /// - OrangeRed (橘紅): Teleport (傳送點之間的自動邊)
-        /// - OrangeRed (加粗 2.5f) / Red (Hover加粗 4.0f): ManualEdgeAnchors 解析後的例外邊
-        /// </summary>
-        private static Color GetEdgeDrawColor(NavEdgeData edge)
+        private void DrawRopesLayer(Graphics g, Func<PointF, PointF> convert)
         {
-            if (edge.ActionType == NavigationActionType.Walk)
-            {
-                return Color.Magenta;
-            }
+            if (_currentMapData.Ropes?.Any() != true)
+                return;
 
-            return edge.ActionType switch
+            foreach (var rope in _currentMapData.Ropes)
             {
-                NavigationActionType.ClimbUp or NavigationActionType.ClimbDown => Color.Cyan,
-                NavigationActionType.SideJump => Color.MediumPurple,
-                NavigationActionType.JumpDown => Color.Yellow,
-                NavigationActionType.Jump => Color.DeepSkyBlue,
-                NavigationActionType.Teleport => Color.OrangeRed,
-                _ => Color.White
-            };
+                if (rope.Length < 3) continue;
+
+                float x = rope[0];
+                float topY = rope[1];
+                float bottomY = rope[2];
+
+                var pTop = convert(new PointF(minimapBounds.X + x, minimapBounds.Y + topY));
+                var pBottom = convert(new PointF(minimapBounds.X + x, minimapBounds.Y + bottomY));
+
+                bool isRopeHovered = rope == _hoveredRope;
+                bool isRopeSelected = _selection.Kind == MapEditorSelectionKind.Rope &&
+                    _selection.RopeIndex >= 0 &&
+                    _currentMapData.Ropes != null &&
+                    _selection.RopeIndex < _currentMapData.Ropes.Count &&
+                    ReferenceEquals(rope, _currentMapData.Ropes[_selection.RopeIndex]);
+                Color ropeColor = isRopeSelected ? Color.Orange :
+                    isRopeHovered ? Color.LightYellow : Color.Yellow;
+                float ropeWidth = isRopeSelected ? 6.5f :
+                    isRopeHovered ? 5.5f : 3.5f;
+
+                using var pen = new Pen(ropeColor, ropeWidth);
+                g.DrawLine(pen, pTop, pBottom);
+
+                g.FillRectangle(Brushes.Red, pTop.X - 3, pTop.Y - 3, 6, 6);
+                g.FillRectangle(Brushes.Green, pBottom.X - 3, pBottom.Y - 3, 6, 6);
+            }
         }
+
+        /// <summary>保留供舊註解對照；實際繪製改用 GetEdgePreviewColor。</summary>
+        private static Color GetEdgeDrawColor(NavEdgeData edge) => GetEdgePreviewColor(edge, false);
 
         private void DrawPreviewShapes(Graphics g, Func<PointF, PointF> convert)
         {
@@ -718,6 +1044,14 @@ namespace ArtaleAI.UI
                         using (var pen = new Pen(Color.Cyan, 2f) { DashStyle = DashStyle.Dash })
                         {
                             g.DrawLine(pen, pLast, pMouse);
+                        }
+
+                        // Snap indicator：預覽落點
+                        using (var snapPen = new Pen(Color.White, 1.5f))
+                        {
+                            g.DrawEllipse(snapPen, pMouse.X - 5f, pMouse.Y - 5f, 10f, 10f);
+                            g.DrawLine(snapPen, pMouse.X - 6f, pMouse.Y, pMouse.X + 6f, pMouse.Y);
+                            g.DrawLine(snapPen, pMouse.X, pMouse.Y - 6f, pMouse.X, pMouse.Y + 6f);
                         }
                     }
                 }
@@ -951,20 +1285,24 @@ namespace ArtaleAI.UI
 
         private void ApplyDeleteTarget(DeleteTarget target)
         {
+            if (target.Kind == DeleteTargetKind.None) return;
+
+            InvalidateSelectionIfNeeded(target);
+
             switch (target.Kind)
             {
                 case DeleteTargetKind.ManualEdge when target.ManualEdge != null:
                     _currentMapData.ManualEdgeAnchors?.Remove(target.ManualEdge);
                     Logger.Info(
                         $"[編輯器] 刪除手動例外邊錨點: {target.ManualEdge.FromPlatformId} -> {target.ManualEdge.ToPlatformId} Action={target.ManualEdge.ActionType}");
-                    MapGenerationService.BuildHTopology(_currentMapData);
+                    CommitTopologyChange();
                     break;
 
                 case DeleteTargetKind.Rope when target.Rope != null && target.RopeIndex >= 0:
                     _currentMapData.Ropes?.RemoveAt(target.RopeIndex);
                     Logger.Info(
                         $"[編輯器] 刪除繩索幾何: X={target.Rope[0]:F1}, Y={target.Rope[1]:F1}~{target.Rope[2]:F1}");
-                    MapGenerationService.BuildHTopology(_currentMapData);
+                    CommitTopologyChange();
                     break;
 
                 case DeleteTargetKind.Platform when target.Platform != null:
@@ -972,7 +1310,7 @@ namespace ArtaleAI.UI
                     _currentMapData.PolylinePlatforms?.Remove(target.Platform);
                     PruneManualEdgeAnchorsForPlatform(platformId);
                     Logger.Info($"[編輯器] 刪除折線平台幾何: Id={platformId}");
-                    MapGenerationService.BuildHTopology(_currentMapData);
+                    CommitTopologyChange();
                     break;
             }
         }
@@ -985,6 +1323,12 @@ namespace ArtaleAI.UI
             if (target.Kind == DeleteTargetKind.None)
             {
                 Logger.Info("[編輯器] 未命中任何可刪除的標記（手動邊、繩索、平台）");
+                return;
+            }
+
+            if (ConfirmDestructiveAction != null &&
+                !ConfirmDestructiveAction(DescribeDeleteTarget(target.Kind, target.Platform, target.RopeIndex)))
+            {
                 return;
             }
 
@@ -1041,8 +1385,9 @@ namespace ArtaleAI.UI
         /// <summary>
         /// 更新目前滑鼠所在的 Hover 物件狀態。
         /// Delete 模式命中順序：手動邊 → 繩索 → 平台（與 HandleDeleteAction 共用 ResolveDeleteTarget）。
+        /// Select 模式：節點與幾何依距離競爭；Shift 時優先節點。
         /// </summary>
-        public void UpdateHoveredNode(PointF screenPoint)
+        public void UpdateHoveredNode(PointF screenPoint, bool preferRuntimeNode = false)
         {
             if (minimapBounds.IsEmpty) return;
 
@@ -1060,23 +1405,29 @@ namespace ArtaleAI.UI
 
             bool isPlatformModeNotDrawing = _currentEditMode == EditMode.Platform && _activeDrawingPoints.Count == 0;
 
-            if (_currentEditMode == EditMode.Delete)
+            if (_currentEditMode is EditMode.Delete or EditMode.Select)
             {
-                var deleteTarget = ResolveDeleteTarget(relativePoint, SelectionRadius * 2.0f);
-                switch (deleteTarget.Kind)
+                if (_currentEditMode == EditMode.Select)
+                {
+                    ApplySelectHover(relativePoint, preferRuntimeNode);
+                    return;
+                }
+
+                var pickTarget = ResolveDeleteTarget(relativePoint, SelectionRadius * 2.0f);
+                switch (pickTarget.Kind)
                 {
                     case DeleteTargetKind.ManualEdge:
-                        _hoveredManualEdgeAnchor = deleteTarget.ManualEdge;
+                        _hoveredManualEdgeAnchor = pickTarget.ManualEdge;
                         break;
                     case DeleteTargetKind.Rope:
-                        _hoveredRope = deleteTarget.Rope;
+                        _hoveredRope = pickTarget.Rope;
                         break;
                     case DeleteTargetKind.Platform:
-                        _hoveredPlatform = deleteTarget.Platform;
-                        if (deleteTarget.PlatformHit != null)
+                        _hoveredPlatform = pickTarget.Platform;
+                        if (pickTarget.PlatformHit != null)
                         {
-                            _hoveredSegmentIndex = deleteTarget.PlatformHit.SegmentIndex;
-                            _hoveredProjectionPoint = deleteTarget.PlatformHit.ProjectionPoint;
+                            _hoveredSegmentIndex = pickTarget.PlatformHit.SegmentIndex;
+                            _hoveredProjectionPoint = pickTarget.PlatformHit.ProjectionPoint;
                         }
                         break;
                 }
@@ -1151,12 +1502,17 @@ namespace ArtaleAI.UI
             }
         }
 
-        private int FindNearestRuntimeNodeIndex(PointF relativePoint)
+        private int FindNearestRuntimeNodeIndex(PointF relativePoint, float hitRadius = RuntimeNodeHitSlop)
         {
+            return FindNearestRuntimeNodeIndex(relativePoint, hitRadius, out _);
+        }
+
+        private int FindNearestRuntimeNodeIndex(PointF relativePoint, float hitRadius, out float nearestDistance)
+        {
+            nearestDistance = float.MaxValue;
             if (_currentMapData.Nodes.Count == 0) return -1;
 
             int nearestIndex = -1;
-            float minDistance = float.MaxValue;
 
             for (int i = 0; i < _currentMapData.Nodes.Count; i++)
             {
@@ -1165,14 +1521,172 @@ namespace ArtaleAI.UI
                 float dy = node.Y - relativePoint.Y;
                 float dist = (float)Math.Sqrt(dx * dx + dy * dy);
 
-                if (dist < SelectionRadius && dist < minDistance)
+                if (dist < hitRadius && dist < nearestDistance)
                 {
-                    minDistance = dist;
+                    nearestDistance = dist;
                     nearestIndex = i;
                 }
             }
 
             return nearestIndex;
+        }
+
+        private List<(int Index, float Distance)> FindRuntimeNodesWithinRadius(PointF relativePoint, float hitRadius)
+        {
+            var results = new List<(int Index, float Distance)>();
+            for (int i = 0; i < _currentMapData.Nodes.Count; i++)
+            {
+                var node = _currentMapData.Nodes[i];
+                float dx = node.X - relativePoint.X;
+                float dy = node.Y - relativePoint.Y;
+                float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+                if (dist < hitRadius)
+                    results.Add((i, dist));
+            }
+
+            results.Sort((a, b) => a.Distance.CompareTo(b.Distance));
+            return results;
+        }
+
+        private static float DistanceBetween(PointF a, PointF b)
+        {
+            float dx = a.X - b.X;
+            float dy = a.Y - b.Y;
+            return (float)Math.Sqrt(dx * dx + dy * dy);
+        }
+
+        private float GetDeleteTargetDistance(PointF relativePoint, DeleteTarget target)
+        {
+            return target.Kind switch
+            {
+                DeleteTargetKind.ManualEdge when target.ManualEdge != null =>
+                    GetDistanceToManualEdgeAnchor(relativePoint, target.ManualEdge),
+                DeleteTargetKind.Rope when target.Rope != null =>
+                    GetDistanceToRope(relativePoint, target.Rope),
+                DeleteTargetKind.Platform when target.Platform != null =>
+                    GetDistanceToPolyline(relativePoint, target.Platform).Distance,
+                _ => float.MaxValue
+            };
+        }
+
+        private bool ShouldPreferRuntimeNode(
+            int nodeIndex,
+            float nodeDistance,
+            DeleteTarget geometryPick,
+            float geometryDistance,
+            bool preferRuntimeNode)
+        {
+            if (nodeIndex < 0) return false;
+            if (preferRuntimeNode) return true;
+            if (geometryPick.Kind == DeleteTargetKind.None) return true;
+            return nodeDistance < geometryDistance;
+        }
+
+        private void ApplySelectHover(PointF relativePoint, bool preferRuntimeNode)
+        {
+            float geometryThreshold = SelectionRadius * 2.0f;
+            var geometryPick = ResolveDeleteTarget(relativePoint, geometryThreshold);
+            float geometryDistance = GetDeleteTargetDistance(relativePoint, geometryPick);
+
+            int nodeIndex = FindNearestRuntimeNodeIndex(relativePoint, RuntimeNodeHitSlop, out float nodeDistance);
+            if (ShouldPreferRuntimeNode(nodeIndex, nodeDistance, geometryPick, geometryDistance, preferRuntimeNode))
+            {
+                _hoveredNodeIndex = nodeIndex;
+                return;
+            }
+
+            switch (geometryPick.Kind)
+            {
+                case DeleteTargetKind.ManualEdge:
+                    _hoveredManualEdgeAnchor = geometryPick.ManualEdge;
+                    break;
+                case DeleteTargetKind.Rope:
+                    _hoveredRope = geometryPick.Rope;
+                    break;
+                case DeleteTargetKind.Platform:
+                    _hoveredPlatform = geometryPick.Platform;
+                    if (geometryPick.PlatformHit != null)
+                    {
+                        _hoveredSegmentIndex = geometryPick.PlatformHit.SegmentIndex;
+                        _hoveredProjectionPoint = geometryPick.PlatformHit.ProjectionPoint;
+                    }
+                    break;
+            }
+        }
+
+        private void HandleSelectClick(PointF relativePoint, bool preferRuntimeNode, bool cycleRuntimeNodes)
+        {
+            float geometryThreshold = SelectionRadius * 2.0f;
+            var geometryPick = ResolveDeleteTarget(relativePoint, geometryThreshold);
+            float geometryDistance = GetDeleteTargetDistance(relativePoint, geometryPick);
+
+            int nodeIndex = -1;
+            if (cycleRuntimeNodes)
+            {
+                nodeIndex = PickCycledRuntimeNode(relativePoint);
+            }
+            else
+            {
+                nodeIndex = FindNearestRuntimeNodeIndex(relativePoint, RuntimeNodeHitSlop, out _);
+            }
+
+            if (ShouldPreferRuntimeNode(
+                    nodeIndex,
+                    nodeIndex >= 0 ? DistanceBetween(relativePoint, GetNodePosition(nodeIndex)) : float.MaxValue,
+                    geometryPick,
+                    geometryDistance,
+                    preferRuntimeNode))
+            {
+                SetSelection(MapEditorSelection.ForRuntimeNode(nodeIndex));
+                return;
+            }
+
+            if (geometryPick.Kind != DeleteTargetKind.None)
+            {
+                ApplySelectionFromPick(geometryPick);
+                return;
+            }
+
+            if (nodeIndex >= 0)
+                SetSelection(MapEditorSelection.ForRuntimeNode(nodeIndex));
+            else
+                ClearSelection();
+        }
+
+        private PointF GetNodePosition(int nodeIndex)
+        {
+            var node = _currentMapData.Nodes[nodeIndex];
+            return new PointF(node.X, node.Y);
+        }
+
+        private int PickCycledRuntimeNode(PointF relativePoint)
+        {
+            var candidates = FindRuntimeNodesWithinRadius(relativePoint, RuntimeNodeHitSlop);
+            if (candidates.Count == 0)
+            {
+                _nodeCycleCandidates.Clear();
+                _nodeCycleIndex = -1;
+                return -1;
+            }
+
+            var candidateIndices = candidates.Select(c => c.Index).ToList();
+            bool sameArea = _nodeCycleCandidates.Count > 0 &&
+                DistanceBetween(relativePoint, _lastNodeCyclePoint) < RuntimeNodeCycleAnchorSlop;
+            bool sameSet = sameArea &&
+                _nodeCycleCandidates.SequenceEqual(candidateIndices);
+
+            if (!sameSet)
+            {
+                _nodeCycleCandidates = candidateIndices;
+                _nodeCycleIndex = 0;
+                _lastNodeCyclePoint = relativePoint;
+            }
+            else
+            {
+                _nodeCycleIndex = (_nodeCycleIndex + 1) % _nodeCycleCandidates.Count;
+            }
+
+            return _nodeCycleCandidates[_nodeCycleIndex];
         }
 
 
