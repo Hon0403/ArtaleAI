@@ -4,9 +4,10 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using ArtaleAI.Models.Config;
-using ArtaleAI.Core;
+using ArtaleAI.Vision;
 using ArtaleAI.Models.Detection;
-using ArtaleAI.Utils;
+using ArtaleAI.Shared;
+using ArtaleAI.Application.Pipeline;
 using SdRect = System.Drawing.Rectangle;
 
 namespace ArtaleAI.UI
@@ -15,7 +16,7 @@ namespace ArtaleAI.UI
     public class OverlayRenderer
     {
         /// <summary>就地繪製後回傳 <see cref="Bitmap"/> 複本（呼叫者負責 Dispose）。</summary>
-        public Bitmap Render(Bitmap bitmap, Services.FrameProcessingResult result, AppConfig config)
+        public Bitmap Render(Bitmap bitmap, FrameProcessingResult result, AppConfig config)
         {
             if (bitmap == null) throw new ArgumentNullException(nameof(bitmap));
             if (result == null) throw new ArgumentNullException(nameof(result));

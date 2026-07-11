@@ -39,8 +39,8 @@ namespace ArtaleAI.Models.Map
         public float ToX { get; set; }
         public float ToY { get; set; }
         public int? ToSegmentIndex { get; set; }
-        public ArtaleAI.Core.Domain.Navigation.NavigationActionType ActionType { get; set; } =
-            ArtaleAI.Core.Domain.Navigation.NavigationActionType.Walk;
+        public ArtaleAI.Domain.Navigation.NavigationActionType ActionType { get; set; } =
+            ArtaleAI.Domain.Navigation.NavigationActionType.Walk;
     }
 
     /// <summary>
@@ -92,7 +92,7 @@ namespace ArtaleAI.Models.Map
     {
         public string FromNodeId { get; set; } = "";
         public string ToNodeId { get; set; } = "";
-        public ArtaleAI.Core.Domain.Navigation.NavigationActionType ActionType { get; set; }
+        public ArtaleAI.Domain.Navigation.NavigationActionType ActionType { get; set; }
         public float Cost { get; set; }
         public List<string> InputSequence { get; set; } = new();
     }

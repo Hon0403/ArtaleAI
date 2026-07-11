@@ -1,6 +1,6 @@
 namespace ArtaleAI.Models.Detection
 {
-    /// <summary>執行期啟用的怪物模板集合；僅持有參考，生命週期由 <see cref="ArtaleAI.Core.GameVisionCore"/> 快取管理。</summary>
+    /// <summary>執行期啟用的怪物模板集合；僅持有參考，生命週期由 <see cref="ArtaleAI.Vision.GameVisionCore"/> 快取管理。</summary>
     public sealed class MonsterDetectionCatalog
     {
         private readonly List<MonsterTemplateBundle> _bundles = new();

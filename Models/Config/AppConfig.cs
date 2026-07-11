@@ -1,10 +1,10 @@
 using System;
 using System.ComponentModel;
 using System.IO;
-using ArtaleAI.Utils;
-using ArtaleAI.Core.Vision;
+using ArtaleAI.Shared;
+using ArtaleAI.Vision;
 using ArtaleAI.Models.Detection;
-using ArtaleAI.Core.Domain.Navigation;
+using ArtaleAI.Domain.Navigation;
 using ArtaleAI.Models.Minimap;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;

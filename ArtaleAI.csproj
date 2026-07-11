@@ -49,7 +49,7 @@
   </ItemGroup>
   
   <ItemGroup>
-    <None Update="API\ApiConfig.yaml">
+    <None Update="Infrastructure\External\ApiConfig.yaml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Data\config.yaml">

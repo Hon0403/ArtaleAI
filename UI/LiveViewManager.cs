@@ -1,6 +1,6 @@
 using ArtaleAI.Models.Config;
-using ArtaleAI.Services;
-using ArtaleAI.Utils;
+using ArtaleAI.Infrastructure.Capture;
+using ArtaleAI.Shared;
 using OpenCvSharp;
 using System;
 using System.Collections.Concurrent;

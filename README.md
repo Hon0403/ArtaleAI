@@ -71,9 +71,9 @@
 
 | 項目 | 需求 |
 |------|------|
-| **作業系統** | Windows 10/11 (x64) |
-| **運行環境** | .NET Framework 4.7.2+ |
-| **開發工具** | Visual Studio 2019+ 或 VS Code |
+| **作業系統** | Windows 10 1903+ / Windows 11 (x64) |
+| **運行環境** | [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)（目標框架 `net8.0-windows10.0.19041.0`） |
+| **開發工具** | Visual Studio 2022+ 或 VS Code + C# Dev Kit |
 | **記憶體** | 4GB+ (建議 8GB+) |
 | **顯示卡** | 支援 DirectX 11 |
 | **硬碟空間** | 500MB+ |
@@ -81,6 +81,8 @@
 ### 安裝與執行
 
 ```bash
+# 0. 前置：安裝 .NET 8 SDK（https://dotnet.microsoft.com/download/dotnet/8.0）
+
 # 1. 複製專案
 git clone https://github.com/Hon0403/ArtaleAI.git
 cd ArtaleAI
@@ -98,7 +100,7 @@ dotnet run
 
 ### 初始設定
 
-1. **編輯組態檔案** `Config/config.yaml`：
+1. **編輯組態檔案** `Data/config.yaml`：
    ```yaml
    general:
      gameWindowTitle: "MapleStory Worlds-Artale (繁體中文版)"
@@ -167,80 +169,77 @@ monster_detect:
 
 ## 專案架構
 
+單一 WinForms 專案，以**資料夾 + 命名空間**落實分層依賴（外層 → 內層）：
+
+```
+Presentation (UI) → Application → Domain / Vision
+Infrastructure、Contracts 為適配器與介面錨點
+```
+
 ```
 ArtaleAI/
-├── API/                    # 外部 API 整合
-│   ├── MonsterImageFetcher.cs
-│   └── Models/
-│       └── ArtaleMonster.cs
-├── Config/                 # 組態管理
-│   └── AppConfig.cs        # 應用程式設定（Singleton）
-├── Core/                   # 核心業務邏輯
-│   ├── GameVisionCore.cs   # 視覺處理核心
-│   ├── PathPlanningTracker.cs  # 路徑追蹤器（含邊界防護）
-│   └── SharedGameState.cs      # 執行緒安全狀態共享
-├── Data/                   # 資料檔案
-│   └── config.yaml             # YAML 組態檔
-├── Models/                 # 資料模型（重構後分類）
-│   ├── Detection/              # 檢測相關模型
-│   │   ├── DetectionResult.cs
-│   │   ├── DetectionBox.cs
-│   │   ├── MonsterStyle.cs
-│   │   └── DetectionStyles.cs
-│   ├── PathPlanning/           # 路徑規劃模型
-│   │   ├── PathPlanningState.cs
-│   │   └── PlatformBounds.cs
-│   ├── Minimap/                # 小地圖模型
-│   │   ├── MinimapResult.cs
-│   │   ├── MinimapTrackingResult.cs
-│   │   └── MinimapStyles.cs
-│   ├── Map/                    # 地圖資料模型
-│   │   └── MapData.cs
-│   └── JsonHelpers.cs          # JSON 序列化輔助
-├── Services/               # 服務層模組
-│   ├── CharacterMovementController.cs  # 角色移動控制（含三重邊界防護）
-│   ├── FlexiblePathPlanner.cs          # 靈活路徑規劃
-│   ├── MapFileManager.cs               # 地圖檔案管理
-│   ├── PathPlanningManager.cs          # 路徑規劃管理器
-│   ├── RouteRecorderService.cs         # 路徑錄製服務
-│   ├── ScreenCapture.cs                # 螢幕擷取（GPU 加速）
-│   └── WindowFinder.cs                 # 視窗搜尋器
-├── UI/                     # 使用者介面
-│   ├── MainForm.cs             # 主視窗
-│   ├── MainForm.Designer.cs    # UI 設計器
-│   ├── MapEditor.cs            # 地圖編輯器
-│   └── LiveViewManager.cs      # 即時顯示管理器
-├── Utils/                  # 工具函式庫
-│   ├── Logger.cs               # Serilog 日誌整合
-│   ├── MsgLog.cs               # UI 日誌輔助
-│   ├── DrawingHelper.cs        # GDI+ 繪圖輔助
-│   └── PathManager.cs          # 路徑管理器
-├── templates/              # 模板資源庫
-│   ├── minimap/                # 小地圖模板
-│   └── monsters/               # 怪物模板
-├── Program.cs              # 程式進入點
-├── ArtaleAI.csproj         # 專案檔案
-└── ArtaleAI.sln            # 解決方案檔案
+├── Application/                 # 用例編排（無 WinForms 細節）
+│   ├── Pipeline/                    GamePipeline、FrameProcessingResult
+│   ├── Navigation/                  PathPlanningManager、NavigationStateMachine、NavigationExecutor
+│   ├── Movement/                    CharacterMovementController
+│   └── MapEditor/                   MapEditorValidationService
+├── Domain/
+│   └── Navigation/                  導航圖、到達驗收、拓撲生成（純業務規則）
+├── Vision/                      # 電腦視覺引擎
+│   ├── GameVisionCore*.cs           partial：核心、血條、小地圖、怪物
+│   ├── PathPlanningTracker.cs
+│   └── Detectors/                   BloodBarDetector 等
+├── Infrastructure/              # 外部世界適配
+│   ├── Capture/                     ScreenCapture、WindowFinder
+│   ├── Persistence/                 MapFileManager、MonsterTemplateStore
+│   ├── Input/                       LambdaPositionProvider
+│   └── External/                    MonsterImageFetcher、ApiConfig
+├── Contracts/                   # 跨層介面（DIP）
+│   ├── INavigationStateMachine.cs
+│   ├── IKeyboardService.cs
+│   └── IPlayerPositionProvider.cs
+├── Models/                      # DTO / YAML 組態 POCO
+│   ├── Config/                      AppConfig、VisionSettings、NavigationSettings…
+│   ├── Detection/                   DetectionResult、MonsterTemplate*
+│   ├── Map/                         MapData
+│   ├── Minimap/                     MinimapResult、MinimapTrackingResult
+│   ├── PathPlanning/                PathPlanningState
+│   └── Visualization/               路徑疊加繪製模型
+├── UI/                          # WinForms 展示層
+│   ├── MainForm*.cs                 partial：初始化、LiveView、MapEditor、路徑規劃…
+│   ├── MapEditor/                   地圖編輯器與版面驗證
+│   ├── LiveViewManager.cs、MinimapViewer.cs、OverlayRenderer.cs
+│   └── MainForm.Designer.cs
+├── Shared/                      # 跨層工具（原 Utils）
+│   ├── Logger.cs、PathManager.cs、DrawingHelper.cs、MsgLog.cs
+├── Data/                        # 執行時 YAML 組態
+│   └── config.yaml
+├── MapData/                     # 地圖 JSON
+├── templates/                   # 小地圖 / 怪物模板圖
+├── docs/                        # 設計與規格文件
+├── Program.cs
+├── ArtaleAI.csproj
+└── ArtaleAI.sln
 ```
 
-#### 三重邊界防護系統
-- **緊急停止**：角色超出邊界時立即停止
-- **緩衝區預警**：接近邊界時觸發減速
-- **目標驗證**：目標點超出邊界時自動選擇安全點
+#### 導航與路徑
 
-#### 執行緒安全優化
-- `PathPlanningTracker` 使用 `volatile` 和 snapshot 模式
-- `SharedGameState` 公告板模式，避免競爭條件
+- `PathPlanningTracker`：小地圖追蹤、邊解析、救援重規劃
+- `NavigationStateMachine` + `NavigationExecutor`：FSM 驅動的邊執行與按鍵輸出
+- `CharacterMovementController`：SendInput 封裝與連續移動
 
-#### 架構重構
-- Models 按功能分類到子資料夾
-- AppConfig 移至 Config 資料夾
-- 刪除舊的 DataModels.cs（已拆分）
+#### 視覺管線
 
-#### Serilog 日誌系統
-- 替換 Debug.WriteLine 為結構化日誌
-- 檔案日誌 + 主控台輸出
-- Debug/Info/Warning/Error 分級
+- `GamePipeline`：每幀協調追蹤、路徑、攻擊與怪物偵測
+- `GameVisionCore`：血條 / 小地圖 / 模板匹配（OpenCV）
+
+#### 開發輔助
+
+- 版面驗證：設定環境變數 `ARTALEAI_LAYOUT_VERIFY=1` 後執行主程式（見 `UI/MapEditor/MapEditorSidebarLayoutVerify.cs`）
+
+#### 日誌
+
+- `Shared/Logger.cs`：Serilog 結構化日誌（檔案 + 主控台）
 
 ## 功能詳細說明
 
@@ -416,12 +415,15 @@ overlayStyle:
 
 | 類別 | 技術 | 版本 | 用途 |
 |------|------|------|------|
-| **程式語言** | C# | 8.0+ | 主要開發語言 |
-| **UI 框架** | Windows Forms | .NET Framework 4.7.2+ | 使用者介面 |
-| **電腦視覺** | OpenCvSharp | 4.8.0+ | 影像處理與分析 |
+| **程式語言** | C# | 12 | 主要開發語言（.NET 8） |
+| **執行時** | .NET | 8.0 (`net8.0-windows10.0.19041.0`) | 目標框架 |
+| **UI 框架** | Windows Forms | .NET 8 | 使用者介面 |
+| **電腦視覺** | OpenCvSharp | 4.11.0 | 影像處理與分析 |
 | **圖形 API** | SharpDX | 4.2.0 | DirectX 螢幕截圖 |
-| **組態管理** | YamlDotNet | 最新穩定版 | YAML 配置解析 |
-| **JSON 處理** | System.Text.Json | .NET 內建 | JSON 序列化/反序列化 |
+| **WinRT / 擷取** | Windows App SDK | 1.7 | WinRT 螢幕擷取整合 |
+| **組態管理** | YamlDotNet | 16.3.0 | YAML 配置解析 |
+| **JSON 處理** | Newtonsoft.Json | 13.0.3 | JSON 序列化/反序列化 |
+| **日誌** | Serilog | 4.3.0 | 結構化日誌（檔案 + 主控台） |
 
 ### 核心演算法
 

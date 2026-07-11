@@ -1,6 +1,6 @@
 namespace ArtaleAI;
 
-using ArtaleAI.UI.MapEditing;
+using ArtaleAI.UI.MapEditor;
 
 static class Program
 {

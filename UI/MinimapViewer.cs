@@ -1,6 +1,5 @@
 using ArtaleAI.Models.Config;
-using ArtaleAI.Services;
-using ArtaleAI.Utils;
+using ArtaleAI.Shared;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
 using System.Drawing;
@@ -358,7 +357,7 @@ namespace ArtaleAI.UI
                         float px = pp.X * _zoomFactor;
                         float py = pp.Y * _zoomFactor;
                         float cSize = 5 * _zoomFactor;
-                        DrawingHelper.DrawCrosshair(graphics, new SdPointF(px, py), cSize, ArtaleAI.Core.GameVisionCore.ParseColor(style.FrameColor), style.FrameThickness);
+                        DrawingHelper.DrawCrosshair(graphics, new SdPointF(px, py), cSize, ArtaleAI.Vision.GameVisionCore.ParseColor(style.FrameColor), style.FrameThickness);
                     }
 
                     if (pathData.TemporaryTarget.HasValue)

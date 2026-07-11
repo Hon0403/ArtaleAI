@@ -1,4 +1,4 @@
-namespace ArtaleAI.UI.MapEditing
+namespace ArtaleAI.UI.MapEditor
 {
     /// <summary>小地圖使用情境（路徑編輯／即時疊加）。</summary>
     public enum MinimapUsage
