@@ -47,6 +47,7 @@ namespace ArtaleAI
             tableLayoutPanel_Layers = new TableLayoutPanel();
             chk_LayerPlatforms = new CheckBox();
             chk_LayerRopes = new CheckBox();
+            chk_LayerJumpLinks = new CheckBox();
             chk_LayerManualAnchors = new CheckBox();
             chk_LayerNodes = new CheckBox();
             chk_LayerEdges = new CheckBox();
@@ -60,6 +61,7 @@ namespace ArtaleAI
             groupBox3 = new GroupBox();
             rdo_TwoPointLink = new RadioButton();
             rdo_DeleteMarker = new RadioButton();
+            rdo_JumpLinkMarker = new RadioButton();
             rdo_RopeMarker = new RadioButton();
             rdo_PathMarker = new RadioButton();
             rdo_SelectMode = new RadioButton();
@@ -371,7 +373,7 @@ namespace ArtaleAI
             pictureBoxMinimap.Location = new Point(0, 0);
             pictureBoxMinimap.Name = "pictureBoxMinimap";
             pictureBoxMinimap.Size = new Size(686, 575);
-            pictureBoxMinimap.SizeMode = PictureBoxSizeMode.Zoom;
+            pictureBoxMinimap.SizeMode = PictureBoxSizeMode.Normal;
             pictureBoxMinimap.TabIndex = 0;
             pictureBoxMinimap.TabStop = false;
             pictureBoxMinimap.Paint += pictureBoxMinimap_Paint;
@@ -473,7 +475,7 @@ namespace ArtaleAI
             groupBox_Layers.MinimumSize = new Size(280, 0);
             groupBox_Layers.Name = "groupBox_Layers";
             groupBox_Layers.Padding = new Padding(4);
-            groupBox_Layers.Size = new Size(280, 84);
+            groupBox_Layers.Size = new Size(280, 108);
             groupBox_Layers.TabIndex = 3;
             groupBox_Layers.TabStop = false;
             groupBox_Layers.Text = "圖層";
@@ -487,13 +489,15 @@ namespace ArtaleAI
             tableLayoutPanel_Layers.Controls.Add(chk_LayerPlatforms, 0, 0);
             tableLayoutPanel_Layers.Controls.Add(chk_LayerRopes, 1, 0);
             tableLayoutPanel_Layers.Controls.Add(chk_LayerManualAnchors, 0, 1);
-            tableLayoutPanel_Layers.Controls.Add(chk_LayerNodes, 1, 1);
-            tableLayoutPanel_Layers.Controls.Add(chk_LayerEdges, 0, 2);
-            tableLayoutPanel_Layers.Controls.Add(chk_LayerValidation, 1, 2);
+            tableLayoutPanel_Layers.Controls.Add(chk_LayerJumpLinks, 1, 1);
+            tableLayoutPanel_Layers.Controls.Add(chk_LayerNodes, 0, 2);
+            tableLayoutPanel_Layers.Controls.Add(chk_LayerEdges, 1, 2);
+            tableLayoutPanel_Layers.Controls.Add(chk_LayerValidation, 0, 3);
             tableLayoutPanel_Layers.Dock = DockStyle.Fill;
             tableLayoutPanel_Layers.Location = new Point(4, 20);
             tableLayoutPanel_Layers.Name = "tableLayoutPanel_Layers";
-            tableLayoutPanel_Layers.RowCount = 3;
+            tableLayoutPanel_Layers.RowCount = 4;
+            tableLayoutPanel_Layers.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tableLayoutPanel_Layers.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tableLayoutPanel_Layers.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tableLayoutPanel_Layers.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -526,6 +530,19 @@ namespace ArtaleAI
             chk_LayerRopes.UseVisualStyleBackColor = true;
             chk_LayerRopes.CheckedChanged += OnLayerCheckboxChanged;
             // 
+            // chk_LayerJumpLinks
+            // 
+            chk_LayerJumpLinks.AutoSize = true;
+            chk_LayerJumpLinks.Checked = true;
+            chk_LayerJumpLinks.CheckState = CheckState.Checked;
+            chk_LayerJumpLinks.Location = new Point(139, 28);
+            chk_LayerJumpLinks.Name = "chk_LayerJumpLinks";
+            chk_LayerJumpLinks.Size = new Size(50, 19);
+            chk_LayerJumpLinks.TabIndex = 6;
+            chk_LayerJumpLinks.Text = "跳點";
+            chk_LayerJumpLinks.UseVisualStyleBackColor = true;
+            chk_LayerJumpLinks.CheckedChanged += OnLayerCheckboxChanged;
+            // 
             // chk_LayerManualAnchors
             // 
             chk_LayerManualAnchors.AutoSize = true;
@@ -544,7 +561,7 @@ namespace ArtaleAI
             chk_LayerNodes.AutoSize = true;
             chk_LayerNodes.Checked = true;
             chk_LayerNodes.CheckState = CheckState.Checked;
-            chk_LayerNodes.Location = new Point(139, 28);
+            chk_LayerNodes.Location = new Point(3, 53);
             chk_LayerNodes.Name = "chk_LayerNodes";
             chk_LayerNodes.Size = new Size(50, 19);
             chk_LayerNodes.TabIndex = 3;
@@ -557,7 +574,7 @@ namespace ArtaleAI
             chk_LayerEdges.AutoSize = true;
             chk_LayerEdges.Checked = true;
             chk_LayerEdges.CheckState = CheckState.Checked;
-            chk_LayerEdges.Location = new Point(3, 53);
+            chk_LayerEdges.Location = new Point(139, 53);
             chk_LayerEdges.Name = "chk_LayerEdges";
             chk_LayerEdges.Size = new Size(38, 19);
             chk_LayerEdges.TabIndex = 4;
@@ -570,7 +587,7 @@ namespace ArtaleAI
             chk_LayerValidation.AutoSize = true;
             chk_LayerValidation.Checked = true;
             chk_LayerValidation.CheckState = CheckState.Checked;
-            chk_LayerValidation.Location = new Point(139, 53);
+            chk_LayerValidation.Location = new Point(3, 78);
             chk_LayerValidation.Name = "chk_LayerValidation";
             chk_LayerValidation.Size = new Size(62, 19);
             chk_LayerValidation.TabIndex = 5;
@@ -643,6 +660,7 @@ namespace ArtaleAI
             groupBox3.Controls.Add(chk_AdvancedMode);
             groupBox3.Controls.Add(rdo_TwoPointLink);
             groupBox3.Controls.Add(rdo_DeleteMarker);
+            groupBox3.Controls.Add(rdo_JumpLinkMarker);
             groupBox3.Controls.Add(rdo_RopeMarker);
             groupBox3.Controls.Add(rdo_PathMarker);
             groupBox3.Controls.Add(rdo_SelectMode);
@@ -651,7 +669,7 @@ namespace ArtaleAI
             groupBox3.MaximumSize = new Size(320, 0);
             groupBox3.MinimumSize = new Size(280, 0);
             groupBox3.Name = "groupBox3";
-            groupBox3.Size = new Size(280, 123);
+            groupBox3.Size = new Size(280, 145);
             groupBox3.TabIndex = 1;
             groupBox3.TabStop = false;
             groupBox3.Text = "標記編輯模式";
@@ -659,7 +677,7 @@ namespace ArtaleAI
             // chk_AdvancedMode
             // 
             chk_AdvancedMode.AutoSize = true;
-            chk_AdvancedMode.Location = new Point(8, 90);
+            chk_AdvancedMode.Location = new Point(8, 112);
             chk_AdvancedMode.Name = "chk_AdvancedMode";
             chk_AdvancedMode.Size = new Size(134, 19);
             chk_AdvancedMode.TabIndex = 7;
@@ -670,7 +688,7 @@ namespace ArtaleAI
             // rdo_TwoPointLink
             // 
             rdo_TwoPointLink.AutoSize = true;
-            rdo_TwoPointLink.Location = new Point(8, 72);
+            rdo_TwoPointLink.Location = new Point(119, 72);
             rdo_TwoPointLink.Name = "rdo_TwoPointLink";
             rdo_TwoPointLink.Size = new Size(73, 19);
             rdo_TwoPointLink.TabIndex = 6;
@@ -682,13 +700,24 @@ namespace ArtaleAI
             // rdo_DeleteMarker
             // 
             rdo_DeleteMarker.AutoSize = true;
-            rdo_DeleteMarker.Location = new Point(8, 47);
+            rdo_DeleteMarker.Location = new Point(119, 47);
             rdo_DeleteMarker.Name = "rdo_DeleteMarker";
             rdo_DeleteMarker.Size = new Size(73, 19);
             rdo_DeleteMarker.TabIndex = 4;
             rdo_DeleteMarker.TabStop = true;
             rdo_DeleteMarker.Text = "刪除標記";
             rdo_DeleteMarker.UseVisualStyleBackColor = true;
+            // 
+            // rdo_JumpLinkMarker
+            // 
+            rdo_JumpLinkMarker.AutoSize = true;
+            rdo_JumpLinkMarker.Location = new Point(8, 47);
+            rdo_JumpLinkMarker.Name = "rdo_JumpLinkMarker";
+            rdo_JumpLinkMarker.Size = new Size(73, 19);
+            rdo_JumpLinkMarker.TabIndex = 8;
+            rdo_JumpLinkMarker.TabStop = true;
+            rdo_JumpLinkMarker.Text = "跳點標記";
+            rdo_JumpLinkMarker.UseVisualStyleBackColor = true;
             // 
             // rdo_RopeMarker
             // 
@@ -715,7 +744,7 @@ namespace ArtaleAI
             // rdo_SelectMode
             // 
             rdo_SelectMode.AutoSize = true;
-            rdo_SelectMode.Location = new Point(119, 47);
+            rdo_SelectMode.Location = new Point(8, 72);
             rdo_SelectMode.Name = "rdo_SelectMode";
             rdo_SelectMode.Size = new Size(49, 19);
             rdo_SelectMode.TabIndex = 5;
@@ -856,6 +885,7 @@ namespace ArtaleAI
         private System.Windows.Forms.ComboBox cbo_MapFiles;
         private GroupBox groupBox3;
         private RadioButton rdo_DeleteMarker;
+        private RadioButton rdo_JumpLinkMarker;
         private RadioButton rdo_RopeMarker;
         private RadioButton rdo_PathMarker;
         private Button btn_New;
@@ -894,6 +924,7 @@ namespace ArtaleAI
         private TableLayoutPanel tableLayoutPanel_Layers;
         private CheckBox chk_LayerPlatforms;
         private CheckBox chk_LayerRopes;
+        private CheckBox chk_LayerJumpLinks;
         private CheckBox chk_LayerManualAnchors;
         private CheckBox chk_LayerNodes;
         private CheckBox chk_LayerEdges;

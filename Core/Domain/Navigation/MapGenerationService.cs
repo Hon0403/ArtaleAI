@@ -26,6 +26,7 @@ namespace ArtaleAI.Core.Domain.Navigation
             mapData.Nodes ??= new List<NavNodeData>();
             mapData.Edges ??= new List<NavEdgeData>();
             mapData.Ropes ??= new List<float[]>();
+            mapData.JumpLinks ??= new List<float[]>();
             mapData.PolylinePlatforms ??= new List<PolylinePlatformData>();
             mapData.ManualEdgeAnchors ??= new List<ManualEdgeAnchor>();
 
@@ -186,17 +187,16 @@ namespace ArtaleAI.Core.Domain.Navigation
                     cutPoints.Add((segmentArcLengths[i], new PointF(plat.Points[i].X, plat.Points[i].Y)));
                 }
 
-                // 3. 投影繩索端點（Rope Event Cut Points）
-                foreach (var rope in mapData.Ropes)
+                // 3. 投影垂直通道端點（繩索與跳點切分）
+                foreach (var channel in EnumerateVerticalChannelEndpoints(mapData))
                 {
-                    if (rope.Length < 3) continue;
-                    float ropeX = rope[0];
-                    float topY = rope[1];
-                    float bottomY = rope[2];
+                    var channelPoints = new PointF[]
+                    {
+                        new PointF(channel.X, channel.TopY),
+                        new PointF(channel.X, channel.BottomY)
+                    };
 
-                    var ropePoints = new PointF[] { new PointF(ropeX, topY), new PointF(ropeX, bottomY) };
-
-                    foreach (var ropeP in ropePoints)
+                    foreach (var channelP in channelPoints)
                     {
                         float bestDist = float.MaxValue;
                         float bestArcLength = 0f;
@@ -213,23 +213,19 @@ namespace ArtaleAI.Core.Domain.Navigation
                             float ab2 = abx * abx + aby * aby;
                             if (ab2 < 0.001f) continue;
 
-                            float apx = ropeP.X - A.X;
-                            float apy = ropeP.Y - A.Y;
+                            float apx = channelP.X - A.X;
+                            float apy = channelP.Y - A.Y;
                             float t = (apx * abx + apy * aby) / ab2;
                             t = Math.Max(0.0f, Math.Min(1.0f, t));
 
                             var proj = new PointF(A.X + t * abx, A.Y + t * aby);
-                            float dx = ropeP.X - proj.X;
-                            float dy = ropeP.Y - proj.Y;
+                            float dx = channelP.X - proj.X;
+                            float dy = channelP.Y - proj.Y;
                             float dist = (float)Math.Sqrt(dx * dx + dy * dy);
 
                             float segDist = (float)Math.Sqrt(ab2);
                             float arcLen = segmentArcLengths[i] + t * segDist;
 
-                            // 接觸優先與 Tie-break 規則：
-                            // 1. 最小投影距離優先
-                            // 2. 距離相近時，累積弧長較小者優先
-                            // 3. 累積弧長也相近時，Segment Index 較小者優先
                             if (dist < bestDist - 0.0001f)
                             {
                                 bestDist = dist;
@@ -246,15 +242,12 @@ namespace ArtaleAI.Core.Domain.Navigation
                                     bestProj = proj;
                                     bestSegIdx = i;
                                 }
-                                else if (Math.Abs(arcLen - bestArcLength) < 0.0001f)
+                                else if (Math.Abs(arcLen - bestArcLength) < 0.0001f && i < bestSegIdx)
                                 {
-                                    if (i < bestSegIdx)
-                                    {
-                                        bestDist = dist;
-                                        bestArcLength = arcLen;
-                                        bestProj = proj;
-                                        bestSegIdx = i;
-                                    }
+                                    bestDist = dist;
+                                    bestArcLength = arcLen;
+                                    bestProj = proj;
+                                    bestSegIdx = i;
                                 }
                             }
                         }
@@ -361,60 +354,38 @@ namespace ArtaleAI.Core.Domain.Navigation
                 }
             }
 
-            // 步驟 C：建立垂直爬繩邊，使用平面歐式距離最近匹配
+            // 步驟 C：垂直繩索 → ClimbUp / ClimbDown
             foreach (var rope in mapData.Ropes)
             {
                 if (rope.Length < 3) continue;
-                float ropeX = rope[0];
-                float topY = rope[1];
-                float bottomY = rope[2];
+                TryAddVerticalChannelEdges(
+                    generatedNodes,
+                    generatedEdges,
+                    rope[0],
+                    rope[1],
+                    rope[2],
+                    NavigationActionType.ClimbUp,
+                    NavigationActionType.ClimbDown,
+                    5.0f,
+                    3.0f,
+                    $"ropeX:{rope[0]:F1}");
+            }
 
-                NavNodeData? topNode = null;
-                float minTopDist = float.MaxValue;
-                NavNodeData? botNode = null;
-                float minBotDist = float.MaxValue;
-
-                foreach (var n in generatedNodes)
-                {
-                    float dxTop = n.X - ropeX;
-                    float dyTop = n.Y - topY;
-                    float distTop = (float)Math.Sqrt(dxTop * dxTop + dyTop * dyTop);
-                    if (distTop <= HeightTolerance && distTop < minTopDist)
-                    {
-                        minTopDist = distTop;
-                        topNode = n;
-                    }
-
-                    float dxBot = n.X - ropeX;
-                    float dyBot = n.Y - bottomY;
-                    float distBot = (float)Math.Sqrt(dxBot * dxBot + dyBot * dyBot);
-                    if (distBot <= HeightTolerance && distBot < minBotDist)
-                    {
-                        minBotDist = distBot;
-                        botNode = n;
-                    }
-                }
-
-                if (topNode != null && botNode != null)
-                {
-                    var ropeMeta = new List<string> { $"ropeX:{ropeX:F1}" };
-                    generatedEdges.Add(new NavEdgeData
-                    {
-                        FromNodeId = botNode.Id,
-                        ToNodeId = topNode.Id,
-                        ActionType = NavigationActionType.ClimbUp,
-                        Cost = 5.0f,
-                        InputSequence = ropeMeta
-                    });
-                    generatedEdges.Add(new NavEdgeData
-                    {
-                        FromNodeId = topNode.Id,
-                        ToNodeId = botNode.Id,
-                        ActionType = NavigationActionType.ClimbDown,
-                        Cost = 3.0f,
-                        InputSequence = ropeMeta
-                    });
-                }
+            // 步驟 C2：垂直跳點 → Jump / JumpDown（幾何 SSOT，比照繩索）
+            foreach (var link in mapData.JumpLinks ?? new List<float[]>())
+            {
+                if (link.Length < 3) continue;
+                TryAddVerticalChannelEdges(
+                    generatedNodes,
+                    generatedEdges,
+                    link[0],
+                    link[1],
+                    link[2],
+                    NavigationActionType.Jump,
+                    NavigationActionType.JumpDown,
+                    8.0f,
+                    2.0f,
+                    $"jumpLinkX:{link[0]:F1}");
             }
 
             // 確保每次生成的節點與邊排序穩定，防止因集合順序造成 Snapshot Diff 漂移
@@ -472,6 +443,87 @@ namespace ArtaleAI.Core.Domain.Navigation
             {
                 cutPoints.Add((bestArcLength, bestProj));
             }
+        }
+
+        private static IEnumerable<(float X, float TopY, float BottomY)> EnumerateVerticalChannelEndpoints(MapData mapData)
+        {
+            if (mapData.Ropes != null)
+            {
+                foreach (var rope in mapData.Ropes)
+                {
+                    if (rope.Length < 3) continue;
+                    yield return (rope[0], rope[1], rope[2]);
+                }
+            }
+
+            if (mapData.JumpLinks != null)
+            {
+                foreach (var link in mapData.JumpLinks)
+                {
+                    if (link.Length < 3) continue;
+                    yield return (link[0], link[1], link[2]);
+                }
+            }
+        }
+
+        private static void TryAddVerticalChannelEdges(
+            List<NavNodeData> generatedNodes,
+            List<NavEdgeData> generatedEdges,
+            float channelX,
+            float topY,
+            float bottomY,
+            NavigationActionType lowerToUpperAction,
+            NavigationActionType upperToLowerAction,
+            float lowerToUpperCost,
+            float upperToLowerCost,
+            string metadataToken)
+        {
+            NavNodeData? topNode = null;
+            float minTopDist = float.MaxValue;
+            NavNodeData? botNode = null;
+            float minBotDist = float.MaxValue;
+
+            foreach (var n in generatedNodes)
+            {
+                float dxTop = n.X - channelX;
+                float dyTop = n.Y - topY;
+                float distTop = (float)Math.Sqrt(dxTop * dxTop + dyTop * dyTop);
+                if (distTop <= HeightTolerance && distTop < minTopDist)
+                {
+                    minTopDist = distTop;
+                    topNode = n;
+                }
+
+                float dxBot = n.X - channelX;
+                float dyBot = n.Y - bottomY;
+                float distBot = (float)Math.Sqrt(dxBot * dxBot + dyBot * dyBot);
+                if (distBot <= HeightTolerance && distBot < minBotDist)
+                {
+                    minBotDist = distBot;
+                    botNode = n;
+                }
+            }
+
+            if (topNode == null || botNode == null || string.Equals(topNode.Id, botNode.Id, StringComparison.Ordinal))
+                return;
+
+            var meta = new List<string> { metadataToken };
+            generatedEdges.Add(new NavEdgeData
+            {
+                FromNodeId = botNode.Id,
+                ToNodeId = topNode.Id,
+                ActionType = lowerToUpperAction,
+                Cost = lowerToUpperCost,
+                InputSequence = meta
+            });
+            generatedEdges.Add(new NavEdgeData
+            {
+                FromNodeId = topNode.Id,
+                ToNodeId = botNode.Id,
+                ActionType = upperToLowerAction,
+                Cost = upperToLowerCost,
+                InputSequence = meta
+            });
         }
 
         private static int Quantize(float value)

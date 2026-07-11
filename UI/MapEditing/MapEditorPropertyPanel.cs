@@ -124,6 +124,9 @@ namespace ArtaleAI.UI.MapEditing
                     case MapEditorSelectionKind.Rope when selection.RopeIndex >= 0:
                         BuildRopeView(editor, selection.RopeIndex);
                         break;
+                    case MapEditorSelectionKind.JumpLink when selection.JumpLinkIndex >= 0:
+                        BuildJumpLinkView(editor, selection.JumpLinkIndex);
+                        break;
                     case MapEditorSelectionKind.ManualEdge when selection.ManualEdge != null:
                         BuildManualEdgeView(editor, selection.ManualEdge);
                         break;
@@ -217,12 +220,14 @@ namespace ArtaleAI.UI.MapEditing
             AddSectionTitle("地圖摘要");
             AddRow($"平台: {summary.PlatformCount}");
             AddRow($"繩索: {summary.RopeCount}");
+            AddRow($"跳點: {summary.JumpLinkCount}");
             AddRow($"手動邊: {summary.ManualEdgeCount}");
             AddRow($"Runtime 節點: {summary.RuntimeNodeCount}");
             AddRow($"Runtime 邊: {summary.RuntimeEdgeCount}");
             AddCanvasGuide(
                 "路線標記：在畫布點擊建立折線",
                 "繩索標記：拖曳上下兩端",
+                "跳點標記：拖曳上下兩端（自動 Jump/JumpDown）",
                 "兩點連線（進階）：點選起終點平台",
                 "選取：檢視屬性；拖曳折點調整形狀",
                 "Shift+點擊：循環選節點");
@@ -292,6 +297,29 @@ namespace ArtaleAI.UI.MapEditing
             AddRow($"Climb 邊（全圖）: {stats.ClimbEdgeCount}");
             AddCanvasGuide(
                 "調整位置：刪除後用「繩索標記」在畫布重畫",
+                "刪除：切到「刪除標記」再點選");
+        }
+
+        private void BuildJumpLinkView(MapEditor editor, int jumpLinkIndex)
+        {
+            if (editor.GetCurrentMapData().JumpLinks == null ||
+                jumpLinkIndex < 0 ||
+                jumpLinkIndex >= editor.GetCurrentMapData().JumpLinks.Count)
+            {
+                AddRow("（跳點已不存在）");
+                return;
+            }
+
+            var link = editor.GetCurrentMapData().JumpLinks[jumpLinkIndex];
+            var stats = editor.GetJumpLinkStats(jumpLinkIndex);
+            AddSectionTitle($"JumpLink #{jumpLinkIndex}");
+            AddRow($"linkX: {link[0]:F1}");
+            AddRow($"topY: {link[1]:F1}");
+            AddRow($"bottomY: {link[2]:F1}");
+            AddRow($"Jump/JumpDown 邊（全圖）: {stats.JumpEdgeCount}");
+            AddHint("拓撲自動建立下→上 Jump、上→下 JumpDown 雙向邊。");
+            AddCanvasGuide(
+                "調整位置：刪除後用「跳點標記」在畫布重畫",
                 "刪除：切到「刪除標記」再點選");
         }
 

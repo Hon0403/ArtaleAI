@@ -52,6 +52,12 @@ namespace ArtaleAI.Models.Map
         /// <summary>繩索位置列表</summary>
         public List<float[]> Ropes { get; set; } = new();
 
+        /// <summary>
+        /// 垂直跳點通道，格式與 <see cref="Ropes"/> 相同：[x, topY, bottomY]。
+        /// 拓撲層自動建立 Jump（下→上）與 JumpDown（上→下）雙向邊。
+        /// </summary>
+        public List<float[]> JumpLinks { get; set; } = new();
+
         /// <summary>折線平台幾何列表</summary>
         public List<PolylinePlatformData> PolylinePlatforms { get; set; } = new();
 

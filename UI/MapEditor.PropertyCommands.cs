@@ -8,6 +8,7 @@ namespace ArtaleAI.UI
     {
         public int PlatformCount { get; init; }
         public int RopeCount { get; init; }
+        public int JumpLinkCount { get; init; }
         public int ManualEdgeCount { get; init; }
         public int RuntimeNodeCount { get; init; }
         public int RuntimeEdgeCount { get; init; }
@@ -26,6 +27,11 @@ namespace ArtaleAI.UI
     public sealed class MapEditorRopeStats
     {
         public int ClimbEdgeCount { get; init; }
+    }
+
+    public sealed class MapEditorJumpLinkStats
+    {
+        public int JumpEdgeCount { get; init; }
     }
 
     public sealed class MapEditorManualEdgeStats
@@ -49,6 +55,7 @@ namespace ArtaleAI.UI
             {
                 PlatformCount = _currentMapData.PolylinePlatforms?.Count ?? 0,
                 RopeCount = _currentMapData.Ropes?.Count ?? 0,
+                JumpLinkCount = _currentMapData.JumpLinks?.Count ?? 0,
                 ManualEdgeCount = _currentMapData.ManualEdgeAnchors?.Count ?? 0,
                 RuntimeNodeCount = _currentMapData.Nodes.Count,
                 RuntimeEdgeCount = _currentMapData.Edges.Count
@@ -82,6 +89,44 @@ namespace ArtaleAI.UI
             int climb = _currentMapData.Edges.Count(e =>
                 e.ActionType is NavigationActionType.ClimbUp or NavigationActionType.ClimbDown);
             return new MapEditorRopeStats { ClimbEdgeCount = climb };
+        }
+
+        public MapEditorJumpLinkStats GetJumpLinkStats(int jumpLinkIndex)
+        {
+            int jumpEdges = _currentMapData.Edges.Count(e =>
+                e.ActionType is NavigationActionType.Jump or NavigationActionType.JumpDown);
+            return new MapEditorJumpLinkStats { JumpEdgeCount = jumpEdges };
+        }
+
+        public bool TryUpdateJumpLink(int jumpLinkIndex, float linkX, float topY, float bottomY, out string? error)
+        {
+            error = null;
+            _currentMapData.JumpLinks ??= new List<float[]>();
+            if (jumpLinkIndex < 0 || jumpLinkIndex >= _currentMapData.JumpLinks.Count)
+            {
+                error = "跳點索引無效。";
+                return false;
+            }
+
+            if (topY > bottomY)
+                (topY, bottomY) = (bottomY, topY);
+
+            if (bottomY - topY < 2.0f)
+            {
+                error = "跳點垂直跨度至少 2px。";
+                return false;
+            }
+
+            _currentMapData.JumpLinks[jumpLinkIndex] = new[]
+            {
+                RoundCoord(linkX),
+                RoundCoord(topY),
+                RoundCoord(bottomY)
+            };
+
+            CommitMutation();
+            SetSelection(MapEditorSelection.ForJumpLink(jumpLinkIndex));
+            return true;
         }
 
         public MapEditorManualEdgeStats GetManualEdgeStats(ManualEdgeAnchor anchor)
@@ -273,15 +318,18 @@ namespace ArtaleAI.UI
             return true;
         }
 
-        private string DescribeDeleteTarget(DeleteTargetKind kind, PolylinePlatformData? platform, int ropeIndex)
+        private string DescribeDeleteTarget(DeleteTargetKind kind, PolylinePlatformData? platform, int lineIndex)
         {
             return kind switch
             {
                 DeleteTargetKind.Platform when platform != null =>
                     $"確定刪除平台「{platform.Id}」？\n相依的手動邊錨點也會一併移除。",
-                DeleteTargetKind.Rope when ropeIndex >= 0 && _currentMapData.Ropes != null &&
-                    ropeIndex < _currentMapData.Ropes.Count =>
-                    $"確定刪除繩索 #{ropeIndex}（X={_currentMapData.Ropes[ropeIndex][0]:F1}）？",
+                DeleteTargetKind.JumpLink when lineIndex >= 0 && _currentMapData.JumpLinks != null &&
+                    lineIndex < _currentMapData.JumpLinks.Count =>
+                    $"確定刪除跳點 #{lineIndex}（X={_currentMapData.JumpLinks[lineIndex][0]:F1}）？",
+                DeleteTargetKind.Rope when lineIndex >= 0 && _currentMapData.Ropes != null &&
+                    lineIndex < _currentMapData.Ropes.Count =>
+                    $"確定刪除繩索 #{lineIndex}（X={_currentMapData.Ropes[lineIndex][0]:F1}）？",
                 DeleteTargetKind.ManualEdge =>
                     "確定刪除此手動邊錨點？",
                 _ => "確定刪除選取的物件？"

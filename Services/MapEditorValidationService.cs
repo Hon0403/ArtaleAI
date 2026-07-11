@@ -20,6 +20,7 @@ namespace ArtaleAI.Services
             var issues = new List<MapEditorValidationIssue>();
             mapData.PolylinePlatforms ??= new List<PolylinePlatformData>();
             mapData.Ropes ??= new List<float[]>();
+            mapData.JumpLinks ??= new List<float[]>();
             mapData.ManualEdgeAnchors ??= new List<ManualEdgeAnchor>();
             mapData.Nodes ??= new List<NavNodeData>();
             mapData.Edges ??= new List<NavEdgeData>();
@@ -31,6 +32,7 @@ namespace ArtaleAI.Services
 
             ValidateSegments(mapData, issues);
             ValidateRopes(mapData, issues);
+            ValidateJumpLinks(mapData, issues);
             ValidateManualEdgeAnchors(mapData, platformById, issues);
 
             int componentCount = AnalyzeConnectivity(mapData, issues);
@@ -129,7 +131,7 @@ namespace ArtaleAI.Services
                 bool hasBottom = mapData.Nodes.Any(n => Distance(n.X, n.Y, ropeX, bottomY) <= HeightTolerance);
                 bool hasClimb = mapData.Edges.Any(e =>
                     e.ActionType is NavigationActionType.ClimbUp or NavigationActionType.ClimbDown &&
-                    EdgeTouchesRope(e, mapData.Nodes, ropeX, topY, bottomY));
+                    EdgeTouchesVerticalChannel(e, mapData.Nodes, ropeX, topY, bottomY));
 
                 if (!hasTop || !hasBottom || !hasClimb)
                 {
@@ -140,6 +142,47 @@ namespace ArtaleAI.Services
                         Message = $"繩索 #{i}（X={ropeX:F1}）未能投影到上下平台或未建立 Climb 邊。",
                         TargetKind = MapEditorValidationTargetKind.Rope,
                         TargetRopeIndex = i
+                    });
+                }
+            }
+        }
+
+        private static void ValidateJumpLinks(MapData mapData, List<MapEditorValidationIssue> issues)
+        {
+            for (int i = 0; i < mapData.JumpLinks.Count; i++)
+            {
+                var link = mapData.JumpLinks[i];
+                if (link.Length < 3)
+                {
+                    issues.Add(new MapEditorValidationIssue
+                    {
+                        Code = "V-JumpLink",
+                        Severity = MapEditorValidationSeverity.Error,
+                        Message = $"跳點 #{i} 資料格式無效。",
+                        TargetKind = MapEditorValidationTargetKind.JumpLink,
+                        TargetJumpLinkIndex = i
+                    });
+                    continue;
+                }
+
+                float linkX = link[0];
+                float topY = link[1];
+                float bottomY = link[2];
+                bool hasTop = mapData.Nodes.Any(n => Distance(n.X, n.Y, linkX, topY) <= HeightTolerance);
+                bool hasBottom = mapData.Nodes.Any(n => Distance(n.X, n.Y, linkX, bottomY) <= HeightTolerance);
+                bool hasJump = mapData.Edges.Any(e =>
+                    e.ActionType is NavigationActionType.Jump or NavigationActionType.JumpDown &&
+                    EdgeTouchesVerticalChannel(e, mapData.Nodes, linkX, topY, bottomY));
+
+                if (!hasTop || !hasBottom || !hasJump)
+                {
+                    issues.Add(new MapEditorValidationIssue
+                    {
+                        Code = "V-JumpLink",
+                        Severity = MapEditorValidationSeverity.Error,
+                        Message = $"跳點 #{i}（X={linkX:F1}）未能投影到上下平台或未建立 Jump 邊。",
+                        TargetKind = MapEditorValidationTargetKind.JumpLink,
+                        TargetJumpLinkIndex = i
                     });
                 }
             }
@@ -457,7 +500,7 @@ namespace ArtaleAI.Services
             return ids.Count == 0 ? "（無平台）" : string.Join(", ", ids);
         }
 
-        private static bool EdgeTouchesRope(
+        private static bool EdgeTouchesVerticalChannel(
             NavEdgeData edge,
             List<NavNodeData> nodes,
             float ropeX,

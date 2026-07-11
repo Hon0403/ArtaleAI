@@ -78,6 +78,9 @@ namespace ArtaleAI
 
         private string _lastReportedAction = "";
         private bool _skipNextMapClick;
+        private bool _isMinimapPanning;
+        private SdPoint _minimapPanStartClient;
+        private PointF _minimapPanStartOffset;
 
         /// <summary>路徑動作狀態列去重（執行緒安全）。</summary>
         private void ReportAction(string action)
@@ -297,6 +300,7 @@ namespace ArtaleAI
 
             rdo_PathMarker.CheckedChanged += OnEditModeChanged;
             rdo_RopeMarker.CheckedChanged += OnEditModeChanged;
+            rdo_JumpLinkMarker.CheckedChanged += OnEditModeChanged;
             rdo_DeleteMarker.CheckedChanged += OnEditModeChanged;
 
             pictureBoxMinimap.BackColor = Color.FromArgb(45, 45, 48);
@@ -589,10 +593,10 @@ namespace ArtaleAI
                     else
                         setImage();
 
+                    SyncPathEditorMinimapBounds();
+
                     if (result.MinimapScreenRect.HasValue)
                     {
-                        minimapBounds = result.MinimapScreenRect.Value;
-                        _mapEditor?.SetMinimapBounds(minimapBounds);
                         _gamePipeline?.SetMinimapBoxes(new List<Rectangle> { result.MinimapScreenRect.Value });
                         MsgLog.ShowStatus(textBox1, "路徑編輯模式已啟動");
                     }
@@ -1013,6 +1017,7 @@ namespace ArtaleAI
 
             _mapEditor.Layers.ShowPlatforms = chk_LayerPlatforms.Checked;
             _mapEditor.Layers.ShowRopes = chk_LayerRopes.Checked;
+            _mapEditor.Layers.ShowJumpLinks = chk_LayerJumpLinks.Checked;
             _mapEditor.Layers.ShowManualAnchors = chk_LayerManualAnchors.Checked;
             _mapEditor.Layers.ShowNodes = chk_LayerNodes.Checked;
             _mapEditor.Layers.ShowEdges = chk_LayerEdges.Checked;
@@ -1136,6 +1141,7 @@ namespace ArtaleAI
             EditMode selectedMode = EditMode.None;
             if (rdo_PathMarker.Checked) selectedMode = EditMode.Platform;
             else if (rdo_RopeMarker.Checked) selectedMode = EditMode.Rope;
+            else if (rdo_JumpLinkMarker.Checked) selectedMode = EditMode.JumpLink;
             else if (rdo_DeleteMarker.Checked) selectedMode = EditMode.Delete;
             else if (rdo_SelectMode.Checked) selectedMode = EditMode.Select;
             else if (rdo_TwoPointLink.Checked) selectedMode = EditMode.ManualEdge;
@@ -1179,7 +1185,9 @@ namespace ArtaleAI
             {
                 if (_minimapViewer == null) return;
                 bool pathLoaded = loadedPathData != null && 
-                    ((loadedPathData.PolylinePlatforms?.Count ?? 0) > 0 || (loadedPathData.Ropes?.Count ?? 0) > 0);
+                    ((loadedPathData.PolylinePlatforms?.Count ?? 0) > 0 ||
+                     (loadedPathData.Ropes?.Count ?? 0) > 0 ||
+                     (loadedPathData.JumpLinks?.Count ?? 0) > 0);
                 bool autoStartChecked = ckB_Start.Checked;
                 bool liveViewReady = liveViewManager?.IsRunning == true && _isLiveViewTabActive;
 
@@ -1301,8 +1309,103 @@ namespace ArtaleAI
 
         #region PictureBox 滑鼠事件
 
+        private readonly struct MinimapViewportLayout
+        {
+            public float Scale { get; init; }
+            public float OffsetX { get; init; }
+            public float OffsetY { get; init; }
+            public float ImageWidth { get; init; }
+            public float ImageHeight { get; init; }
+
+            public PointF ImageToPictureBox(PointF imagePoint) =>
+                new(imagePoint.X * Scale + OffsetX, imagePoint.Y * Scale + OffsetY);
+
+            public PointF PictureBoxToImage(PointF pictureBoxPoint) =>
+                new(
+                    (pictureBoxPoint.X - OffsetX) / Scale,
+                    (pictureBoxPoint.Y - OffsetY) / Scale);
+        }
+
+        private bool TryGetMinimapViewportLayout(out MinimapViewportLayout layout)
+        {
+            layout = default;
+            if (_mapEditor == null || pictureBoxMinimap.Image == null)
+                return false;
+
+            float pbWidth = pictureBoxMinimap.ClientSize.Width;
+            float pbHeight = pictureBoxMinimap.ClientSize.Height;
+            float imageWidth = pictureBoxMinimap.Image.Width;
+            float imageHeight = pictureBoxMinimap.Image.Height;
+            if (pbWidth <= 0 || pbHeight <= 0 || imageWidth <= 0 || imageHeight <= 0)
+                return false;
+
+            float fitScale = Math.Min(pbWidth / imageWidth, pbHeight / imageHeight);
+            float scale = fitScale * _mapEditor.ZoomScale;
+            float displayWidth = imageWidth * scale;
+            float displayHeight = imageHeight * scale;
+
+            layout = new MinimapViewportLayout
+            {
+                Scale = scale,
+                OffsetX = (pbWidth - displayWidth) / 2f + _mapEditor.PanOffsetX,
+                OffsetY = (pbHeight - displayHeight) / 2f + _mapEditor.PanOffsetY,
+                ImageWidth = imageWidth,
+                ImageHeight = imageHeight
+            };
+            return scale > 0f;
+        }
+
+        private void ClampMinimapPanOffset()
+        {
+            if (_mapEditor == null || pictureBoxMinimap.Image == null)
+                return;
+
+            float pbWidth = pictureBoxMinimap.ClientSize.Width;
+            float pbHeight = pictureBoxMinimap.ClientSize.Height;
+            float imageWidth = pictureBoxMinimap.Image.Width;
+            float imageHeight = pictureBoxMinimap.Image.Height;
+            float fitScale = Math.Min(pbWidth / imageWidth, pbHeight / imageHeight);
+            float scale = fitScale * _mapEditor.ZoomScale;
+            float displayWidth = imageWidth * scale;
+            float displayHeight = imageHeight * scale;
+
+            float minPanX = displayWidth > pbWidth ? (pbWidth - displayWidth) / 2f : 0f;
+            float maxPanX = displayWidth > pbWidth ? (displayWidth - pbWidth) / 2f : 0f;
+            float minPanY = displayHeight > pbHeight ? (pbHeight - displayHeight) / 2f : 0f;
+            float maxPanY = displayHeight > pbHeight ? (displayHeight - pbHeight) / 2f : 0f;
+
+            _mapEditor.PanOffsetX = Math.Clamp(_mapEditor.PanOffsetX, minPanX, maxPanX);
+            _mapEditor.PanOffsetY = Math.Clamp(_mapEditor.PanOffsetY, minPanY, maxPanY);
+        }
+
+        private void SyncPathEditorMinimapBounds()
+        {
+            if (pictureBoxMinimap.Image == null)
+                return;
+
+            minimapBounds = new Rectangle(0, 0, pictureBoxMinimap.Image.Width, pictureBoxMinimap.Image.Height);
+            _mapEditor?.SetMinimapBounds(minimapBounds);
+        }
+
+        private PointF TranslatePictureBoxPointToImage(PointF pbPoint, PictureBox pb)
+        {
+            if (!TryGetMinimapViewportLayout(out var layout))
+                return pbPoint;
+
+            return layout.PictureBoxToImage(pbPoint);
+        }
+
         private void pictureBoxMinimap_MouseMove(object sender, MouseEventArgs e)
         {
+            if (_isMinimapPanning && _mapEditor != null)
+            {
+                _mapEditor.PanOffsetX = _minimapPanStartOffset.X + (e.X - _minimapPanStartClient.X);
+                _mapEditor.PanOffsetY = _minimapPanStartOffset.Y + (e.Y - _minimapPanStartClient.Y);
+                ClampMinimapPanOffset();
+                pictureBoxMinimap.Invalidate();
+                lbl_MouseCoords.Text = "座標: (-, -) | Ctrl+拖曳平移";
+                return;
+            }
 
             if (_mapEditor != null && !minimapBounds.IsEmpty && pictureBoxMinimap.Image != null)
             {
@@ -1342,56 +1445,46 @@ namespace ArtaleAI
             if (_mapEditor == null || minimapBounds.IsEmpty || pictureBoxMinimap.Image == null)
                 return;
 
+            if (!TryGetMinimapViewportLayout(out var layout))
+                return;
+
+            e.Graphics.Clear(pictureBoxMinimap.BackColor);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
 
-            float pbWidth = pictureBoxMinimap.ClientSize.Width;
-            float pbHeight = pictureBoxMinimap.ClientSize.Height;
-            float imgWidth = pictureBoxMinimap.Image.Width;
-            float imgHeight = pictureBoxMinimap.Image.Height;
-
-            float imgAspect = imgWidth / imgHeight;
-            float pbAspect = pbWidth / pbHeight;
-
-            float scaleX, scaleY;
-            float offsetX = 0, offsetY = 0;
-
-            float zoom = _mapEditor.ZoomScale;
-            if (pbAspect > imgAspect)
-            {
-                scaleY = (pbHeight / imgHeight) * zoom;
-                scaleX = scaleY;
-                offsetX = (pbWidth - imgWidth * scaleX) / 2;
-            }
-            else
-            {
-                scaleX = (pbWidth / imgWidth) * zoom;
-                scaleY = scaleX;
-                offsetY = (pbHeight - imgHeight * scaleY) / 2f; 
-            }
-
-            // 考慮縮放後的偏移補償 (置中)
-            if (zoom > 1.0f)
-            {
-                 // 若有需要可實作平移，目前先維持以中心點放大
-            }
+            e.Graphics.DrawImage(
+                pictureBoxMinimap.Image,
+                layout.OffsetX,
+                layout.OffsetY,
+                layout.ImageWidth * layout.Scale,
+                layout.ImageHeight * layout.Scale);
 
             PointF ConvertScreenToDisplay(PointF screenPoint)
             {
                 float relX = screenPoint.X - minimapBounds.X;
                 float relY = screenPoint.Y - minimapBounds.Y;
-                return new PointF(
-                    relX * scaleX + offsetX,
-                    relY * scaleY + offsetY
-                );
+                return layout.ImageToPictureBox(new PointF(relX, relY));
             }
 
-            DrawPathEditorGrid(e.Graphics, imgWidth, imgHeight, scaleX, scaleY, offsetX, offsetY);
+            DrawPathEditorGrid(
+                e.Graphics,
+                layout.ImageWidth,
+                layout.ImageHeight,
+                layout.Scale,
+                layout.Scale,
+                layout.OffsetX,
+                layout.OffsetY);
 
             _mapEditor.Render(e.Graphics, ConvertScreenToDisplay);
 
-            DrawPathEditorRuler(e.Graphics, imgWidth, imgHeight, scaleX, scaleY, offsetX, offsetY);
-
+            DrawPathEditorRuler(
+                e.Graphics,
+                layout.ImageWidth,
+                layout.ImageHeight,
+                layout.Scale,
+                layout.Scale,
+                layout.OffsetX,
+                layout.OffsetY);
         }
 
 
@@ -1400,7 +1493,7 @@ namespace ArtaleAI
         private void DrawPathEditorGrid(Graphics g, float imgWidth, float imgHeight,
             float scaleX, float scaleY, float offsetX, float offsetY)
         {
-            const int MajorTickInterval = 10;
+            const int MajorTickInterval = 5;
             const int RulerSize = 18;
 
             using var gridPen = new Pen(Color.FromArgb(30, 255, 255, 255), 1);
@@ -1429,8 +1522,8 @@ namespace ArtaleAI
             float scaleX, float scaleY, float offsetX, float offsetY)
         {
             const int RulerSize = 18;
-            const int MajorTickInterval = 10;
-            const int MinorTickInterval = 5;
+            const int MajorTickInterval = 5;
+            const int MinorTickInterval = 2;
 
             var bgColor = Color.FromArgb(30, 30, 30);
             var tickColor = Color.FromArgb(100, 100, 100);
@@ -1498,6 +1591,17 @@ namespace ArtaleAI
             if (_mapEditor == null || minimapBounds.IsEmpty || e.Button != MouseButtons.Left)
                 return;
 
+            if ((ModifierKeys & Keys.Control) != 0)
+            {
+                _isMinimapPanning = true;
+                _minimapPanStartClient = e.Location;
+                _minimapPanStartOffset = new PointF(_mapEditor.PanOffsetX, _mapEditor.PanOffsetY);
+                pictureBoxMinimap.Capture = true;
+                pictureBoxMinimap.Cursor = Cursors.Hand;
+                _skipNextMapClick = true;
+                return;
+            }
+
             var imagePoint = TranslatePictureBoxPointToImage(new PointF(e.X, e.Y), pictureBoxMinimap);
             var screenPoint = new PointF(minimapBounds.X + imagePoint.X, minimapBounds.Y + imagePoint.Y);
             if (_mapEditor.TryBeginVertexDrag(screenPoint))
@@ -1506,6 +1610,16 @@ namespace ArtaleAI
 
         private void pictureBoxMinimap_MouseUp(object sender, MouseEventArgs e)
         {
+            if (_isMinimapPanning)
+            {
+                _isMinimapPanning = false;
+                pictureBoxMinimap.Capture = false;
+                pictureBoxMinimap.Cursor = Cursors.Default;
+                _skipNextMapClick = true;
+                pictureBoxMinimap.Invalidate();
+                return;
+            }
+
             if (_mapEditor == null || !_mapEditor.IsVertexDragging)
                 return;
 
@@ -1531,27 +1645,6 @@ namespace ArtaleAI
             RefreshMapEditorPropertyPanel();
         }
 
-        private PointF TranslatePictureBoxPointToImage(PointF pbPoint, PictureBox pb)
-        {
-            if (pb.Image == null || _mapEditor == null) return pbPoint;
-            float pbW = pb.ClientSize.Width, pbH = pb.ClientSize.Height;
-            float imgW = pb.Image.Width, imgH = pb.Image.Height;
-            float scale, offsetX = 0f, offsetY = 0f;
-            float zoom = _mapEditor.ZoomScale;
-            if (pbW / pbH > imgW / imgH)
-            {
-                scale = (pbH / imgH) * zoom;
-                offsetX = (pbW - imgW * scale) / 2f;
-            }
-            else
-            {
-                scale = (pbW / imgW) * zoom;
-                offsetY = (pbH - imgH * scale) / 2f;
-            }
-            if (scale <= 0f) return pbPoint;
-            return new PointF((pbPoint.X - offsetX) / scale, (pbPoint.Y - offsetY) / scale);
-        }
-
         private void pictureBoxMinimap_MouseWheel(object? sender, MouseEventArgs e)
         {
             if (ModifierKeys != Keys.Control || _mapEditor == null) return;
@@ -1564,6 +1657,7 @@ namespace ArtaleAI
 
             if (Math.Abs(oldZoom - _mapEditor.ZoomScale) > 0.001f)
             {
+                ClampMinimapPanOffset();
                 pictureBoxMinimap.Invalidate();
             }
         }
@@ -1572,6 +1666,12 @@ namespace ArtaleAI
         {
             try
             {
+                if (_isMinimapPanning)
+                {
+                    _isMinimapPanning = false;
+                    pictureBoxMinimap.Capture = false;
+                    pictureBoxMinimap.Cursor = Cursors.Default;
+                }
 
                 lbl_MouseCoords.Text = "座標: (-, -)";
 

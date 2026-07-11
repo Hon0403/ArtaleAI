@@ -32,13 +32,13 @@ namespace ArtaleAI.UI
         /// <summary>手動邊為細線，刪除命中需比平台/繩索更寬，且優先於幾何底圖。</summary>
         private const float ManualEdgeDeleteHitSlop = 8.0f;
 
-        private enum DeleteTargetKind { None, ManualEdge, Rope, Platform }
+        private enum DeleteTargetKind { None, ManualEdge, JumpLink, Rope, Platform }
 
         private sealed record DeleteTarget(
             DeleteTargetKind Kind,
             ManualEdgeAnchor? ManualEdge,
-            float[]? Rope,
-            int RopeIndex,
+            float[]? LineGeometry,
+            int LineIndex,
             PolylinePlatformData? Platform,
             PolylineHitResult? PlatformHit);
 
@@ -48,6 +48,7 @@ namespace ArtaleAI.UI
 
         private PolylinePlatformData? _hoveredPlatform = null;
         private float[]? _hoveredRope = null;
+        private float[]? _hoveredJumpLink = null;
         private ManualEdgeAnchor? _hoveredManualEdgeAnchor = null;
         private List<PointF> _activeDrawingPoints = new();
         private int _hoveredSegmentIndex = -1;
@@ -67,6 +68,8 @@ namespace ArtaleAI.UI
         public MapEditorSelection Selection => _selection;
 
         public float ZoomScale { get; set; } = 1.0f;
+        public float PanOffsetX { get; set; }
+        public float PanOffsetY { get; set; }
 
         private record PlatformAnchor(
             PolylinePlatformData Platform,
@@ -182,6 +185,7 @@ namespace ArtaleAI.UI
                 MapEditorSelectionKind.Platform => ReferenceEquals(a.Platform, b.Platform)
                     && a.SegmentIndex == b.SegmentIndex,
                 MapEditorSelectionKind.Rope => a.RopeIndex == b.RopeIndex,
+                MapEditorSelectionKind.JumpLink => a.JumpLinkIndex == b.JumpLinkIndex,
                 MapEditorSelectionKind.ManualEdge => ReferenceEquals(a.ManualEdge, b.ManualEdge),
                 MapEditorSelectionKind.RuntimeNode => a.RuntimeNodeIndex == b.RuntimeNodeIndex,
                 _ => false
@@ -195,8 +199,11 @@ namespace ArtaleAI.UI
                 case DeleteTargetKind.ManualEdge when pick.ManualEdge != null:
                     SetSelection(MapEditorSelection.ForManualEdge(pick.ManualEdge));
                     break;
-                case DeleteTargetKind.Rope when pick.RopeIndex >= 0:
-                    SetSelection(MapEditorSelection.ForRope(pick.RopeIndex));
+                case DeleteTargetKind.JumpLink when pick.LineIndex >= 0:
+                    SetSelection(MapEditorSelection.ForJumpLink(pick.LineIndex));
+                    break;
+                case DeleteTargetKind.Rope when pick.LineIndex >= 0:
+                    SetSelection(MapEditorSelection.ForRope(pick.LineIndex));
                     break;
                 case DeleteTargetKind.Platform when pick.Platform != null:
                     SetSelection(MapEditorSelection.ForPlatform(
@@ -221,7 +228,10 @@ namespace ArtaleAI.UI
                     ReferenceEquals(_selection.ManualEdge, deleted.ManualEdge),
                 DeleteTargetKind.Rope =>
                     _selection.Kind == MapEditorSelectionKind.Rope &&
-                    _selection.RopeIndex == deleted.RopeIndex,
+                    _selection.RopeIndex == deleted.LineIndex,
+                DeleteTargetKind.JumpLink =>
+                    _selection.Kind == MapEditorSelectionKind.JumpLink &&
+                    _selection.JumpLinkIndex == deleted.LineIndex,
                 DeleteTargetKind.Platform =>
                     _selection.Kind == MapEditorSelectionKind.Platform &&
                     ReferenceEquals(_selection.Platform, deleted.Platform),
@@ -238,6 +248,7 @@ namespace ArtaleAI.UI
                 "── 地圖摘要 ──",
                 $"平台: {_currentMapData.PolylinePlatforms?.Count ?? 0}",
                 $"繩索: {_currentMapData.Ropes?.Count ?? 0}",
+                $"跳點: {_currentMapData.JumpLinks?.Count ?? 0}",
                 $"手動邊: {_currentMapData.ManualEdgeAnchors?.Count ?? 0}",
                 $"Runtime 節點: {_currentMapData.Nodes.Count}",
                 $"Runtime 邊: {_currentMapData.Edges.Count}",
@@ -262,6 +273,9 @@ namespace ArtaleAI.UI
                     break;
                 case MapEditorSelectionKind.Rope:
                     AppendRopeInspector(lines, _selection.RopeIndex);
+                    break;
+                case MapEditorSelectionKind.JumpLink:
+                    AppendJumpLinkInspector(lines, _selection.JumpLinkIndex);
                     break;
                 case MapEditorSelectionKind.ManualEdge:
                     AppendManualEdgeInspector(lines, _selection.ManualEdge!);
@@ -346,6 +360,33 @@ namespace ArtaleAI.UI
             lines.Add($"Climb 邊（全圖）: {climbEdges}（runtime 唯讀）");
         }
 
+        private void AppendJumpLinkInspector(List<string> lines, int jumpLinkIndex)
+        {
+            lines.Add("類型: JumpLink");
+            if (_currentMapData.JumpLinks == null || jumpLinkIndex < 0 || jumpLinkIndex >= _currentMapData.JumpLinks.Count)
+            {
+                lines.Add("（跳點已不存在）");
+                return;
+            }
+
+            var link = _currentMapData.JumpLinks[jumpLinkIndex];
+            if (link.Length < 3)
+            {
+                lines.Add("資料格式無效");
+                return;
+            }
+
+            lines.Add($"索引: {jumpLinkIndex}");
+            lines.Add($"linkX: {link[0]:F1}");
+            lines.Add($"topY: {link[1]:F1}");
+            lines.Add($"bottomY: {link[2]:F1}");
+
+            int jumpEdges = _currentMapData.Edges.Count(e =>
+                e.ActionType is NavigationActionType.Jump or NavigationActionType.JumpDown);
+            lines.Add($"Jump/JumpDown 邊（全圖）: {jumpEdges}（runtime 唯讀）");
+            lines.Add("※ 拓撲自動建立下→上 Jump、上→下 JumpDown 雙向邊。");
+        }
+
         private void AppendManualEdgeInspector(List<string> lines, ManualEdgeAnchor anchor)
         {
             lines.Add("類型: ManualEdgeAnchor");
@@ -410,6 +451,7 @@ namespace ArtaleAI.UI
             _currentMapData.Nodes ??= new List<NavNodeData>();
             _currentMapData.Edges ??= new List<NavEdgeData>();
             _currentMapData.Ropes ??= new List<float[]>();
+            _currentMapData.JumpLinks ??= new List<float[]>();
             _currentMapData.PolylinePlatforms ??= new List<PolylinePlatformData>();
             _currentMapData.ManualEdgeAnchors ??= new List<ManualEdgeAnchor>();
 
@@ -434,7 +476,8 @@ namespace ArtaleAI.UI
         public void SetEditMode(EditMode mode)
         {
             if ((_currentEditMode == EditMode.Platform ||
-                 _currentEditMode == EditMode.Rope) &&
+                 _currentEditMode == EditMode.Rope ||
+                 _currentEditMode == EditMode.JumpLink) &&
                 _startPoint.HasValue)
             {
                 Logger.Info($"[編輯器] 放棄未完成的幾何繪製: {_currentEditMode}");
@@ -461,6 +504,7 @@ namespace ArtaleAI.UI
             _hoveredNodeIndex = -1;
             _hoveredPlatform = null;
             _hoveredRope = null;
+            _hoveredJumpLink = null;
             _hoveredManualEdgeAnchor = null;
         }
 
@@ -674,33 +718,44 @@ namespace ArtaleAI.UI
                     }
                     else
                     {
-                        var start = _startPoint.Value;
-                        var end = relativePoint;
-
-                        float length = Math.Abs(start.Y - end.Y);
-                        if (length < 2.0f)
-                        {
-                            Logger.Warning($"[編輯器] 繩索幾何長度過短 ({length:F1} < 2.0)，取消建立");
-                            _startPoint = null;
-                            _previewPoint = null;
+                        if (!TryCommitVerticalChannelDrawing(
+                                relativePoint,
+                                _currentMapData.Ropes,
+                                "繩索"))
                             return;
-                        }
-
-                        float topY = Math.Min(start.Y, end.Y);
-                        float bottomY = Math.Max(start.Y, end.Y);
-                        float x = start.X;
-
-                        _currentMapData.Ropes.Add(new[] {
-                            (float)Math.Round(x, 1),
-                            (float)Math.Round(topY, 1),
-                            (float)Math.Round(bottomY, 1)
-                        });
-
-                        Logger.Info($"[編輯器] 建立繩索幾何: X={x:F1}, Y={topY:F1}~{bottomY:F1}");
 
                         _startPoint = null;
                         _previewPoint = null;
+                        CommitTopologyChange();
+                    }
+                }
+            }
+            else if (_currentEditMode == EditMode.JumpLink)
+            {
+                if (button == MouseButtons.Right)
+                {
+                    _startPoint = null;
+                    _previewPoint = null;
+                    Logger.Info("[編輯器] 取消跳點幾何繪製");
+                }
+                else
+                {
+                    if (!_startPoint.HasValue)
+                    {
+                        _startPoint = relativePoint;
+                        Logger.Info($"[編輯器] 設定跳點起點: ({relativePoint.X:F1}, {relativePoint.Y:F1})");
+                    }
+                    else
+                    {
+                        _currentMapData.JumpLinks ??= new List<float[]>();
+                        if (!TryCommitVerticalChannelDrawing(
+                                relativePoint,
+                                _currentMapData.JumpLinks,
+                                "跳點"))
+                            return;
 
+                        _startPoint = null;
+                        _previewPoint = null;
                         CommitTopologyChange();
                     }
                 }
@@ -805,6 +860,8 @@ namespace ArtaleAI.UI
 
             if (Layers.ShowRopes)
                 DrawRopesLayer(g, convert);
+            if (Layers.ShowJumpLinks)
+                DrawJumpLinksLayer(g, convert);
 
             if (Layers.ShowManualAnchors)
                 DrawManualEdgeAnchors(g, convert);
@@ -1004,6 +1061,40 @@ namespace ArtaleAI.UI
             }
         }
 
+        private void DrawJumpLinksLayer(Graphics g, Func<PointF, PointF> convert)
+        {
+            if (_currentMapData.JumpLinks?.Any() != true)
+                return;
+
+            foreach (var link in _currentMapData.JumpLinks)
+            {
+                if (link.Length < 3) continue;
+
+                float x = link[0];
+                float topY = link[1];
+                float bottomY = link[2];
+
+                var pTop = convert(new PointF(minimapBounds.X + x, minimapBounds.Y + topY));
+                var pBottom = convert(new PointF(minimapBounds.X + x, minimapBounds.Y + bottomY));
+
+                bool isHovered = link == _hoveredJumpLink;
+                bool isSelected = _selection.Kind == MapEditorSelectionKind.JumpLink &&
+                    _selection.JumpLinkIndex >= 0 &&
+                    _currentMapData.JumpLinks != null &&
+                    _selection.JumpLinkIndex < _currentMapData.JumpLinks.Count &&
+                    ReferenceEquals(link, _currentMapData.JumpLinks[_selection.JumpLinkIndex]);
+                Color color = isSelected ? Color.DeepSkyBlue :
+                    isHovered ? Color.LightSkyBlue : Color.Cyan;
+                float width = isSelected ? 6.5f : isHovered ? 5.5f : 3.5f;
+
+                using var pen = new Pen(color, width) { DashStyle = DashStyle.Dash };
+                g.DrawLine(pen, pTop, pBottom);
+
+                g.FillRectangle(Brushes.OrangeRed, pTop.X - 3, pTop.Y - 3, 6, 6);
+                g.FillRectangle(Brushes.LimeGreen, pBottom.X - 3, pBottom.Y - 3, 6, 6);
+            }
+        }
+
         /// <summary>保留供舊註解對照；實際繪製改用 GetEdgePreviewColor。</summary>
         private static Color GetEdgeDrawColor(NavEdgeData edge) => GetEdgePreviewColor(edge, false);
 
@@ -1049,16 +1140,16 @@ namespace ArtaleAI.UI
                         // Snap indicator：預覽落點
                         using (var snapPen = new Pen(Color.White, 1.5f))
                         {
-                            g.DrawEllipse(snapPen, pMouse.X - 5f, pMouse.Y - 5f, 10f, 10f);
-                            g.DrawLine(snapPen, pMouse.X - 6f, pMouse.Y, pMouse.X + 6f, pMouse.Y);
-                            g.DrawLine(snapPen, pMouse.X, pMouse.Y - 6f, pMouse.X, pMouse.Y + 6f);
+                            g.DrawEllipse(snapPen, pMouse.X - 3f, pMouse.Y - 3f, 6f, 6f);
+                            g.DrawLine(snapPen, pMouse.X - 4f, pMouse.Y, pMouse.X + 4f, pMouse.Y);
+                            g.DrawLine(snapPen, pMouse.X, pMouse.Y - 4f, pMouse.X, pMouse.Y + 4f);
                         }
                     }
                 }
             }
             else
             {
-                bool isLineMode = _currentEditMode == EditMode.Rope || _currentEditMode == EditMode.ManualEdge;
+                bool isLineMode = _currentEditMode is EditMode.Rope or EditMode.JumpLink or EditMode.ManualEdge;
 
                 if (_startPoint.HasValue && _previewPoint.HasValue && isLineMode)
                 {
@@ -1204,6 +1295,38 @@ namespace ArtaleAI.UI
                     null);
             }
 
+            float[]? bestJumpLink = null;
+            float bestJumpLinkDist = float.MaxValue;
+            int bestJumpLinkIdx = -1;
+
+            if (_currentMapData.JumpLinks != null)
+            {
+                for (int i = 0; i < _currentMapData.JumpLinks.Count; i++)
+                {
+                    var link = _currentMapData.JumpLinks[i];
+                    if (link.Length < 3) continue;
+
+                    float dist = GetDistanceToVerticalChannel(clickPosition, link);
+                    if (dist < threshold && dist < bestJumpLinkDist)
+                    {
+                        bestJumpLinkDist = dist;
+                        bestJumpLink = link;
+                        bestJumpLinkIdx = i;
+                    }
+                }
+            }
+
+            if (bestJumpLink != null)
+            {
+                return new DeleteTarget(
+                    DeleteTargetKind.JumpLink,
+                    null,
+                    bestJumpLink,
+                    bestJumpLinkIdx,
+                    null,
+                    null);
+            }
+
             float[]? bestRope = null;
             float bestRopeDist = float.MaxValue;
             int bestRopeIdx = -1;
@@ -1215,7 +1338,7 @@ namespace ArtaleAI.UI
                     var rope = _currentMapData.Ropes[i];
                     if (rope.Length < 3) continue;
 
-                    float dist = GetDistanceToRope(clickPosition, rope);
+                    float dist = GetDistanceToVerticalChannel(clickPosition, rope);
                     if (dist < threshold && dist < bestRopeDist)
                     {
                         bestRopeDist = dist;
@@ -1298,10 +1421,17 @@ namespace ArtaleAI.UI
                     CommitTopologyChange();
                     break;
 
-                case DeleteTargetKind.Rope when target.Rope != null && target.RopeIndex >= 0:
-                    _currentMapData.Ropes?.RemoveAt(target.RopeIndex);
+                case DeleteTargetKind.JumpLink when target.LineGeometry != null && target.LineIndex >= 0:
+                    _currentMapData.JumpLinks?.RemoveAt(target.LineIndex);
                     Logger.Info(
-                        $"[編輯器] 刪除繩索幾何: X={target.Rope[0]:F1}, Y={target.Rope[1]:F1}~{target.Rope[2]:F1}");
+                        $"[編輯器] 刪除跳點幾何: X={target.LineGeometry[0]:F1}, Y={target.LineGeometry[1]:F1}~{target.LineGeometry[2]:F1}");
+                    CommitTopologyChange();
+                    break;
+
+                case DeleteTargetKind.Rope when target.LineGeometry != null && target.LineIndex >= 0:
+                    _currentMapData.Ropes?.RemoveAt(target.LineIndex);
+                    Logger.Info(
+                        $"[編輯器] 刪除繩索幾何: X={target.LineGeometry[0]:F1}, Y={target.LineGeometry[1]:F1}~{target.LineGeometry[2]:F1}");
                     CommitTopologyChange();
                     break;
 
@@ -1322,12 +1452,12 @@ namespace ArtaleAI.UI
 
             if (target.Kind == DeleteTargetKind.None)
             {
-                Logger.Info("[編輯器] 未命中任何可刪除的標記（手動邊、繩索、平台）");
+                Logger.Info("[編輯器] 未命中任何可刪除的標記（手動邊、跳點、繩索、平台）");
                 return;
             }
 
             if (ConfirmDestructiveAction != null &&
-                !ConfirmDestructiveAction(DescribeDeleteTarget(target.Kind, target.Platform, target.RopeIndex)))
+                !ConfirmDestructiveAction(DescribeDeleteTarget(target.Kind, target.Platform, target.LineIndex)))
             {
                 return;
             }
@@ -1359,32 +1489,59 @@ namespace ArtaleAI.UI
             return (float)Math.Sqrt(distX * distX + distY * distY);
         }
 
-        private static float GetDistanceToRope(PointF p, float[] rope)
+        private static float GetDistanceToVerticalChannel(PointF p, float[] channel)
         {
-            float ropeX = rope[0];
-            float topY = rope[1];
-            float bottomY = rope[2];
+            float channelX = channel[0];
+            float topY = channel[1];
+            float bottomY = channel[2];
 
             if (p.Y >= topY && p.Y <= bottomY)
             {
-                return Math.Abs(p.X - ropeX);
+                return Math.Abs(p.X - channelX);
             }
 
             if (p.Y < topY)
             {
-                float dx = ropeX - p.X;
+                float dx = channelX - p.X;
                 float dy = topY - p.Y;
                 return (float)Math.Sqrt(dx * dx + dy * dy);
             }
 
-            float dxBot = ropeX - p.X;
+            float dxBot = channelX - p.X;
             float dyBot = bottomY - p.Y;
             return (float)Math.Sqrt(dxBot * dxBot + dyBot * dyBot);
         }
 
+        private bool TryCommitVerticalChannelDrawing(PointF endPoint, List<float[]> targetList, string label)
+        {
+            var start = _startPoint!.Value;
+            float length = Math.Abs(start.Y - endPoint.Y);
+            if (length < 2.0f)
+            {
+                Logger.Warning($"[編輯器] {label}幾何長度過短 ({length:F1} < 2.0)，取消建立");
+                _startPoint = null;
+                _previewPoint = null;
+                return false;
+            }
+
+            float topY = Math.Min(start.Y, endPoint.Y);
+            float bottomY = Math.Max(start.Y, endPoint.Y);
+            float x = start.X;
+
+            targetList.Add(new[]
+            {
+                (float)Math.Round(x, 1),
+                (float)Math.Round(topY, 1),
+                (float)Math.Round(bottomY, 1)
+            });
+
+            Logger.Info($"[編輯器] 建立{label}幾何: X={x:F1}, Y={topY:F1}~{bottomY:F1}");
+            return true;
+        }
+
         /// <summary>
         /// 更新目前滑鼠所在的 Hover 物件狀態。
-        /// Delete 模式命中順序：手動邊 → 繩索 → 平台（與 HandleDeleteAction 共用 ResolveDeleteTarget）。
+        /// Delete 模式命中順序：手動邊 → 跳點 → 繩索 → 平台（與 HandleDeleteAction 共用 ResolveDeleteTarget）。
         /// Select 模式：節點與幾何依距離競爭；Shift 時優先節點。
         /// </summary>
         public void UpdateHoveredNode(PointF screenPoint, bool preferRuntimeNode = false)
@@ -1395,10 +1552,11 @@ namespace ArtaleAI.UI
                screenPoint.X - minimapBounds.X,
                screenPoint.Y - minimapBounds.Y);
 
-            // 重設所有 Hover 狀態
             _hoveredNodeIndex = -1;
             _hoveredPlatform = null;
             _hoveredRope = null;
+            _hoveredJumpLink = null;
+            _hoveredJumpLink = null;
             _hoveredManualEdgeAnchor = null;
             _hoveredSegmentIndex = -1;
             _hoveredProjectionPoint = PointF.Empty;
@@ -1419,8 +1577,11 @@ namespace ArtaleAI.UI
                     case DeleteTargetKind.ManualEdge:
                         _hoveredManualEdgeAnchor = pickTarget.ManualEdge;
                         break;
+                    case DeleteTargetKind.JumpLink:
+                        _hoveredJumpLink = pickTarget.LineGeometry;
+                        break;
                     case DeleteTargetKind.Rope:
-                        _hoveredRope = pickTarget.Rope;
+                        _hoveredRope = pickTarget.LineGeometry;
                         break;
                     case DeleteTargetKind.Platform:
                         _hoveredPlatform = pickTarget.Platform;
@@ -1561,8 +1722,10 @@ namespace ArtaleAI.UI
             {
                 DeleteTargetKind.ManualEdge when target.ManualEdge != null =>
                     GetDistanceToManualEdgeAnchor(relativePoint, target.ManualEdge),
-                DeleteTargetKind.Rope when target.Rope != null =>
-                    GetDistanceToRope(relativePoint, target.Rope),
+                DeleteTargetKind.JumpLink when target.LineGeometry != null =>
+                    GetDistanceToVerticalChannel(relativePoint, target.LineGeometry),
+                DeleteTargetKind.Rope when target.LineGeometry != null =>
+                    GetDistanceToVerticalChannel(relativePoint, target.LineGeometry),
                 DeleteTargetKind.Platform when target.Platform != null =>
                     GetDistanceToPolyline(relativePoint, target.Platform).Distance,
                 _ => float.MaxValue
@@ -1600,8 +1763,11 @@ namespace ArtaleAI.UI
                 case DeleteTargetKind.ManualEdge:
                     _hoveredManualEdgeAnchor = geometryPick.ManualEdge;
                     break;
+                case DeleteTargetKind.JumpLink:
+                    _hoveredJumpLink = geometryPick.LineGeometry;
+                    break;
                 case DeleteTargetKind.Rope:
-                    _hoveredRope = geometryPick.Rope;
+                    _hoveredRope = geometryPick.LineGeometry;
                     break;
                 case DeleteTargetKind.Platform:
                     _hoveredPlatform = geometryPick.Platform;

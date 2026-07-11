@@ -8,6 +8,7 @@ namespace ArtaleAI.UI.MapEditing
         None,
         Platform,
         Rope,
+        JumpLink,
         ManualEdge,
         RuntimeNode
     }
@@ -20,6 +21,7 @@ namespace ArtaleAI.UI.MapEditing
         public MapEditorSelectionKind Kind { get; init; } = MapEditorSelectionKind.None;
         public PolylinePlatformData? Platform { get; init; }
         public int RopeIndex { get; init; } = -1;
+        public int JumpLinkIndex { get; init; } = -1;
         public ManualEdgeAnchor? ManualEdge { get; init; }
         public int RuntimeNodeIndex { get; init; } = -1;
         public int SegmentIndex { get; init; } = -1;
@@ -44,6 +46,13 @@ namespace ArtaleAI.UI.MapEditing
             {
                 Kind = MapEditorSelectionKind.Rope,
                 RopeIndex = ropeIndex
+            };
+
+        public static MapEditorSelection ForJumpLink(int jumpLinkIndex) =>
+            new()
+            {
+                Kind = MapEditorSelectionKind.JumpLink,
+                JumpLinkIndex = jumpLinkIndex
             };
 
         public static MapEditorSelection ForManualEdge(ManualEdgeAnchor anchor) =>

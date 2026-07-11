@@ -14,6 +14,7 @@ namespace ArtaleAI.UI.MapEditing
         None,
         Platform,
         Rope,
+        JumpLink,
         ManualEdge
     }
 
@@ -25,6 +26,7 @@ namespace ArtaleAI.UI.MapEditing
         public MapEditorValidationTargetKind TargetKind { get; init; } = MapEditorValidationTargetKind.None;
         public PolylinePlatformData? TargetPlatform { get; init; }
         public int TargetRopeIndex { get; init; } = -1;
+        public int TargetJumpLinkIndex { get; init; } = -1;
         public ManualEdgeAnchor? TargetManualEdge { get; init; }
     }
 
