@@ -1,181 +1,155 @@
-# 單一來源：請只編輯本檔；建置後會複製到 bin\...\Data\config.yaml（與 exe 同目錄為執行時載入路徑）。
-# ============================================
-# 一般設定
-# ============================================
 general:
-  gameWindowTitle: "MapleStory Worlds-Artale (繁體中文版)"
-  lastSelectedWindowName: "MapleStory Worlds-Artale (繁體中文版)"
-  lastSelectedProcessName: "msw"
+  gameWindowTitle: MapleStory Worlds-Artale (繁體中文版)
+  lastSelectedWindowName: MapleStory Worlds-Artale (繁體中文版)
+  lastSelectedProcessName: msw
   lastSelectedProcessId: 25336
   minimapUpscaleFactor: 1
-  zoomFactor: 15
-  magnifierSize: 150
-  magnifierOffset: 20
   crosshairSize: 2
-
-# ============================================
-# 視覺偵測設定
-# ============================================
 vision:
   defaultThreshold: 0.7
   maxDetectionResults: 1
   detectionMode: Color
   nmsIouThreshold: 0.45
-  playerMarker: "templates/minimap/player_marker.png"
-  otherPlayers: "templates/minimap/other_players.png"
   playerThreshold: 0.7
-  lowerRedHsv: [0, 100, 100]
-  upperRedHsv: [10, 255, 255]
-  minBarHeight: 4
-  maxBarHeight: 8
+  playerMarker: templates/minimap/player_marker.png
+  otherPlayers: templates/minimap/other_players.png
   minBarWidth: 1
   maxBarWidth: 60
+  minBarHeight: 4
+  maxBarHeight: 8
   minFillRate: 0.1
+  lowerRedHsv:
+  - 0
+  - 100
+  - 100
+  upperRedHsv:
+  - 10
+  - 255
+  - 255
   smallBarWidthLimit: 50
   mediumBarWidthLimit: 100
   minAspectRatio: 2
   maxAspectRatio: 15
+  dotOffsetY: 50
+  detectionBoxWidth: 550
+  detectionBoxHeight: 300
+  uiHeightFromBottom: 200
   minBarArea: 8
   dynamicFillRateSmall: 0.8
   dynamicFillRateMedium: 0.6
   playerOffsetY: 20
-  uiHeightFromBottom: 200
-  dotOffsetY: 50
-  detectionBoxWidth: 550
-  detectionBoxHeight: 300
+  detectionModes:
+    Basic:
+      displayName: Basic - 基本匹配 (最快)
+      occlusion: None
+    ContourOnly:
+      displayName: ContourOnly - 輪廓匹配 (抗形變)
+      occlusion: None
+    Grayscale:
+      displayName: Grayscale - 灰階匹配 (抗色差)
+      occlusion: None
+    Color:
+      displayName: Color - 彩色匹配 (預設)
+      occlusion: None
+    TemplateFree:
+      displayName: TemplateFree - 自由尋找 (無需模板)
+      occlusion: MorphologyRepair
+  defaultMode: Color
+  displayOrder:
+  - Basic
+  - ContourOnly
+  - Grayscale
+  - Color
+  - TemplateFree
   bloodBarDetectIntervalMs: 150
   monsterDetectIntervalMs: 200
   captureFrameRate: 30
   cornerThreshold: 0.8
-  topLeft: "tl.png"
-  topRight: "tr.png"
-  bottomLeft: "bl.png"
-  bottomRight: "br.png"
+  topLeft: tl.png
+  topRight: tr.png
+  bottomLeft: bl.png
+  bottomRight: br.png
   useFixedMinimapPosition: false
   fixedMinimapWidth: 250
   fixedMinimapHeight: 150
-  minimapFrameColorBgr: "255,255,255"
+  minimapFrameColorBgr: 255,255,255
   minMinimapWidth: 100
   minMinimapHeight: 80
-  defaultMode: "Color"
-  displayOrder: ["Basic", "ContourOnly", "Grayscale", "Color", "TemplateFree"]
-  detectionModes:
-    Basic:
-      displayName: "Basic - 基本匹配 (最快)"
-      occlusion: "None"
-    ContourOnly:
-      displayName: "ContourOnly - 輪廓匹配 (抗形變)"
-      occlusion: "None"
-    Grayscale:
-      displayName: "Grayscale - 灰階匹配 (抗色差)"
-      occlusion: "None"
-    Color:
-      displayName: "Color - 彩色匹配 (預設)"
-      occlusion: "None"
-    TemplateFree:
-      displayName: "TemplateFree - 自由尋找 (無需模板)"
-      occlusion: "MorphologyRepair"
-
-# ============================================
-# 導航與路徑規劃設定
-# ============================================
 navigation:
-  continuousDetectionIntervalMs: 200
   playerPositionThreshold: 0.7
   otherPlayersThreshold: 0.5
   enableOtherPlayersDetection: true
-  # 到達判定參數 (SSOT)
-  platformHitboxWidth: 3.0
-  platformHitboxHeight: 3.0
-  walkAlignTolerancePx: 1.0
+  platformHitboxWidth: 3
+  platformHitboxHeight: 3
+  walkAlignTolerancePx: 1
   walkBrakeDistancePx: 3.5
   slopeStandYTolerancePx: 4.5
   ropeLandingYTolerancePx: 1.5
   ropeSegmentXTolerancePx: 1.5
   approachFailureRescueCutoff: 3
   rescueRepeatCutoff: 3
-  ropeHitboxWidth: 6.0
-  ropeHitboxHeight: 15.0
-
-  # 動作超時與卡點判定
-  stuckDetectionMs: 3000
-  
-  # 跳躍物理原子參數
+  ropeHitboxWidth: 6
+  ropeHitboxHeight: 15
   sideJumpAltHoldMs: 110
-
-  # 自動化控制
+  stuckDetectionMs: 3000
   enableAutoPathFinding: true
   enableAutoMovement: true
-
-# ============================================
-# 地圖編輯器設定
-# ============================================
 editor:
-  deletionRadius: 10.0
+  deletionRadius: 10
   waypointCircleRadius: 4
-  waypointColor: "Cyan"
-
-# ============================================
-# 視覺化樣式設定
-# ============================================
+  waypointColor: Cyan
 appearance:
   monster:
-    frameColor: "255,255,0"
-    textColor: "255,0,0"
+    frameColor: 255,255,0
+    textColor: 255,0,0
     frameThickness: 2
     textScale: 1.2
     textThickness: 2
     showConfidence: true
-    textFormat: "{0} ({1:F2})"
-
-  minimap:
-    frameColor: "0,255,255"
-    textColor: "255,255,255"
-    frameThickness: 2
-    textScale: 1.2
-    textThickness: 2
-    minimapDisplayName: "Minimap"
-
-  minimapPlayer:
-    frameColor: "0,255,0"
-    textColor: "255,255,255"
-    frameThickness: 2
-    textScale: 1.0
-    textThickness: 2
-    playerDisplayName: "PLAYER"
-    playerColorBgr: "255,255,0"
-    offsetY: 3.5
-    colorTolerance: 30
-    minPixelCount: 4
-
+    textFormat: '{0} ({1:F2})'
   partyRedBar:
-    frameColor: "0,255,0"
-    textColor: "255,255,255"
+    frameColor: 0,255,0
+    textColor: 255,255,255
     frameThickness: 2
-    textScale: 1.0
+    textScale: 1
     textThickness: 2
-    redBarDisplayName: "HP"
-
+    redBarDisplayName: HP
   detectionBox:
-    frameColor: "0,191,255"
-    textColor: "255,255,255"
+    frameColor: 0,191,255
+    textColor: 255,255,255
     frameThickness: 2
-    textScale: 1.0
+    textScale: 1
     textThickness: 2
-    boxDisplayName: "MOB DETECT"
-
+    boxDisplayName: MOB DETECT
   attackRange:
     width: 400
     height: 150
     offsetX: 0
     offsetY: 50
-    frameColor: "255,0,0"
-    textColor: "255,255,255"
+    frameColor: 255,0,0
+    textColor: 255,255,255
     frameThickness: 2
-    textScale: 1.0
+    textScale: 1
     textThickness: 2
-    rangeDisplayName: "ATTACK RANGE"
-
+    rangeDisplayName: ATTACK RANGE
+  minimap:
+    frameColor: 0,255,255
+    textColor: 255,255,255
+    frameThickness: 2
+    textScale: 1.2
+    textThickness: 2
+    minimapDisplayName: Minimap
+  minimapPlayer:
+    frameColor: 0,255,0
+    textColor: 255,255,255
+    frameThickness: 2
+    textScale: 1
+    textThickness: 2
+    playerDisplayName: PLAYER
+    playerColorBgr: 255,255,0
+    colorTolerance: 30
+    minPixelCount: 4
+    offsetY: 3.5
   minimapViewer:
     enabled: true
     zoomFactor: 10
