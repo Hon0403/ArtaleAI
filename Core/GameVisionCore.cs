@@ -7,11 +7,13 @@ using ArtaleAI.Utils;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Windows.Graphics.Capture;
 using WinRT.Interop;
@@ -25,7 +27,7 @@ namespace ArtaleAI.Core
     {
         #region 私有字段
         private readonly Dictionary<string, Mat> _mapTemplates = new();
-        private readonly Dictionary<string, List<Mat>> _monsterTemplateCache = new();
+        private readonly Dictionary<string, MonsterTemplateBundle> _monsterBundleCache = new();
         private bool _disposed = false;
         private int _lastPixelCount = 0; 
         private readonly object _minimapMatLock = new object();
@@ -582,6 +584,39 @@ namespace ArtaleAI.Core
         /// <returns>檢測結果列表</returns>
         public List<DetectionResult> FindMonsters(
             Mat sourceMat,
+            MonsterTemplateBundle bundle,
+            MonsterDetectionMode detectionMode,
+            double threshold = 0.7)
+        {
+            return FindMonstersWithStats(sourceMat, bundle, detectionMode, threshold).Results;
+        }
+
+        public (List<DetectionResult> Results, MonsterTemplateMatchStats Stats) FindMonstersWithStats(
+            Mat sourceMat,
+            MonsterTemplateBundle bundle,
+            MonsterDetectionMode mode,
+            double threshold = 0.7)
+        {
+            if (bundle == null || bundle.IsEmpty)
+            {
+                return (new List<DetectionResult>(), new MonsterTemplateMatchStats(
+                    0, 0, 0, 0, 0, 0, false));
+            }
+
+            return MatchTemplateEntries(
+                sourceMat,
+                bundle.Entries,
+                mode,
+                threshold,
+                bundle.MonsterName);
+        }
+
+        /// <summary>
+        /// 使用模板匹配尋找怪物（舊版清單 API；無預計算 mask 時才 fallback）。
+        /// </summary>
+        [Obsolete("請改用 MonsterTemplateBundle 以使用預計算 mask。")]
+        public List<DetectionResult> FindMonsters(
+            Mat sourceMat,
             List<Mat> templateMats,
             MonsterDetectionMode mode,
             double threshold = 0.7,
@@ -590,6 +625,217 @@ namespace ArtaleAI.Core
         {
             if (templateMats == null || templateMats.Count == 0) return new List<DetectionResult>();
 
+            return MatchLegacyTemplates(
+                sourceMat, templateMats, mode, threshold, monsterName, templateMasks);
+        }
+
+        private const int CoarseTopK = 3;
+        private const double CoarseMinBestScore = 0.35;
+
+        private (List<DetectionResult> Results, MonsterTemplateMatchStats Stats) MatchTemplateEntries(
+            Mat sourceMat,
+            IReadOnlyList<MonsterTemplateEntry> entries,
+            MonsterDetectionMode mode,
+            double threshold,
+            string monsterName)
+        {
+            using var sourceGray = mode == MonsterDetectionMode.Grayscale
+                ? ConvertToGrayscale(sourceMat)
+                : null;
+
+            var coarseSelection = SelectCoarseMatchIndices(sourceMat, sourceGray, entries, mode);
+
+            var bag = new ConcurrentBag<DetectionResult>();
+            var fineWatch = Stopwatch.StartNew();
+
+            Parallel.ForEach(coarseSelection.Indices, index =>
+            {
+                var entry = entries[index];
+                try
+                {
+                    MatchSingleTemplateEntry(
+                        sourceMat, sourceGray, entry, mode, threshold, monsterName, bag);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"[怪物偵測] 模板匹配錯誤: {ex.Message}");
+                }
+            });
+
+            fineWatch.Stop();
+
+            var stats = new MonsterTemplateMatchStats(
+                entries.Count,
+                entries.Count,
+                coarseSelection.Indices.Length,
+                coarseSelection.DownscaleMs,
+                coarseSelection.CoarseScoreMs,
+                fineWatch.Elapsed.TotalMilliseconds,
+                coarseSelection.UsedFullFallback);
+
+            return (bag.ToList(), stats);
+        }
+
+        private readonly record struct CoarseMatchScore(int Index, double Score);
+
+        private readonly record struct CoarseSelectionResult(
+            int[] Indices,
+            bool UsedFullFallback,
+            double DownscaleMs,
+            double CoarseScoreMs);
+
+        private static CoarseSelectionResult SelectCoarseMatchIndices(
+            Mat sourceMat,
+            Mat? sourceGray,
+            IReadOnlyList<MonsterTemplateEntry> entries,
+            MonsterDetectionMode mode)
+        {
+            if (entries.Count <= CoarseTopK)
+                return new CoarseSelectionResult(
+                    Enumerable.Range(0, entries.Count).ToArray(), false, 0, 0);
+
+            var downscaleWatch = Stopwatch.StartNew();
+            using var sourceCoarse = DownscaleMat(sourceMat, MonsterTemplateEntry.CoarseScale);
+            using var sourceGrayCoarse = sourceGray != null
+                ? DownscaleMat(sourceGray, MonsterTemplateEntry.CoarseScale)
+                : null;
+            downscaleWatch.Stop();
+
+            var scoreWatch = Stopwatch.StartNew();
+            var coarseScores = ScoreAllCoarseMatches(sourceCoarse, sourceGrayCoarse, entries, mode);
+            scoreWatch.Stop();
+
+            var ranked = coarseScores.OrderByDescending(s => s.Score).ToList();
+            if (ranked.Count == 0 || ranked[0].Score < CoarseMinBestScore)
+            {
+                return new CoarseSelectionResult(
+                    Enumerable.Range(0, entries.Count).ToArray(),
+                    true,
+                    downscaleWatch.Elapsed.TotalMilliseconds,
+                    scoreWatch.Elapsed.TotalMilliseconds);
+            }
+
+            var topIndices = ranked
+                .Take(CoarseTopK)
+                .Select(s => s.Index)
+                .OrderBy(i => i)
+                .ToArray();
+
+            return new CoarseSelectionResult(
+                topIndices,
+                false,
+                downscaleWatch.Elapsed.TotalMilliseconds,
+                scoreWatch.Elapsed.TotalMilliseconds);
+        }
+
+        private static List<CoarseMatchScore> ScoreAllCoarseMatches(
+            Mat sourceCoarse,
+            Mat? sourceGrayCoarse,
+            IReadOnlyList<MonsterTemplateEntry> entries,
+            MonsterDetectionMode mode)
+        {
+            var scores = new ConcurrentBag<CoarseMatchScore>();
+
+            Parallel.ForEach(Enumerable.Range(0, entries.Count), index =>
+            {
+                var score = ScoreCoarseMatch(sourceCoarse, sourceGrayCoarse, entries[index], mode);
+                scores.Add(new CoarseMatchScore(index, score));
+            });
+
+            return scores.ToList();
+        }
+
+        private static void MatchSingleTemplateEntry(
+            Mat sourceMat,
+            Mat? sourceGray,
+            MonsterTemplateEntry entry,
+            MonsterDetectionMode mode,
+            double threshold,
+            string monsterName,
+            ConcurrentBag<DetectionResult> results)
+        {
+            var templateMat = entry.Template;
+            if (templateMat.Empty()) return;
+
+            using var result = new Mat();
+
+            if (mode == MonsterDetectionMode.Grayscale)
+            {
+                Cv2.MatchTemplate(sourceGray!, entry.GrayTemplate, result, TemplateMatchModes.CCoeffNormed);
+            }
+            else if (!entry.Mask.Empty())
+            {
+                Cv2.MatchTemplate(sourceMat, templateMat, result, TemplateMatchModes.SqDiffNormed, entry.Mask);
+            }
+            else
+            {
+                Cv2.MatchTemplate(sourceMat, templateMat, result, TemplateMatchModes.SqDiffNormed);
+            }
+
+            var localResults = new List<DetectionResult>();
+            CollectMatchResults(result, templateMat, threshold, monsterName, localResults);
+            foreach (var detection in localResults)
+                results.Add(detection);
+        }
+
+        private static double ScoreCoarseMatch(
+            Mat sourceCoarse,
+            Mat? sourceGrayCoarse,
+            MonsterTemplateEntry entry,
+            MonsterDetectionMode mode)
+        {
+            using var result = new Mat();
+
+            if (mode == MonsterDetectionMode.Grayscale)
+            {
+                if (sourceGrayCoarse == null) return 0;
+
+                var grayTemplate = entry.SupportsCoarse
+                    ? entry.CoarseGrayTemplate
+                    : entry.GrayTemplate;
+
+                Cv2.MatchTemplate(sourceGrayCoarse, grayTemplate, result, TemplateMatchModes.CCoeffNormed);
+                Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out _);
+                return maxVal;
+            }
+
+            var colorTemplate = entry.SupportsCoarse
+                ? entry.CoarseTemplate
+                : entry.Template;
+            var mask = entry.SupportsCoarse
+                ? entry.CoarseMask
+                : entry.Mask;
+
+            if (!mask.Empty())
+                Cv2.MatchTemplate(sourceCoarse, colorTemplate, result, TemplateMatchModes.SqDiffNormed, mask);
+            else
+                Cv2.MatchTemplate(sourceCoarse, colorTemplate, result, TemplateMatchModes.SqDiffNormed);
+
+            Cv2.MinMaxLoc(result, out double minVal, out _, out _, out _);
+            return 1.0 - minVal;
+        }
+
+        private static Mat DownscaleMat(Mat source, double scale)
+        {
+            var scaled = new Mat();
+            Cv2.Resize(
+                source,
+                scaled,
+                new OpenCvSharp.Size(),
+                scale,
+                scale,
+                InterpolationFlags.Area);
+            return scaled;
+        }
+
+        private static List<DetectionResult> MatchLegacyTemplates(
+            Mat sourceMat,
+            List<Mat> templateMats,
+            MonsterDetectionMode mode,
+            double threshold,
+            string monsterName,
+            List<Mat>? templateMasks)
+        {
             var allResults = new List<DetectionResult>();
 
             for (int i = 0; i < templateMats.Count; i++)
@@ -601,29 +847,16 @@ namespace ArtaleAI.Core
                 bool disposeMask = false;
 
                 if (templateMasks != null && i < templateMasks.Count && templateMasks[i]?.Empty() == false)
-                {
                     mask = templateMasks[i];
-                }
                 else
                 {
                     mask = CreateGreenMask(templateMat);
                     disposeMask = true;
                 }
 
-                if (mask != null && !mask.Empty())
-                {
-                    Logger.Debug($"[遮罩] 遮罩尺寸: {mask.Width}x{mask.Height}, Channels={mask.Channels()}, 模板尺寸: {templateMat.Width}x{templateMat.Height}");
-                }
-                else
-                {
-                    Logger.Warning($"[遮罩] 遮罩建立失敗或為空!");
-                }
-
                 try
                 {
                     using var result = new Mat();
-
-                    Logger.Debug($"[怪物偵測] 模板: {templateMat.Width}x{templateMat.Height}, Channels={templateMat.Channels()}, 來源: {sourceMat.Width}x{sourceMat.Height}, Channels={sourceMat.Channels()}");
 
                     if (mode == MonsterDetectionMode.Grayscale)
                     {
@@ -631,64 +864,16 @@ namespace ArtaleAI.Core
                         using var templateGray = ConvertToGrayscale(templateMat);
                         Cv2.MatchTemplate(sourceGray, templateGray, result, TemplateMatchModes.CCoeffNormed);
                     }
+                    else if (mask != null && !mask.Empty())
+                    {
+                        Cv2.MatchTemplate(sourceMat, templateMat, result, TemplateMatchModes.SqDiffNormed, mask);
+                    }
                     else
                     {
-                        if (mask != null && !mask.Empty())
-                        {
-                            Cv2.MatchTemplate(sourceMat, templateMat, result, TemplateMatchModes.SqDiffNormed, mask);
-                        }
-                        else
-                        {
-                            Cv2.MatchTemplate(sourceMat, templateMat, result, TemplateMatchModes.SqDiffNormed);
-                        }
+                        Cv2.MatchTemplate(sourceMat, templateMat, result, TemplateMatchModes.SqDiffNormed);
                     }
 
-                    if (!result.Empty())
-                    {
-
-                        Cv2.MinMaxLoc(result, out double globalMinVal, out _, out OpenCvSharp.Point globalMinLoc, out _);
-                        float globalBestScore = (float)(1.0 - globalMinVal);
-
-                        Logger.Debug($"[怪物偵測] 全局最佳: 分數={globalBestScore:F4} (差異={globalMinVal:F4}), 位置={globalMinLoc}");
-
-                        int count = 0;
-                        int maxResults = 5;
-
-                        while (count < maxResults)
-                        {
-                            Cv2.MinMaxLoc(result, out double minVal, out _, out OpenCvSharp.Point minLoc, out _);
-
-                            if (minVal > (1.0 - threshold))
-                            {
-                                break;
-                            }
-
-                            float matchScore = (float)(1.0 - minVal);
-
-                            Logger.Debug($"[怪物偵測] 發現匹配: 分數={matchScore:F4} (差異={minVal:F4}), 位置={minLoc}");
-
-                            allResults.Add(new DetectionResult(
-                                monsterName,
-                                new System.Drawing.Point(minLoc.X, minLoc.Y),
-                                new System.Drawing.Size(templateMat.Width, templateMat.Height),
-                                matchScore,
-                                new Rectangle(minLoc.X, minLoc.Y, templateMat.Width, templateMat.Height)
-                            ));
-
-                            count++;
-
-                            int floodW = templateMat.Width / 2;
-                            int floodH = templateMat.Height / 2;
-                            var floodRect = new OpenCvSharp.Rect(
-                                Math.Max(0, minLoc.X - floodW / 2),
-                                Math.Max(0, minLoc.Y - floodH / 2),
-                                floodW,
-                                floodH
-                            );
-
-                            Cv2.Rectangle(result, floodRect, OpenCvSharp.Scalar.All(1.0), -1);
-                        }
-                    }
+                    CollectMatchResults(result, templateMat, threshold, monsterName, allResults);
                 }
                 catch (Exception ex)
                 {
@@ -703,26 +888,78 @@ namespace ArtaleAI.Core
             return allResults;
         }
 
-        /// <summary>
-        /// 非同步載入怪物模板
-        /// 從指定資料夾載入所有模板圖像並轉換為 Mat 格式，支援快取機制
-        /// </summary>
+        private static void CollectMatchResults(
+            Mat result,
+            Mat templateMat,
+            double threshold,
+            string monsterName,
+            List<DetectionResult> allResults)
+        {
+            if (result.Empty()) return;
 
+            int count = 0;
+            const int maxResults = 5;
 
-        public async Task<List<Mat>> LoadMonsterTemplatesAsync(string monsterName, string monstersDirectory)
+            while (count < maxResults)
+            {
+                Cv2.MinMaxLoc(result, out double minVal, out _, out OpenCvSharp.Point minLoc, out _);
+
+                if (minVal > (1.0 - threshold))
+                    break;
+
+                float matchScore = (float)(1.0 - minVal);
+
+                allResults.Add(new DetectionResult(
+                    monsterName,
+                    new System.Drawing.Point(minLoc.X, minLoc.Y),
+                    new System.Drawing.Size(templateMat.Width, templateMat.Height),
+                    matchScore,
+                    new Rectangle(minLoc.X, minLoc.Y, templateMat.Width, templateMat.Height)
+                ));
+
+                count++;
+
+                int floodW = templateMat.Width / 2;
+                int floodH = templateMat.Height / 2;
+                var floodRect = new OpenCvSharp.Rect(
+                    Math.Max(0, minLoc.X - floodW / 2),
+                    Math.Max(0, minLoc.Y - floodH / 2),
+                    floodW,
+                    floodH);
+
+                Cv2.Rectangle(result, floodRect, OpenCvSharp.Scalar.All(1.0), -1);
+            }
+        }
+
+        private static MonsterTemplateEntry CreateTemplateEntry(Mat bgrTemplate)
+        {
+            var mask = CreateGreenMask(bgrTemplate);
+            var gray = new Mat();
+            Cv2.CvtColor(bgrTemplate, gray, ColorConversionCodes.BGR2GRAY);
+
+            var coarseTemplate = DownscaleMat(bgrTemplate, MonsterTemplateEntry.CoarseScale);
+            var coarseMask = DownscaleMat(mask, MonsterTemplateEntry.CoarseScale);
+            var coarseGray = DownscaleMat(gray, MonsterTemplateEntry.CoarseScale);
+
+            return new MonsterTemplateEntry(
+                bgrTemplate, mask, gray,
+                coarseTemplate, coarseMask, coarseGray);
+        }
+
+        /// <summary>非同步載入怪物模板 bundle（含預計算 mask 與灰階）。</summary>
+        public async Task<MonsterTemplateBundle?> LoadMonsterTemplateBundleAsync(string monsterName, string monstersDirectory)
         {
             try
             {
-                if (_monsterTemplateCache.TryGetValue(monsterName, out var cachedMats))
-                    return cachedMats;
+                if (_monsterBundleCache.TryGetValue(monsterName, out var cached))
+                    return cached;
 
                 string monsterFolderPath = Path.Combine(monstersDirectory, monsterName);
                 if (!Directory.Exists(monsterFolderPath))
-                    return new List<Mat>();
+                    return null;
 
                 var templateFiles = await Task.Run(() => Directory.GetFiles(monsterFolderPath, "*.png"));
-                var loadedMatTemplates = new List<Mat>();
-
+                var entries = new List<MonsterTemplateEntry>();
 
                 foreach (var file in templateFiles)
                 {
@@ -730,32 +967,24 @@ namespace ArtaleAI.Core
                     {
                         using var tempBitmap = new System.Drawing.Bitmap(file);
 
-                        if (tempBitmap == null || tempBitmap.Width < 5 || tempBitmap.Height < 5)
+                        if (tempBitmap.Width < 5 || tempBitmap.Height < 5)
                             continue;
 
                         using var originalMat = BitmapConverter.ToMat(tempBitmap);
-
                         Mat matForMatching = new Mat();
 
                         if (originalMat.Channels() == 4)
-                        {
                             Cv2.CvtColor(originalMat, matForMatching, ColorConversionCodes.BGRA2BGR);
-                        }
                         else if (originalMat.Channels() == 1)
-                        {
                             Cv2.CvtColor(originalMat, matForMatching, ColorConversionCodes.GRAY2BGR);
-                        }
                         else
-                        {
                             matForMatching = originalMat.Clone();
-                        }
 
-                        loadedMatTemplates.Add(matForMatching);
+                        entries.Add(CreateTemplateEntry(matForMatching));
 
                         Mat flippedMat = matForMatching.Clone();
                         Cv2.Flip(flippedMat, flippedMat, FlipMode.Y);
-                        loadedMatTemplates.Add(flippedMat);
-
+                        entries.Add(CreateTemplateEntry(flippedMat));
                     }
                     catch (Exception ex)
                     {
@@ -763,14 +992,18 @@ namespace ArtaleAI.Core
                     }
                 }
 
+                if (entries.Count == 0)
+                    return null;
 
-                _monsterTemplateCache[monsterName] = loadedMatTemplates;
-                return loadedMatTemplates;
+                var bundle = new MonsterTemplateBundle(monsterName, entries);
+                _monsterBundleCache[monsterName] = bundle;
+                Logger.Info($"[模板] 已載入 {monsterName}: {bundle.TemplateCount} 個模板（含預計算 mask、灰階與粗篩縮圖）");
+                return bundle;
             }
             catch (Exception ex)
             {
-                Logger.Error($"[模板] LoadMonsterTemplatesAsync 錯誤: {ex.Message}");
-                return new List<Mat>();
+                Logger.Error($"[模板] LoadMonsterTemplateBundleAsync 錯誤: {ex.Message}");
+                return null;
             }
         }
 
@@ -1271,12 +1504,9 @@ namespace ArtaleAI.Core
                     template?.Dispose();
                 _mapTemplates.Clear();
 
-                foreach (var templates in _monsterTemplateCache.Values)
-                {
-                    foreach (var mat in templates)
-                        mat?.Dispose();
-                }
-                _monsterTemplateCache.Clear();
+                foreach (var bundle in _monsterBundleCache.Values)
+                    bundle.Dispose();
+                _monsterBundleCache.Clear();
 
                 lock (_minimapMatLock)
                 {

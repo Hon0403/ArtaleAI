@@ -46,8 +46,6 @@ namespace ArtaleAI
 
 
         private MonsterTemplateStore? _monsterTemplates;
-        /// <summary>無模板時供 <see cref="GamePipeline"/> 重複指派，避免每幀配置新 <see cref="List{Mat}"/>。</summary>
-        private static readonly List<Mat> s_emptyMonsterTemplates = new();
         private LiveViewManager? liveViewManager;
 
         private readonly object imageUpdateLock = new object();
@@ -162,6 +160,7 @@ namespace ArtaleAI
                 _pathPlanningManager.Tracker.BindStateMachine(_fsm);
 
                 _gamePipeline = new GamePipeline(gameVision, _pathPlanningManager, _movementController);
+                _gamePipeline.MonsterCatalog = _monsterTemplates.Catalog;
                 _movementController.SetSyncProvider(_gamePipeline);
                 _navigationExecutor.SetSyncProvider(_gamePipeline);
                 _overlayRenderer = new OverlayRenderer();
@@ -712,7 +711,6 @@ namespace ArtaleAI
                     {
                         _gamePipeline.AutoAttackEnabled = _autoAttackEnabled;
                         _gamePipeline.SelectedMonsterName = _monsterTemplates?.SelectedMonsterName ?? string.Empty;
-                        _gamePipeline.MonsterTemplates = _monsterTemplates?.Templates ?? s_emptyMonsterTemplates;
 
                         _gamePipeline.ProcessFrame(frameMat, captureTime, config);
 
@@ -1847,19 +1845,19 @@ namespace ArtaleAI
 
                 if (selectedMonster == "null")
                 {
-                    _monsterTemplates.ReleaseTemplates();
+                    _monsterTemplates.ReleaseSelection();
                     MsgLog.ShowStatus(textBox1, "已清除怪物模板選擇");
                     return;
                 }
 
                 MsgLog.ShowStatus(textBox1, $"載入怪物模板: {selectedMonster}");
                 await _monsterTemplates.LoadSelectionAsync(selectedMonster, PathManager.MonstersDirectory);
-                MsgLog.ShowStatus(textBox1, $"已載入 {_monsterTemplates.Templates.Count} 個模板");
+                MsgLog.ShowStatus(textBox1, $"已載入 {_monsterTemplates.ActiveTemplateCount} 個模板");
             }
             catch (Exception ex)
             {
                 MsgLog.ShowError(textBox1, $"載入模板錯誤: {ex.Message}");
-                _monsterTemplates.ReleaseTemplates();
+                _monsterTemplates.ReleaseSelection();
             }
         }
 
@@ -2091,8 +2089,7 @@ namespace ArtaleAI
                         }
                     }
 
-                    bool hasMonsterTemplate = !string.IsNullOrEmpty(_monsterTemplates?.SelectedMonsterName) &&
-                                              (_monsterTemplates?.Templates.Any() == true);
+                    bool hasMonsterTemplate = _monsterTemplates?.Catalog.IsEmpty == false;
                     bool hasDetectionMode = !string.IsNullOrEmpty(Config.Vision.DetectionMode);
 
                     if (hasMonsterTemplate && hasDetectionMode)

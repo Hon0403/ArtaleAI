@@ -55,6 +55,10 @@ namespace ArtaleAI.Services
         private volatile bool _isAttacking = false;
         private int _attackInputLease;
         private int _monsterDetectionInFlight;
+        private int _monsterJobReplacementCount;
+        private readonly object _monsterJobLock = new();
+        private MonsterDetectionWorkItem? _pendingMonsterJob;
+        private const int MonsterJobReplacementLogInterval = 30;
         private DateTime _lastAttackTime = DateTime.MinValue;
         private DateTime _lastDirectionChangeTime = DateTime.MinValue;
         private const int AttackCooldownMs = 500;
@@ -84,11 +88,11 @@ namespace ArtaleAI.Services
         /// <summary>自動攻擊是否啟用（由 UI 執行緒更新）</summary>
         public volatile bool AutoAttackEnabled;
 
-        /// <summary>已選擇的怪物名稱</summary>
-        public string SelectedMonsterName { get; set; } = string.Empty;
+        /// <summary>執行期啟用的怪物模板 catalog（與 <see cref="MonsterTemplateStore.Catalog"/> 共用參考）。</summary>
+        public MonsterDetectionCatalog MonsterCatalog { get; set; } = new();
 
-        /// <summary>已載入的怪物模板（由 UI 管理）</summary>
-        public List<Mat> MonsterTemplates { get; set; } = new();
+        /// <summary>已選擇的怪物名稱（單選；Phase 2 可改為多選）。</summary>
+        public string SelectedMonsterName { get; set; } = string.Empty;
 
         /// <summary>幀驅動同步：視覺處理完成旗標</summary>
         public bool VisionDataReady
@@ -427,7 +431,7 @@ namespace ArtaleAI.Services
             }
         }
 
-        /// <summary>節流並非同步排程怪物辨識，避免阻塞 ProcessFrame。</summary>
+        /// <summary>節流並非同步排程怪物辨識；進行中則以 Latest-Frame-Wins 覆蓋待處理 ROI。</summary>
         private void ScheduleMonsterDetection(Mat frameMat, AppConfig config, DateTime now)
         {
             var elapsed = (now - _lastMonsterDetection).TotalMilliseconds;
@@ -437,91 +441,150 @@ namespace ArtaleAI.Services
             if (elapsed < config.Vision.MonsterDetectIntervalMs && monsterCount > 0) return;
 
             if (!_currentDetectionBoxes.Any()) return;
-            if (string.IsNullOrEmpty(SelectedMonsterName) || !MonsterTemplates.Any()) return;
+            if (MonsterCatalog.IsEmpty) return;
+
+            var workItem = TryBuildMonsterWorkItem(frameMat, config);
+            if (workItem == null) return;
 
             if (Interlocked.CompareExchange(ref _monsterDetectionInFlight, 1, 0) != 0)
             {
-                Logger.Debug("[GamePipeline] 怪物辨識進行中，略過本幀排程");
+                lock (_monsterJobLock)
+                {
+                    _pendingMonsterJob?.Dispose();
+                    _pendingMonsterJob = workItem;
+                    var replaced = Interlocked.Increment(ref _monsterJobReplacementCount);
+                    if (replaced == 1 || replaced % MonsterJobReplacementLogInterval == 0)
+                        Logger.Debug($"[GamePipeline] Latest-Frame-Wins 覆蓋待處理 ROI，累計 {replaced} 次");
+                }
                 return;
             }
 
-            Mat frameClone;
-            try
-            {
-                frameClone = frameMat.Clone();
-            }
-            catch (Exception ex)
-            {
-                Interlocked.Exchange(ref _monsterDetectionInFlight, 0);
-                Logger.Warning($"[GamePipeline] 怪物辨識幀複製失敗: {ex.Message}");
-                return;
-            }
-
-            var detectionBoxes = _currentDetectionBoxes.ToList();
-            var templates = MonsterTemplates.ToList();
-            var monsterName = SelectedMonsterName;
-            var detectionModeString = config.Vision.DetectionMode ?? "Color";
-            if (!Enum.TryParse<MonsterDetectionMode>(detectionModeString, out var detectionMode))
-                detectionMode = MonsterDetectionMode.Color;
-            double detectionThreshold = config.Vision.DefaultThreshold;
-            int maxResults = config.Vision.MaxDetectionResults;
-
-            _ = Task.Run(() =>
-            {
-                try
-                {
-                    RunMonsterDetection(
-                        frameClone, detectionBoxes, templates, detectionMode,
-                        detectionThreshold, monsterName, maxResults);
-                }
-                catch (Exception ex)
-                {
-                    OnStatusMessage?.Invoke($"怪物檢測錯誤: {ex.Message}");
-                }
-                finally
-                {
-                    frameClone.Dispose();
-                    Interlocked.Exchange(ref _monsterDetectionInFlight, 0);
-                }
-            });
+            Task.Run(() => RunMonsterDetectionWorker(workItem));
         }
 
-        private void RunMonsterDetection(
-            Mat frameMat,
-            List<SdRect> detectionBoxes,
-            List<Mat> templates,
-            MonsterDetectionMode detectionMode,
-            double detectionThreshold,
-            string monsterName,
-            int maxResults)
+        private MonsterDetectionWorkItem? TryBuildMonsterWorkItem(Mat frameMat, AppConfig config)
         {
-            var allResults = new List<DetectionResult>();
+            var detectionBoxes = _currentDetectionBoxes.ToList();
             var frameBounds = new Rect(0, 0, frameMat.Width, frameMat.Height);
+            var crops = new List<(Rect CropRect, Mat Image)>();
 
             foreach (var detectionBox in detectionBoxes)
             {
                 var cropRect = new Rect(detectionBox.X, detectionBox.Y, detectionBox.Width, detectionBox.Height);
                 var validCropRect = frameBounds.Intersect(cropRect);
-
                 if (validCropRect.Width < 10 || validCropRect.Height < 10) continue;
 
-                using var croppedMat = frameMat[validCropRect].Clone();
-
-                var results = _gameVision.FindMonsters(
-                    croppedMat, templates, detectionMode,
-                    detectionThreshold, monsterName)
-                    ?? new List<DetectionResult>();
-
-                foreach (var r in results)
+                try
                 {
-                    allResults.Add(new DetectionResult(
-                        r.Name,
-                        new SdPoint(r.Position.X + validCropRect.X, r.Position.Y + validCropRect.Y),
-                        r.Size, r.Confidence,
-                        new SdRect(r.Position.X + validCropRect.X, r.Position.Y + validCropRect.Y,
-                            r.Size.Width, r.Size.Height)));
+                    crops.Add((validCropRect, frameMat[validCropRect].Clone()));
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning($"[GamePipeline] 怪物辨識 ROI 複製失敗: {ex.Message}");
                 }
             }
+
+            if (crops.Count == 0) return null;
+
+            var detectionModeString = config.Vision.DetectionMode ?? "Color";
+            if (!Enum.TryParse<MonsterDetectionMode>(detectionModeString, out var detectionMode))
+                detectionMode = MonsterDetectionMode.Color;
+
+            return new MonsterDetectionWorkItem(
+                crops,
+                MonsterCatalog,
+                detectionMode,
+                config.Vision.DefaultThreshold,
+                config.Vision.MaxDetectionResults);
+        }
+
+        private void RunMonsterDetectionWorker(MonsterDetectionWorkItem initialJob)
+        {
+            var job = initialJob;
+            try
+            {
+                while (job != null)
+                {
+                    try
+                    {
+                        RunMonsterDetection(
+                            job.Crops, job.Catalog, job.DetectionMode,
+                            job.DetectionThreshold, job.MaxResults);
+                    }
+                    catch (Exception ex)
+                    {
+                        OnStatusMessage?.Invoke($"怪物檢測錯誤: {ex.Message}");
+                    }
+                    finally
+                    {
+                        job.Dispose();
+                    }
+
+                    lock (_monsterJobLock)
+                    {
+                        job = _pendingMonsterJob;
+                        _pendingMonsterJob = null;
+                    }
+                }
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _monsterDetectionInFlight, 0);
+                Interlocked.Exchange(ref _monsterJobReplacementCount, 0);
+            }
+
+            MonsterDetectionWorkItem? lateJob;
+            lock (_monsterJobLock)
+            {
+                lateJob = _pendingMonsterJob;
+                _pendingMonsterJob = null;
+            }
+
+            if (lateJob == null) return;
+
+            if (Interlocked.CompareExchange(ref _monsterDetectionInFlight, 1, 0) == 0)
+                Task.Run(() => RunMonsterDetectionWorker(lateJob));
+            else
+                lateJob.Dispose();
+        }
+
+        private void RunMonsterDetection(
+            List<(Rect CropRect, Mat Image)> crops,
+            MonsterDetectionCatalog catalog,
+            MonsterDetectionMode detectionMode,
+            double detectionThreshold,
+            int maxResults)
+        {
+            var allResults = new List<DetectionResult>();
+            MonsterTemplateMatchStats? aggregateStats = null;
+            string? timedMonsterName = null;
+
+            foreach (var (validCropRect, croppedMat) in crops)
+            {
+                foreach (var bundle in catalog.Bundles)
+                {
+                    var (results, stats) = _gameVision.FindMonstersWithStats(
+                        croppedMat, bundle, detectionMode, detectionThreshold);
+
+                    aggregateStats = aggregateStats.HasValue
+                        ? MonsterTemplateMatchStats.Merge(aggregateStats.Value, stats)
+                        : stats;
+                    timedMonsterName ??= bundle.MonsterName;
+
+                    foreach (var r in results)
+                    {
+                        allResults.Add(new DetectionResult(
+                            r.Name,
+                            new SdPoint(r.Position.X + validCropRect.X, r.Position.Y + validCropRect.Y),
+                            r.Size, r.Confidence,
+                            new SdRect(r.Position.X + validCropRect.X, r.Position.Y + validCropRect.Y,
+                                r.Size.Width, r.Size.Height)));
+                    }
+                }
+            }
+
+            if (aggregateStats.HasValue)
+                LogMonsterMatchTiming(timedMonsterName ?? "unknown", aggregateStats.Value);
 
             List<DetectionResult> finalResults;
             if (allResults.Count > 1)
@@ -531,18 +594,33 @@ namespace ArtaleAI.Services
 
                 if (maxResults > 0 && finalResults.Count > maxResults)
                     finalResults = finalResults.Take(maxResults).ToList();
-
-                OnStatusMessage?.Invoke($"檢測到 {finalResults.Count} 個怪物 (原始: {allResults.Count})");
             }
             else
             {
                 finalResults = allResults;
             }
 
+            if (finalResults.Count > 0)
+                OnStatusMessage?.Invoke($"檢測到 {finalResults.Count} 個怪物 (原始: {allResults.Count})");
+
             lock (_monsterLock) { _currentMonsters = finalResults; }
             _lastMonsterDetection = DateTime.UtcNow;
 
             CheckAutoAttackCondition();
+        }
+
+        private static void LogMonsterMatchTiming(string monsterName, MonsterTemplateMatchStats stats)
+        {
+            if (stats.TotalTemplates <= 0) return;
+
+            string coarsePart = stats.UsedFullFallback
+                ? $"粗篩 {stats.TotalTemplates}@{MonsterTemplateEntry.CoarseScale:0.##}× → fallback 精配 {stats.FineTemplates}"
+                : $"粗篩 {stats.TotalTemplates}@{MonsterTemplateEntry.CoarseScale:0.##}× → Top {stats.FineTemplates} 精配";
+
+            Logger.Debug(
+                $"[怪物偵測] {monsterName} {coarsePart} 模板，" +
+                $"down={stats.DownscaleMs:F1}ms score={stats.CoarseScoreMs:F1}ms " +
+                $"fine={stats.FineMs:F1}ms total={stats.TotalMs:F1}ms");
         }
 
         /// <summary>怪物與攻擊範圍相交時觸發攻擊序列。</summary>
@@ -571,6 +649,35 @@ namespace ArtaleAI.Services
                         return;
                     }
                 }
+            }
+        }
+
+        private sealed class MonsterDetectionWorkItem : IDisposable
+        {
+            public MonsterDetectionWorkItem(
+                List<(Rect CropRect, Mat Image)> crops,
+                MonsterDetectionCatalog catalog,
+                MonsterDetectionMode detectionMode,
+                double detectionThreshold,
+                int maxResults)
+            {
+                Crops = crops;
+                Catalog = catalog;
+                DetectionMode = detectionMode;
+                DetectionThreshold = detectionThreshold;
+                MaxResults = maxResults;
+            }
+
+            public List<(Rect CropRect, Mat Image)> Crops { get; }
+            public MonsterDetectionCatalog Catalog { get; }
+            public MonsterDetectionMode DetectionMode { get; }
+            public double DetectionThreshold { get; }
+            public int MaxResults { get; }
+
+            public void Dispose()
+            {
+                foreach (var (_, image) in Crops)
+                    image.Dispose();
             }
         }
     }

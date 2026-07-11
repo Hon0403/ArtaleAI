@@ -43,7 +43,7 @@ namespace ArtaleAI.Models.Config
         public List<string> DisplayOrder { get; set; } = new();
 
         public int BloodBarDetectIntervalMs { get; set; } = 100;
-        public int MonsterDetectIntervalMs { get; set; } = 200;
+        public int MonsterDetectIntervalMs { get; set; } = 100;
         public int CaptureFrameRate { get; set; } = 30;
 
         [YamlIgnore]

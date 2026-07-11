@@ -44,6 +44,13 @@ namespace ArtaleAI.Core.Vision
     {
         List<DetectionResult> FindMonsters(
             Mat sourceMat,
+            MonsterTemplateBundle bundle,
+            MonsterDetectionMode detectionMode,
+            double threshold = 0.7);
+
+        [Obsolete("請改用 MonsterTemplateBundle  overload。")]
+        List<DetectionResult> FindMonsters(
+            Mat sourceMat,
             List<Mat> templateMats,
             MonsterDetectionMode detectionMode,
             double threshold,
@@ -54,6 +61,9 @@ namespace ArtaleAI.Core.Vision
             double iouThreshold,
             bool higherIsBetter);
 
+        Task<MonsterTemplateBundle?> LoadMonsterTemplateBundleAsync(string monsterName, string monstersDirectory);
+
+        [Obsolete("請改用 LoadMonsterTemplateBundleAsync。")]
         Task<List<Mat>> LoadMonsterTemplatesAsync(string folderPath, string monsterName);
     }
 }

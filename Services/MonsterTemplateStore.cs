@@ -1,14 +1,15 @@
 using System.Windows.Forms;
 using ArtaleAI.Core;
+using ArtaleAI.Models.Detection;
 using OpenCvSharp;
 
 namespace ArtaleAI.Services
 {
-    /// <summary>怪物資料夾列舉與 OpenCV 模板清單之單一來源；釋放責任集中於此以避免 MainForm 與 GamePipeline 雙重擁有 Mat。</summary>
+    /// <summary>怪物模板 bundle 與 Catalog 的 UI 層單一來源；Mat 生命週期由 <see cref="GameVisionCore"/> 快取管理。</summary>
     public sealed class MonsterTemplateStore : IDisposable
     {
         private readonly GameVisionCore _gameVision;
-        private readonly List<Mat> _templates = new();
+        private readonly MonsterDetectionCatalog _catalog = new();
         private string? _selectedMonsterName;
 
         public MonsterTemplateStore(GameVisionCore gameVision)
@@ -16,10 +17,14 @@ namespace ArtaleAI.Services
             _gameVision = gameVision ?? throw new ArgumentNullException(nameof(gameVision));
         }
 
-        /// <summary>目前載入的模板（同一個 <see cref="List{Mat}"/> 參考供 <see cref="GamePipeline"/> 每幀指派）。</summary>
-        public List<Mat> Templates => _templates;
+        public MonsterDetectionCatalog Catalog => _catalog;
+
+        public MonsterTemplateBundle? ActiveBundle =>
+            _catalog.Bundles.Count > 0 ? _catalog.Bundles[0] : null;
 
         public string? SelectedMonsterName => _selectedMonsterName;
+
+        public int ActiveTemplateCount => _catalog.TotalTemplateCount;
 
         public static List<string> EnumerateMonsterFolderNames(string monstersDirectory)
         {
@@ -35,7 +40,6 @@ namespace ArtaleAI.Services
             return names;
         }
 
-        /// <summary>清空後填入「null」選項與各怪物資料夾名稱。</summary>
         public static void PopulateMonsterCombo(ComboBox combo, string monstersDirectory)
         {
             combo.Items.Clear();
@@ -44,37 +48,34 @@ namespace ArtaleAI.Services
                 combo.Items.Add(name);
         }
 
-        /// <summary>依選取下載入模板，或選「null」時清空。</summary>
         public async Task LoadSelectionAsync(string selectedItemText, string monstersDirectory)
         {
             if (selectedItemText == "null")
             {
-                ReleaseTemplates();
-                _selectedMonsterName = null;
+                ReleaseSelection();
                 return;
             }
 
-            ReleaseTemplates();
+            ReleaseSelection();
 
-            var loaded = await _gameVision.LoadMonsterTemplatesAsync(selectedItemText, monstersDirectory)
+            var bundle = await _gameVision.LoadMonsterTemplateBundleAsync(selectedItemText, monstersDirectory)
                 .ConfigureAwait(true);
-            if (loaded != null && loaded.Count > 0)
-                _templates.AddRange(loaded);
 
-            _selectedMonsterName = selectedItemText;
+            if (bundle != null && !bundle.IsEmpty)
+                _catalog.SetSingle(bundle);
+
+            _selectedMonsterName = bundle != null && !bundle.IsEmpty ? selectedItemText : null;
         }
 
-        public void ReleaseTemplates()
+        public void ReleaseSelection()
         {
-            foreach (var t in _templates)
-                t?.Dispose();
-            _templates.Clear();
+            _catalog.Clear();
             _selectedMonsterName = null;
         }
 
         public void Dispose()
         {
-            ReleaseTemplates();
+            ReleaseSelection();
         }
     }
 }

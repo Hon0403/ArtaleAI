@@ -8,7 +8,7 @@ general:
 vision:
   defaultThreshold: 0.7
   maxDetectionResults: 1
-  detectionMode: Color
+  detectionMode: ContourOnly
   nmsIouThreshold: 0.45
   playerThreshold: 0.7
   playerMarker: templates/minimap/player_marker.png
@@ -62,7 +62,7 @@ vision:
   - Color
   - TemplateFree
   bloodBarDetectIntervalMs: 150
-  monsterDetectIntervalMs: 200
+  monsterDetectIntervalMs: 100
   captureFrameRate: 30
   cornerThreshold: 0.8
   topLeft: tl.png
