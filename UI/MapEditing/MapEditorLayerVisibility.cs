@@ -4,6 +4,7 @@ namespace ArtaleAI.UI.MapEditing
     {
         public bool ShowPlatforms { get; set; } = true;
         public bool ShowRopes { get; set; } = true;
+        public bool ShowJumpLinks { get; set; } = true;
         public bool ShowManualAnchors { get; set; } = true;
         public bool ShowNodes { get; set; } = true;
         public bool ShowEdges { get; set; } = true;

@@ -45,6 +45,9 @@ namespace ArtaleAI.UI
                 case MapEditorValidationTargetKind.Platform when issue.TargetPlatform != null:
                     SetSelection(MapEditorSelection.ForPlatform(issue.TargetPlatform, -1, PointF.Empty));
                     break;
+                case MapEditorValidationTargetKind.JumpLink when issue.TargetJumpLinkIndex >= 0:
+                    SetSelection(MapEditorSelection.ForJumpLink(issue.TargetJumpLinkIndex));
+                    break;
                 case MapEditorValidationTargetKind.Rope when issue.TargetRopeIndex >= 0:
                     SetSelection(MapEditorSelection.ForRope(issue.TargetRopeIndex));
                     break;

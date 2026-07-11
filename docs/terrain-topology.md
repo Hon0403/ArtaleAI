@@ -106,7 +106,8 @@
 |------|------|------|
 | `PolylinePlatforms` | 幾何 | 可走平台／斜坡折線 SSOT |
 | `Ropes` | 幾何 | 垂直通道（繩／梯）段幾何 |
-| `ManualEdgeAnchors` | 行為 | 跨平台動作宣告；**不屬於**平台或繩索幾何本身 |
+| `JumpLinks` | 幾何 | 垂直跳點通道；格式同 `Ropes`：`[x, topY, bottomY]` |
+| `ManualEdgeAnchors` | 行為 | 跨平台動作宣告（SideJump、Teleport 等）；垂直 Jump 建議改用 `JumpLinks` |
 | `SafeZones`、`RestrictedZones` | 策略 | 安全區／禁制區；不改拓撲 |
 | `Nodes` | runtime | `BuildHTopology()` 推導的 `n_v_*` 虛擬節點（`[JsonIgnore]`） |
 | `Edges` | runtime | Walk（自動）+ 錨點解析邊 + Climb（繩／梯）（`[JsonIgnore]`） |
@@ -152,7 +153,8 @@
 | **清理** | 移除所有 `n_v_` 開頭的虛擬節點與相關邊 |
 | **A／B** | `PolylinePlatforms` → 弧長切點 → 節點 → 相鄰 **Walk** 雙向邊 |
 | **C** | `Ropes` → 投影切點 + **ClimbUp／ClimbDown** 邊 |
-| **D** | `ManualEdgeAnchors` → **Jump／JumpDown／Teleport** 等有向邊 |
+| **C2** | `JumpLinks` → 投影切點 + **Jump／JumpDown** 雙向邊（比照繩索） |
+| **D** | `ManualEdgeAnchors` → **SideJump／Teleport** 等有向邊 |
 
 切點來源：折線頂點、繩索投影、手動邊錨點。  
 合併時以弧長與座標雙重容差去重，避免過密 waypoint（見載入時 `LogMapDataIssues()` 警告）。

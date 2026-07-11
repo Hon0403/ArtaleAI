@@ -7,6 +7,7 @@ namespace ArtaleAI.UI.MapEditing
     {
         public List<PolylinePlatformData> PolylinePlatforms { get; set; } = new();
         public List<float[]> Ropes { get; set; } = new();
+        public List<float[]> JumpLinks { get; set; } = new();
         public List<ManualEdgeAnchor> ManualEdgeAnchors { get; set; } = new();
     }
 
@@ -32,6 +33,7 @@ namespace ArtaleAI.UI.MapEditing
             {
                 PolylinePlatforms = data.PolylinePlatforms ?? new List<PolylinePlatformData>(),
                 Ropes = data.Ropes ?? new List<float[]>(),
+                JumpLinks = data.JumpLinks ?? new List<float[]>(),
                 ManualEdgeAnchors = data.ManualEdgeAnchors ?? new List<ManualEdgeAnchor>()
             };
             return JsonConvert.SerializeObject(snapshot);
@@ -42,6 +44,7 @@ namespace ArtaleAI.UI.MapEditing
             var snapshot = JsonConvert.DeserializeObject<MapSsotSnapshot>(json) ?? new MapSsotSnapshot();
             target.PolylinePlatforms = snapshot.PolylinePlatforms ?? new List<PolylinePlatformData>();
             target.Ropes = snapshot.Ropes ?? new List<float[]>();
+            target.JumpLinks = snapshot.JumpLinks ?? new List<float[]>();
             target.ManualEdgeAnchors = snapshot.ManualEdgeAnchors ?? new List<ManualEdgeAnchor>();
         }
 

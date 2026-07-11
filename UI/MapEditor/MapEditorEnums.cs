@@ -14,6 +14,7 @@ namespace ArtaleAI.UI.MapEditing
         Select,
         Platform,
         Rope,
+        JumpLink,
         Delete,
         ManualEdge
     }
