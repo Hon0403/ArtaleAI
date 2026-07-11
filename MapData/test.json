@@ -1,0 +1,149 @@
+{
+  "Ropes": [
+    [
+      60.3,
+      153.0,
+      175.5
+    ],
+    [
+      148.8,
+      152.6,
+      175.0
+    ]
+  ],
+  "PolylinePlatforms": [
+    {
+      "Id": "plat_0",
+      "Points": [
+        {
+          "X": 47.7,
+          "Y": 175.5
+        },
+        {
+          "X": 161.4,
+          "Y": 175.5
+        },
+        {
+          "X": 167.6,
+          "Y": 181.2
+        },
+        {
+          "X": 207.5,
+          "Y": 181.2
+        },
+        {
+          "X": 214.8,
+          "Y": 181.2
+        },
+        {
+          "X": 224.6,
+          "Y": 187.3
+        }
+      ]
+    },
+    {
+      "Id": "plat_1",
+      "Points": [
+        {
+          "X": 23.2,
+          "Y": 153.0
+        },
+        {
+          "X": 106.4,
+          "Y": 153.0
+        }
+      ]
+    },
+    {
+      "Id": "plat_2",
+      "Points": [
+        {
+          "X": 115.8,
+          "Y": 153.0
+        },
+        {
+          "X": 135.3,
+          "Y": 153.0
+        }
+      ]
+    },
+    {
+      "Id": "plat_3",
+      "Points": [
+        {
+          "X": 144.7,
+          "Y": 153.0
+        },
+        {
+          "X": 221.4,
+          "Y": 153.4
+        }
+      ]
+    },
+    {
+      "Id": "plat_4",
+      "Points": [
+        {
+          "X": 207.5,
+          "Y": 179.5
+        },
+        {
+          "X": 222.6,
+          "Y": 167.7
+        },
+        {
+          "X": 270.7,
+          "Y": 167.3
+        }
+      ]
+    }
+  ],
+  "ManualEdgeAnchors": [
+    {
+      "FromPlatformId": "plat_1",
+      "FromX": 106.4,
+      "FromY": 153.0,
+      "FromSegmentIndex": 0,
+      "ToPlatformId": "plat_2",
+      "ToX": 115.8,
+      "ToY": 153.0,
+      "ToSegmentIndex": 0,
+      "ActionType": 3
+    },
+    {
+      "FromPlatformId": "plat_2",
+      "FromX": 135.3,
+      "FromY": 153.0,
+      "FromSegmentIndex": 0,
+      "ToPlatformId": "plat_3",
+      "ToX": 144.7,
+      "ToY": 153.0,
+      "ToSegmentIndex": 0,
+      "ActionType": 3
+    },
+    {
+      "FromPlatformId": "plat_0",
+      "FromX": 214.0,
+      "FromY": 181.2,
+      "FromSegmentIndex": 3,
+      "ToPlatformId": "plat_4",
+      "ToX": 213.6,
+      "ToY": 174.8,
+      "ToSegmentIndex": 0,
+      "ActionType": 2
+    },
+    {
+      "FromPlatformId": "plat_4",
+      "FromX": 213.6,
+      "FromY": 174.8,
+      "FromSegmentIndex": 0,
+      "ToPlatformId": "plat_0",
+      "ToX": 214.0,
+      "ToY": 181.2,
+      "ToSegmentIndex": 3,
+      "ActionType": 2
+    }
+  ],
+  "SafeZones": [],
+  "RestrictedZones": []
+}

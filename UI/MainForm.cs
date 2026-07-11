@@ -104,7 +104,7 @@ namespace ArtaleAI
 
         public MainForm()
         {
-            Logger.Initialize("Logs", enableConsole: true);
+            Logger.Initialize(PathManager.LogsDirectory, enableConsole: true);
             Logger.Info("[系統] ArtaleAI 正在啟動...");
 
             InitializeComponent();
@@ -118,7 +118,7 @@ namespace ArtaleAI
             try
             {
                 ApiConfig.Initialize();
-                AppConfig.Initialize("Data/config.yaml");
+                AppConfig.Initialize(PathManager.ConfigFilePath);
                 var config = AppConfig.Instance;
 
                 if (config == null)

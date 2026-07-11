@@ -893,7 +893,7 @@ namespace ArtaleAI.Core
 
                 var templatePath = kvp.Value;
                 if (!Path.IsPathRooted(templatePath))
-                    templatePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, templatePath);
+                    templatePath = Path.Combine(PathManager.ContentRoot, templatePath);
 
                 if (!File.Exists(templatePath))
                 {

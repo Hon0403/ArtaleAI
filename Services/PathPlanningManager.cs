@@ -22,8 +22,8 @@ namespace ArtaleAI.Services
 
         public event Action<SdPointF>? OnWaypointReached;
 
-        public string MapDataDirectory => "MapData";
-        public string MonstersDirectory => "Monsters";
+        public string MapDataDirectory => PathManager.MapDataDirectory;
+        public string MonstersDirectory => PathManager.MonstersDirectory;
 
 
         public PathPlanningTracker Tracker => _tracker;
