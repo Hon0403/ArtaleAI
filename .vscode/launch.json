@@ -10,7 +10,7 @@
             "request": "launch",
             "preLaunchTask": "build",
             // 如果您已變更目標 Framework，請務必更新程式路徑。
-            "program": "${workspaceFolder}/bin/Debug/net6.0-windows10.0.19041.0/ArtaleAI.dll",
+            "program": "${workspaceFolder}/bin/Debug/net8.0-windows10.0.19041.0/ArtaleAI.dll",
             "args": [],
             "cwd": "${workspaceFolder}",
             // 如需 [主控台] 欄位的詳細資訊，請參閱 https://aka.ms/VSCode-CS-LaunchJson-Console
