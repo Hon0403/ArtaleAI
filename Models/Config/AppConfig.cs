@@ -17,6 +17,7 @@ namespace ArtaleAI.Models.Config
         private static AppConfig? _instance;
         private static readonly object _lock = new object();
         private static string _activeConfigPath = "config.yaml";
+        private static DateTime _playerVitalsFileWriteUtc = DateTime.MinValue;
 
         public static AppConfig Instance
         {
@@ -35,6 +36,7 @@ namespace ArtaleAI.Models.Config
         public NavigationSettings Navigation { get; set; } = new();
         public EditorSettings Editor { get; set; } = new();
         public AppearanceSettings Appearance { get; set; } = new();
+        public PlayerVitalsSettings PlayerVitals { get; set; } = new();
 
         #endregion
 
@@ -57,6 +59,7 @@ namespace ArtaleAI.Models.Config
                             .Build();
                         _instance = deserializer.Deserialize<AppConfig>(yaml);
                         Logger.Info($"[Config] 載入設定檔: {_activeConfigPath}");
+                        _playerVitalsFileWriteUtc = File.GetLastWriteTimeUtc(_activeConfigPath);
                     }
                     else
                     {
@@ -69,6 +72,34 @@ namespace ArtaleAI.Models.Config
                     Console.WriteLine($"Config 載入失敗，使用預設值: {ex.Message}");
                     _instance = new AppConfig();
                 }
+            }
+        }
+
+        /// <summary>執行中若 config.yaml 的 playerVitals 區塊有更新，熱重載（免重啟）。</summary>
+        public void ReloadPlayerVitalsIfFileChanged()
+        {
+            if (!File.Exists(_activeConfigPath))
+                return;
+
+            DateTime writeUtc = File.GetLastWriteTimeUtc(_activeConfigPath);
+            if (writeUtc <= _playerVitalsFileWriteUtc)
+                return;
+
+            lock (_lock)
+            {
+                writeUtc = File.GetLastWriteTimeUtc(_activeConfigPath);
+                if (writeUtc <= _playerVitalsFileWriteUtc)
+                    return;
+
+                var yaml = File.ReadAllText(_activeConfigPath);
+                var deserializer = new DeserializerBuilder()
+                    .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                    .IgnoreUnmatchedProperties()
+                    .Build();
+                var loaded = deserializer.Deserialize<AppConfig>(yaml);
+                PlayerVitals = loaded.PlayerVitals;
+                _playerVitalsFileWriteUtc = writeUtc;
+                Logger.Info("[Config] playerVitals 已熱重載");
             }
         }
 
@@ -86,6 +117,7 @@ namespace ArtaleAI.Models.Config
                 var yaml = serializer.Serialize(this);
                 File.WriteAllText(targetPath, yaml);
                 _activeConfigPath = targetPath;
+                _playerVitalsFileWriteUtc = File.GetLastWriteTimeUtc(targetPath);
                 Logger.Info($"[Config] 已儲存設定檔: {targetPath}");
                 OnPropertyChanged(nameof(AppConfig));
             }

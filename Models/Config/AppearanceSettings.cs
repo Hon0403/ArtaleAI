@@ -13,5 +13,6 @@ namespace ArtaleAI.Models.Config
         public MinimapStyle Minimap { get; set; } = new();
         public MinimapPlayerStyle MinimapPlayer { get; set; } = new();
         public MinimapViewerStyle MinimapViewer { get; set; } = new();
+        public PlayerVitalsStyle PlayerVitals { get; set; } = new();
     }
 }

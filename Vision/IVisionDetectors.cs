@@ -28,6 +28,12 @@ namespace ArtaleAI.Vision
         ProcessBloodBarDetection(Mat frameMat, System.Drawing.Rectangle? uiExcludeRect);
     }
 
+    /// <summary>視窗底部固定 UI 列之玩家 HP／MP 填充比例。</summary>
+    public interface IPlayerVitalsDetector : IVisionDetector
+    {
+        PlayerVitalsSnapshot Detect(Mat frameMat, PlayerVitalsSettings settings);
+    }
+
     /// <summary>小地圖框定位與玩家追蹤。</summary>
     public interface IMinimapDetector : IVisionDetector
     {

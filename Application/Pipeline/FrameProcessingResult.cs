@@ -14,6 +14,7 @@ namespace ArtaleAI.Application.Pipeline
         public List<DetectionResult> Monsters { get; init; } = new();
         public List<SdRect> MinimapBoxes { get; init; } = new();
         public List<SdRect> MinimapMarkers { get; init; } = new();
+        public PlayerVitalsSnapshot? PlayerVitals { get; init; }
         public string? StatusMessage { get; set; }
     }
 }

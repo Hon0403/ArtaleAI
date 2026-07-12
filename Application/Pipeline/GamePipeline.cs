@@ -12,6 +12,7 @@ using ArtaleAI.Application.Movement;
 using ArtaleAI.Models.Detection;
 using ArtaleAI.Models.Minimap;
 using ArtaleAI.Shared;
+using ArtaleAI.Vision.Detectors;
 using OpenCvSharp;
 using SdPoint = System.Drawing.Point;
 using SdPointF = System.Drawing.PointF;
@@ -25,8 +26,10 @@ namespace ArtaleAI.Application.Pipeline
         private readonly GameVisionCore _gameVision;
         private readonly PathPlanningManager? _pathPlanningManager;
         private readonly CharacterMovementController? _movementController;
+        private readonly IPlayerVitalsDetector _playerVitalsDetector;
 
         private readonly object _bloodBarLock = new();
+        private readonly object _vitalsLock = new();
         private readonly object _monsterLock = new();
         private readonly object _minimapBoxLock = new();
         private readonly object _minimapMarkerLock = new();
@@ -37,8 +40,10 @@ namespace ArtaleAI.Application.Pipeline
         private List<DetectionResult> _currentMonsters = new();
         private List<SdRect> _currentMinimapBoxes = new();
         private List<SdRect> _currentMinimapMarkers = new();
+        private PlayerVitalsSnapshot? _currentPlayerVitals;
 
         private DateTime _lastBloodBarDetection = DateTime.MinValue;
+        private DateTime _lastPlayerVitalsDetection = DateTime.MinValue;
         private DateTime _lastMonsterDetection = DateTime.MinValue;
 
         private volatile bool _isAttacking = false;
@@ -109,11 +114,13 @@ namespace ArtaleAI.Application.Pipeline
         public GamePipeline(
             GameVisionCore gameVision,
             PathPlanningManager? pathPlanningManager = null,
-            CharacterMovementController? movementController = null)
+            CharacterMovementController? movementController = null,
+            IPlayerVitalsDetector? playerVitalsDetector = null)
         {
             _gameVision = gameVision ?? throw new ArgumentNullException(nameof(gameVision));
             _pathPlanningManager = pathPlanningManager;
             _movementController = movementController;
+            _playerVitalsDetector = playerVitalsDetector ?? new PlayerVitalsDetector();
         }
 
         /// <summary>更新小地圖邊界範圍（由 MainForm 傳入）</summary>
@@ -134,6 +141,8 @@ namespace ArtaleAI.Application.Pipeline
             lock (_minimapMarkerLock) minimapMarkers = _currentMinimapMarkers.ToList();
             detectionBoxes = _currentDetectionBoxes.ToList();
             attackRangeBoxes = _currentAttackRangeBoxes.ToList();
+            PlayerVitalsSnapshot? playerVitals;
+            lock (_vitalsLock) playerVitals = _currentPlayerVitals;
 
             return new FrameProcessingResult
             {
@@ -142,7 +151,8 @@ namespace ArtaleAI.Application.Pipeline
                 AttackRangeBoxes = attackRangeBoxes,
                 Monsters = monsters,
                 MinimapBoxes = minimapBoxes,
-                MinimapMarkers = minimapMarkers
+                MinimapMarkers = minimapMarkers,
+                PlayerVitals = playerVitals
             };
         }
 
@@ -188,6 +198,7 @@ namespace ArtaleAI.Application.Pipeline
                 double msAfterPathAttack = sw.Elapsed.TotalMilliseconds;
 
                 ProcessBloodBarDetection(frameMat, config, now);
+                ProcessPlayerVitalsDetection(frameMat, config, now);
 
                 double msAfterBlood = sw.Elapsed.TotalMilliseconds;
 
@@ -418,6 +429,98 @@ namespace ArtaleAI.Application.Pipeline
             {
                 OnStatusMessage?.Invoke($"血條偵測錯誤: {ex.Message}");
             }
+        }
+
+        private void ProcessPlayerVitalsDetection(Mat frameMat, AppConfig config, DateTime now)
+        {
+            config.ReloadPlayerVitalsIfFileChanged();
+            var vitalsSettings = config.PlayerVitals;
+            if (!vitalsSettings.Enabled)
+                return;
+
+            var layout = PlayerVitalsDetector.ResolveLayout(
+                frameMat.Width, frameMat.Height, vitalsSettings, frameMat);
+
+            if (!layout.IsLayoutValid)
+            {
+                lock (_vitalsLock) { _currentPlayerVitals = layout; }
+                return;
+            }
+
+            var elapsed = (now - _lastPlayerVitalsDetection).TotalMilliseconds;
+            bool shouldMeasureFill = elapsed >= vitalsSettings.DetectIntervalMs;
+
+            lock (_vitalsLock)
+            {
+                if (!shouldMeasureFill && _currentPlayerVitals?.HasFillReading == true)
+                {
+                    _currentPlayerVitals = _currentPlayerVitals with
+                    {
+                        HpBarRect = layout.HpBarRect,
+                        MpBarRect = layout.MpBarRect,
+                        UiBandRect = layout.UiBandRect,
+                        FrameWidth = layout.FrameWidth,
+                        FrameHeight = layout.FrameHeight,
+                        IsLayoutValid = true,
+                        UsesAutoLayout = layout.UsesAutoLayout
+                    };
+                    return;
+                }
+            }
+
+            try
+            {
+                var measured = _playerVitalsDetector.Detect(frameMat, vitalsSettings);
+                PlayerVitalsSnapshot snapshot = measured.IsLayoutValid
+                    ? measured
+                    : layout;
+
+                if (measured.HasFillReading)
+                {
+                    lock (_vitalsLock)
+                    {
+                        snapshot = vitalsSettings.SmoothReadings
+                            ? SmoothVitals(measured, _currentPlayerVitals, vitalsSettings.EmaAlpha)
+                            : measured;
+                        _currentPlayerVitals = snapshot;
+                    }
+                    _lastPlayerVitalsDetection = now;
+                }
+                else
+                {
+                    lock (_vitalsLock) { _currentPlayerVitals = layout; }
+                }
+            }
+            catch (Exception ex)
+            {
+                lock (_vitalsLock) { _currentPlayerVitals = layout; }
+                OnStatusMessage?.Invoke($"玩家血魔條偵測錯誤: {ex.Message}");
+            }
+        }
+
+        private static PlayerVitalsSnapshot SmoothVitals(
+            PlayerVitalsSnapshot raw,
+            PlayerVitalsSnapshot? previous,
+            double emaAlpha)
+        {
+            if (previous is not { HasFillReading: true })
+                return raw;
+
+            double alpha = Math.Clamp(emaAlpha, 0.05, 1);
+            const double snapDelta = 0.12;
+            return raw with
+            {
+                HpRatio = SmoothRatio(raw.HpRatio, previous.HpRatio, alpha, snapDelta),
+                MpRatio = SmoothRatio(raw.MpRatio, previous.MpRatio, alpha, snapDelta)
+            };
+        }
+
+        private static double SmoothRatio(double raw, double previous, double alpha, double snapDelta)
+        {
+            if (Math.Abs(raw - previous) >= snapDelta)
+                return raw;
+
+            return alpha * raw + (1 - alpha) * previous;
         }
 
         /// <summary>節流並非同步排程怪物辨識；進行中則以 Latest-Frame-Wins 覆蓋待處理 ROI。</summary>

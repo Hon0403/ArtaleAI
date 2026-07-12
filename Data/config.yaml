@@ -160,3 +160,49 @@ appearance:
     baseSize: 20
     showRuler: true
     opacity: 100
+  playerVitals:
+    hpFrameColor: 255,0,80
+    mpFrameColor: 0,255,255
+    textColor: 255,255,0
+    frameThickness: 3
+    showUiBand: true
+    uiBandFrameColor: 255,0,255
+playerVitals:
+  enabled: true
+  showRoiOverlay: true
+  detectIntervalMs: 100
+  uiBandTopPercent: 0.93
+  hpBar:
+    leftPercent: 0.2679575265459088
+    widthPercent: 0.12554653341661462
+    bottomPercent: 0.008592910848549946
+    heightPercent: 0.027926960257787327
+  mpBar:
+    leftPercent: 0.39787632729544037
+    widthPercent: 0.12554653341661462
+    bottomPercent: 0.00966702470461869
+    heightPercent: 0.02685284640171858
+  lowerRedHsv:
+  - 0
+  - 70
+  - 70
+  upperRedHsv:
+  - 12
+  - 255
+  - 255
+  lowerBlueHsv:
+  - 90
+  - 50
+  - 50
+  upperBlueHsv:
+  - 135
+  - 255
+  - 255
+  emaAlpha: 0.55
+  smoothReadings: true
+  columnFillThreshold: 0.35
+  minFilledColumns: 1
+  roiInnerMarginPx: 0
+  readingDecimalPlaces: 2
+  sampleRowCount: 0
+  useAutoLayout: false

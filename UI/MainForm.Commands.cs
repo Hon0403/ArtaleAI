@@ -163,7 +163,6 @@ namespace ArtaleAI
         {
             switch (keyData)
             {
-
                 case Keys.F4:
                     pictureBoxMinimap.Invalidate();
                     MsgLog.ShowStatus(textBox1, "已更新路徑編輯畫面");

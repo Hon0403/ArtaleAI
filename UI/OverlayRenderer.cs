@@ -82,7 +82,126 @@ namespace ArtaleAI.UI
                 }
             }
 
+            DrawPlayerVitalsOverlay(graphics, result.PlayerVitals, config);
+
             return (Bitmap)bitmap.Clone();
+        }
+
+        private static void DrawPlayerVitalsOverlay(
+            Graphics graphics,
+            PlayerVitalsSnapshot? vitals,
+            AppConfig config)
+        {
+            if (vitals is not { IsLayoutValid: true })
+                return;
+
+            var vitalsSettings = config.PlayerVitals;
+            if (!vitalsSettings.ShowRoiOverlay && !vitals.HasFillReading)
+                return;
+
+            var style = config.Appearance.PlayerVitals;
+            var textColor = GameVisionCore.ParseColor(style.TextColor);
+
+            if (style.ShowUiBand && vitals.UiBandRect.Width > 0 && vitals.UiBandRect.Height > 0)
+            {
+                DrawDashedRect(
+                    graphics,
+                    vitals.UiBandRect,
+                    GameVisionCore.ParseColor(style.UiBandFrameColor),
+                    1f);
+
+                string bandLabel =
+                    $"UI ≥{vitalsSettings.UiBandTopPercent:P0} | {vitals.FrameWidth}x{vitals.FrameHeight}";
+                DrawLabel(graphics, bandLabel, vitals.UiBandRect.X + 4, vitals.UiBandRect.Y + 4, textColor);
+            }
+
+            string hpLabel = vitals.HasFillReading
+                ? FormatVitalReading("HP", vitals.HpRatio, vitalsSettings.ReadingDecimalPlaces)
+                : FormatRoiLabel("HP ROI", vitalsSettings.HpBar);
+            string mpLabel = vitals.HasFillReading
+                ? FormatVitalReading("MP", vitals.MpRatio, vitalsSettings.ReadingDecimalPlaces)
+                : FormatRoiLabel("MP ROI", vitalsSettings.MpBar);
+
+            var hpColor = GameVisionCore.ParseColor(style.HpFrameColor);
+            var mpColor = GameVisionCore.ParseColor(style.MpFrameColor);
+
+            if (vitals.HasFillReading)
+            {
+                DrawFillPreview(graphics, vitals.HpBarRect, vitals.HpRatio, hpColor);
+                DrawFillPreview(graphics, vitals.MpBarRect, vitals.MpRatio, mpColor);
+            }
+
+            DrawVitalBar(graphics, vitals.HpBarRect, hpColor, textColor, style.FrameThickness, hpLabel);
+            DrawVitalBar(graphics, vitals.MpBarRect, mpColor, textColor, style.FrameThickness, mpLabel);
+        }
+
+        private static void DrawFillPreview(Graphics graphics, SdRect rect, double ratio, Color color)
+        {
+            if (ratio <= 0)
+                return;
+
+            int fillWidth = Math.Max(1, (int)Math.Round(rect.Width * Math.Clamp(ratio, 0, 1)));
+            var fillRect = new SdRect(rect.X, rect.Y, fillWidth, rect.Height);
+            using var brush = new SolidBrush(Color.FromArgb(90, color));
+            graphics.FillRectangle(brush, fillRect);
+        }
+
+        private static string FormatRoiLabel(string prefix, BarRoiPercentAnchor anchor)
+        {
+            return $"{prefix} L{anchor.LeftPercent:P1} W{anchor.WidthPercent:P1} B{anchor.BottomPercent:P1} H{anchor.HeightPercent:P1}";
+        }
+
+        private static string FormatVitalReading(string prefix, double ratio, int decimalPlaces)
+        {
+            int digits = Math.Clamp(decimalPlaces, 0, 3);
+            double percent = Math.Clamp(ratio, 0, 1) * 100;
+            return $"{prefix} {percent.ToString($"F{digits}")}%";
+        }
+
+        private static void DrawVitalBar(
+            Graphics graphics,
+            SdRect rect,
+            Color frameColor,
+            Color textColor,
+            int thickness,
+            string label)
+        {
+            using var pen = new Pen(frameColor, thickness);
+            graphics.DrawRectangle(pen, rect);
+            using var highlight = new Pen(Color.FromArgb(180, Color.White), 1f);
+            graphics.DrawLine(highlight, rect.Left, rect.Top, rect.Right, rect.Top);
+            DrawLabelTopRight(graphics, label, rect, textColor);
+        }
+
+        private static void DrawLabelTopRight(Graphics graphics, string label, SdRect rect, Color textColor)
+        {
+            using var font = new Font(SystemFonts.DefaultFont.FontFamily, SystemFonts.DefaultFont.Size, FontStyle.Bold);
+            var size = graphics.MeasureString(label, font);
+            float x = rect.Right - size.Width - 2;
+            float y = rect.Top + 2;
+            DrawLabel(graphics, label, x, y, textColor, font);
+        }
+
+        private static void DrawDashedRect(Graphics graphics, SdRect rect, Color color, float thickness)
+        {
+            using var pen = new Pen(color, thickness) { DashStyle = DashStyle.Dash };
+            graphics.DrawRectangle(pen, rect);
+            using var innerPen = new Pen(Color.FromArgb(160, color), 1f);
+            graphics.DrawRectangle(innerPen, rect);
+        }
+
+        private static void DrawLabel(Graphics graphics, string label, float x, float y, Color textColor)
+        {
+            using var font = new Font(SystemFonts.DefaultFont.FontFamily, SystemFonts.DefaultFont.Size, FontStyle.Bold);
+            DrawLabel(graphics, label, x, y, textColor, font);
+        }
+
+        private static void DrawLabel(Graphics graphics, string label, float x, float y, Color textColor, Font font)
+        {
+            using var outline = new SolidBrush(Color.FromArgb(220, 0, 0, 0));
+            using var brush = new SolidBrush(textColor);
+            graphics.DrawString(label, font, outline, x + 1, y + 1);
+            graphics.DrawString(label, font, brush, x, y);
         }
     }
 }

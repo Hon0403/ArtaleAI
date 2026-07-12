@@ -87,4 +87,14 @@ namespace ArtaleAI.Models.Detection
         public string RangeDisplayName { get; set; } = "ATK";
     }
 
+    /// <summary>玩家底部 UI 血魔條除錯疊加樣式。</summary>
+    public class PlayerVitalsStyle
+    {
+        public string HpFrameColor { get; set; } = "255,0,80";
+        public string MpFrameColor { get; set; } = "0,255,255";
+        public string TextColor { get; set; } = "255,255,0";
+        public int FrameThickness { get; set; } = 3;
+        public bool ShowUiBand { get; set; } = true;
+        public string UiBandFrameColor { get; set; } = "255,0,255";
+    }
 }
