@@ -42,11 +42,16 @@ namespace ArtaleAI.Application.Pipeline
         private List<SdRect> _currentMinimapMarkers = new();
         private PlayerVitalsSnapshot? _currentPlayerVitals;
 
+        private readonly AutoHealCoordinator _autoHeal = new();
         private DateTime _lastBloodBarDetection = DateTime.MinValue;
         private DateTime _lastPlayerVitalsDetection = DateTime.MinValue;
         private DateTime _lastMonsterDetection = DateTime.MinValue;
 
         private volatile bool _isAttacking = false;
+        private bool _lastAutoAttackEnabled;
+        private volatile bool _isResting;
+        private DateTime _restEndsAtUtc = DateTime.MinValue;
+        private DateTime _nextRestDueUtc = DateTime.MinValue;
         private int _attackInputLease;
         private int _monsterDetectionInFlight;
         private int _monsterJobReplacementCount;
@@ -82,10 +87,16 @@ namespace ArtaleAI.Application.Pipeline
         /// <summary>自動攻擊是否啟用（由 UI 執行緒更新）</summary>
         public volatile bool AutoAttackEnabled;
 
+        /// <summary>
+        /// 自動喝水工作階段：勾選「自動打怪」並開著擷取即可。
+        /// 不要求路徑／怪物就緒（那些只閘攻擊與導航）。
+        /// </summary>
+        public volatile bool AutoHealEnabled;
+
         /// <summary>執行期啟用的怪物模板 catalog（與 <see cref="MonsterTemplateStore.Catalog"/> 共用參考）。</summary>
         public MonsterDetectionCatalog MonsterCatalog { get; set; } = new();
 
-        /// <summary>已選擇的怪物名稱（單選；Phase 2 可改為多選）。</summary>
+        /// <summary>已選擇的怪物名稱摘要（多選以頓號連接）。</summary>
         public string SelectedMonsterName { get; set; } = string.Empty;
 
         /// <summary>幀驅動同步：視覺處理完成旗標</summary>
@@ -98,9 +109,12 @@ namespace ArtaleAI.Application.Pipeline
         /// <summary>攻擊中狀態（供外部查詢）</summary>
         public bool IsAttacking => _isAttacking;
 
+        /// <summary>防偵測休息中（暫停攻擊與導航輸入）。</summary>
+        public bool IsResting => _isResting;
+
         /// <summary>攻擊或攻擊輸入租約進行中時，導航 Walk 應讓出鍵盤。</summary>
         public bool BlocksNavigationInput =>
-            _isAttacking || Volatile.Read(ref _attackInputLease) > 0;
+            _isResting || _isAttacking || Volatile.Read(ref _attackInputLease) > 0;
 
         /// <summary>每幀處理完成後觸發，攜帶所有偵測結果的快照</summary>
         public event Action<FrameProcessingResult>? OnFrameProcessed;
@@ -185,8 +199,11 @@ namespace ArtaleAI.Application.Pipeline
                 if (trackingResult != null)
                     FeedPlayerTracking(trackingResult);
 
-                bool attackTriggered = false;
                 if (AutoAttackEnabled)
+                    ProcessAntiDetectRest(config, now);
+
+                bool attackTriggered = false;
+                if (AutoAttackEnabled && !_isResting)
                     attackTriggered = ProcessAutoAttackDecision();
 
                 if (!attackTriggered)
@@ -199,6 +216,9 @@ namespace ArtaleAI.Application.Pipeline
 
                 ProcessBloodBarDetection(frameMat, config, now);
                 ProcessPlayerVitalsDetection(frameMat, config, now);
+
+                if (AutoHealEnabled)
+                    ProcessAutoHeal(config, now);
 
                 double msAfterBlood = sw.Elapsed.TotalMilliseconds;
 
@@ -295,6 +315,145 @@ namespace ArtaleAI.Application.Pipeline
             }
 
             return false;
+        }
+
+        private void ProcessAntiDetectRest(AppConfig config, DateTime now)
+        {
+            if (!AutoAttackEnabled)
+            {
+                _isResting = false;
+                _nextRestDueUtc = DateTime.MinValue;
+                _lastAutoAttackEnabled = false;
+                return;
+            }
+
+            if (!_lastAutoAttackEnabled)
+            {
+                _lastAutoAttackEnabled = true;
+                ScheduleNextRest(config, now);
+            }
+
+            int intervalMinutes = config.AutoFarm.RestIntervalMinutes;
+            if (intervalMinutes <= 0)
+            {
+                _isResting = false;
+                return;
+            }
+
+            if (_isResting)
+            {
+                if (now >= _restEndsAtUtc)
+                {
+                    _isResting = false;
+                    _movementController?.StopMovement();
+                    OnStatusMessage?.Invoke("小休結束，繼續自動打怪");
+                    ScheduleNextRest(config, now);
+                }
+
+                return;
+            }
+
+            if (_nextRestDueUtc == DateTime.MinValue)
+                ScheduleNextRest(config, now);
+
+            if (now < _nextRestDueUtc)
+                return;
+
+            int durationSeconds = ResolveRestDurationSeconds(config.AutoFarm);
+            _isResting = true;
+            _restEndsAtUtc = now.AddSeconds(durationSeconds);
+            _movementController?.StopMovement();
+            OnStatusMessage?.Invoke($"開始小休，暫停約 {durationSeconds} 秒…");
+        }
+
+        /// <summary>自動打怪勾選、擷取運行中即可依血魔％按藥水快捷鍵；不依賴路徑／怪物就緒。</summary>
+        private void ProcessAutoHeal(AppConfig config, DateTime now)
+        {
+            if (_movementController == null)
+                return;
+
+            PlayerVitalsSnapshot? vitals;
+            lock (_vitalsLock)
+                vitals = _currentPlayerVitals;
+
+            _autoHeal.TryHeal(
+                config.AutoFarm,
+                vitals,
+                now,
+                TapHealHotkey);
+        }
+
+        /// <summary>供主控台 StatusBar 顯示剛補／冷卻短提示。</summary>
+        public string? GetAutoHealStatusHint(DateTime? nowUtc = null)
+        {
+            PlayerVitalsSnapshot? vitals;
+            lock (_vitalsLock)
+                vitals = _currentPlayerVitals;
+
+            return _autoHeal.GetStatusHint(
+                AppConfig.Instance.AutoFarm,
+                vitals,
+                nowUtc ?? DateTime.UtcNow);
+        }
+
+        private void TapHealHotkey(ushort virtualKey)
+        {
+            var movement = _movementController;
+            if (movement == null)
+                return;
+
+            // fire-and-forget：短按不阻塞幀迴圈；間隔由 AutoHealCoordinator 節流。
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    movement.SendKeyInput(virtualKey, false);
+                    await Task.Delay(60).ConfigureAwait(false);
+                    movement.SendKeyInput(virtualKey, true);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning($"[自動喝水] 按鍵失敗: {ex.Message}");
+                }
+            });
+        }
+
+        private void ScheduleNextRest(AppConfig config, DateTime now)
+        {
+            int intervalMinutes = config.AutoFarm.RestIntervalMinutes;
+            if (intervalMinutes <= 0)
+            {
+                _nextRestDueUtc = DateTime.MinValue;
+                return;
+            }
+
+            double jitteredMinutes = ApplyPercentJitter(
+                intervalMinutes,
+                config.AutoFarm.RestJitterPercent);
+
+            // 抖動後仍至少 1 分鐘，避免緊貼連續休息。
+            jitteredMinutes = Math.Max(1.0, jitteredMinutes);
+            _nextRestDueUtc = now.AddMinutes(jitteredMinutes);
+            OnStatusMessage?.Invoke($"下次約 {jitteredMinutes:F0} 分鐘後會再休息");
+        }
+
+        private static int ResolveRestDurationSeconds(AutoFarmSettings settings)
+        {
+            double jittered = ApplyPercentJitter(
+                Math.Max(5, settings.RestDurationSeconds),
+                settings.RestJitterPercent);
+            return Math.Max(5, (int)Math.Round(jittered));
+        }
+
+        /// <summary>對基準值套用 ±jitterPercent 均勻隨機倍率，打破固定週期指紋。</summary>
+        private static double ApplyPercentJitter(double baseValue, int jitterPercent)
+        {
+            int clamped = Math.Clamp(jitterPercent, 0, 50);
+            if (clamped <= 0 || baseValue <= 0)
+                return baseValue;
+
+            double factor = 1.0 + (Random.Shared.NextDouble() * 2.0 - 1.0) * (clamped / 100.0);
+            return baseValue * factor;
         }
 
         /// <summary>轉向最近目標並送出攻擊鍵；租約期間導航輸入讓出。</summary>

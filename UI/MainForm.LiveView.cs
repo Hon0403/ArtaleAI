@@ -37,7 +37,7 @@ using System.Threading.Tasks;
 
 namespace ArtaleAI
 {
-    public partial class MainForm : Form
+    public partial class MainForm
     {
         #region UI 事件處理
 
@@ -239,7 +239,8 @@ namespace ArtaleAI
                     if (_gamePipeline != null)
                     {
                         _gamePipeline.AutoAttackEnabled = _autoAttackEnabled;
-                        _gamePipeline.SelectedMonsterName = _monsterTemplates?.SelectedMonsterName ?? string.Empty;
+                        _gamePipeline.AutoHealEnabled = ckB_Start.Checked;
+                        _gamePipeline.SelectedMonsterName = _monsterTemplates?.SelectedMonsterNamesDisplay ?? string.Empty;
 
                         _gamePipeline.ProcessFrame(frameMat, captureTime, config);
 
@@ -298,15 +299,15 @@ namespace ArtaleAI
             _autoAttackEnabled = ckB_Start.Checked &&
                                  cbo_LoadPathFile.SelectedIndex > 0 &&
                                  cbo_DetectMode.SelectedItem != null &&
-                                 cbo_MonsterTemplates.SelectedIndex > 0;
+                                 (_monsterTemplates?.HasSelection == true);
+
+            UpdatePrerequisitesLabel();
         }
 
         /// <summary>同步 GamePipeline 輸出的小地圖框與玩家標記（LiveView 疊加在 <see cref="OnFrameAvailable"/> 繪製）。</summary>
         private void OnGamePipelineFrameProcessed(FrameProcessingResult result)
         {
-            if (result == null) return;
-
-
+            OnConsoleFrameProcessed(result);
         }
 
 

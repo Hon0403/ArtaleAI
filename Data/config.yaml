@@ -7,7 +7,7 @@ general:
   crosshairSize: 2
 vision:
   defaultThreshold: 0.7
-  maxDetectionResults: 1
+  maxDetectionResults: 5
   detectionMode: ContourOnly
   nmsIouThreshold: 0.45
   playerThreshold: 0.7
@@ -191,18 +191,29 @@ playerVitals:
   - 255
   - 255
   lowerBlueHsv:
-  - 90
-  - 50
-  - 50
+  - 95
+  - 80
+  - 100
   upperBlueHsv:
-  - 135
+  - 130
   - 255
   - 255
   emaAlpha: 0.55
   smoothReadings: true
-  columnFillThreshold: 0.35
+  columnFillThreshold: 0.45
   minFilledColumns: 1
-  roiInnerMarginPx: 0
+  roiInnerMarginPx: 1
   readingDecimalPlaces: 2
   sampleRowCount: 0
   useAutoLayout: false
+autoFarm:
+  restIntervalMinutes: 0
+  restDurationSeconds: 60
+  restJitterPercent: 20
+  healHpEnabled: true
+  healHpThresholdPercent: 40
+  healHpHotkey: Shift
+  healMpEnabled: true
+  healMpThresholdPercent: 30
+  healMpHotkey: Insert
+  healCooldownMs: 800

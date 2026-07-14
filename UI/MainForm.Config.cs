@@ -37,7 +37,7 @@ using System.Threading.Tasks;
 
 namespace ArtaleAI
 {
-    public partial class MainForm : Form
+    public partial class MainForm
     {
         #region IConfigEventHandler 實作
 
@@ -156,6 +156,7 @@ namespace ArtaleAI
             config.Vision.DetectionMode = selectedMode;
 
             MsgLog.ShowStatus(textBox1, $" 偵測模式: {selectedMode} | 遮擋: {optimalOcclusion}");
+            UpdatePrerequisitesLabel();
         }
 
         #endregion

@@ -113,6 +113,7 @@ namespace ArtaleAI
             InitializeComponent();
             InitializeServices();
             BindEvents();
+            InitializeConsolePanel();
 
         }
 
@@ -228,6 +229,8 @@ namespace ArtaleAI
 
                 if (!suppressLog)
                     MsgLog.ShowStatus(textBox1, $"[地圖管理] 已同步 {mapFiles.Length} 個路徑檔案至下拉選單");
+
+                UpdatePrerequisitesLabel();
             }
             catch (Exception ex)
             {
@@ -240,10 +243,20 @@ namespace ArtaleAI
         {
             try
             {
-                MonsterTemplateStore.PopulateMonsterCombo(cbo_MonsterTemplates, PathManager.MonstersDirectory);
-                cbo_MonsterTemplates.SelectedIndexChanged += OnMonsterSelectionChanged;
+                _suppressMonsterListEvents = true;
+                try
+                {
+                    MonsterTemplateStore.PopulateMonsterList(
+                        clb_MonsterTemplates, PathManager.MonstersDirectory);
+                }
+                finally
+                {
+                    _suppressMonsterListEvents = false;
+                }
+
+                clb_MonsterTemplates.ItemCheck += clb_MonsterTemplates_ItemCheck;
                 int count = MonsterTemplateStore.EnumerateMonsterFolderNames(PathManager.MonstersDirectory).Count;
-                MsgLog.ShowStatus(textBox1, $" 載入 {count} 個怪物模板");
+                MsgLog.ShowStatus(textBox1, $"可選怪物 {count} 種（最多同時勾選 {MonsterTemplateStore.SoftSelectLimit} 種）");
             }
             catch (Exception ex)
             {
@@ -311,7 +324,7 @@ namespace ArtaleAI
 
             cbo_LoadPathFile.SelectedIndexChanged += (s, e) => UpdateAutoAttackState();
             cbo_DetectMode.SelectedIndexChanged += (s, e) => UpdateAutoAttackState();
-            cbo_MonsterTemplates.SelectedIndexChanged += (s, e) => UpdateAutoAttackState();
+            // 怪物勾選變更由 clb_MonsterTemplates_ItemCheck → Reload 內呼叫 UpdateAutoAttackState
 
             this.KeyPreview = true;
             this.KeyDown += MainForm_KeyDown;

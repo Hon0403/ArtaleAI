@@ -125,25 +125,9 @@ namespace ArtaleAI.UI
             var hpColor = GameVisionCore.ParseColor(style.HpFrameColor);
             var mpColor = GameVisionCore.ParseColor(style.MpFrameColor);
 
-            if (vitals.HasFillReading)
-            {
-                DrawFillPreview(graphics, vitals.HpBarRect, vitals.HpRatio, hpColor);
-                DrawFillPreview(graphics, vitals.MpBarRect, vitals.MpRatio, mpColor);
-            }
-
+            // 只畫 ROI 框＋百分比文字；不畫填充預覽，避免青／紅半透明覆蓋與遊戲真條混淆。
             DrawVitalBar(graphics, vitals.HpBarRect, hpColor, textColor, style.FrameThickness, hpLabel);
             DrawVitalBar(graphics, vitals.MpBarRect, mpColor, textColor, style.FrameThickness, mpLabel);
-        }
-
-        private static void DrawFillPreview(Graphics graphics, SdRect rect, double ratio, Color color)
-        {
-            if (ratio <= 0)
-                return;
-
-            int fillWidth = Math.Max(1, (int)Math.Round(rect.Width * Math.Clamp(ratio, 0, 1)));
-            var fillRect = new SdRect(rect.X, rect.Y, fillWidth, rect.Height);
-            using var brush = new SolidBrush(Color.FromArgb(90, color));
-            graphics.FillRectangle(brush, fillRect);
         }
 
         private static string FormatRoiLabel(string prefix, BarRoiPercentAnchor anchor)

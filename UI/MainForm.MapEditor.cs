@@ -37,7 +37,7 @@ using System.Threading.Tasks;
 
 namespace ArtaleAI
 {
-    public partial class MainForm : Form
+    public partial class MainForm
     {
         #region 地圖編輯事件
 
@@ -326,6 +326,7 @@ namespace ArtaleAI
                 loadedPathData = null;
                 _mapEditor?.LoadMapData(new MapData());
                 pictureBoxMinimap.Invalidate();
+                UpdateAutoAttackState();
                 return;
             }
             try
@@ -340,6 +341,7 @@ namespace ArtaleAI
                     _pathPlanningManager?.LoadMap(mapData);
                     pictureBoxMinimap.Invalidate();
                     MsgLog.ShowStatus(textBox1, $"已載入路徑檔: {selectedFile}");
+                    UpdateAutoAttackState();
                 }
                 else
                 {
@@ -347,6 +349,7 @@ namespace ArtaleAI
                     _mapEditor?.LoadMapData(new MapData());
                     pictureBoxMinimap.Invalidate();
                     MsgLog.ShowError(textBox1, $"無法載入路徑檔: {selectedFile}");
+                    UpdateAutoAttackState();
                 }
             }
             catch (Exception ex)
@@ -355,6 +358,7 @@ namespace ArtaleAI
                 _mapEditor?.LoadMapData(new MapData());
                 pictureBoxMinimap.Invalidate();
                 MsgLog.ShowError(textBox1, $"路徑檔載入失敗: {ex.Message}");
+                UpdateAutoAttackState();
             }
         }
 

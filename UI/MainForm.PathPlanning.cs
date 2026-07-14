@@ -37,7 +37,7 @@ using System.Threading.Tasks;
 
 namespace ArtaleAI
 {
-    public partial class MainForm : Form
+    public partial class MainForm
     {
         #region 路徑規劃專用方法
 
@@ -60,9 +60,6 @@ namespace ArtaleAI
                 if (_pathPlanningManager?.CurrentState != null)
                 {
                     var pathState = _pathPlanningManager.CurrentState;
-                    var progress = $"{pathState.CurrentWaypointIndex + 1}/{pathState.PlannedPath.Count}";
-                    var distance = pathState.DistanceToNextWaypoint;
-
                     var nextWaypointOpt = pathState.TemporaryTarget ?? pathState.NextWaypoint;
 
                     if (nextWaypointOpt.HasValue)
@@ -73,7 +70,7 @@ namespace ArtaleAI
                         var elapsed = (now - _lastStatusUpdate).TotalMilliseconds;
                         if (elapsed >= StatusUpdateIntervalMs)
                         {
-                            MsgLog.ShowStatus(textBox1, $"進度: {progress} 距離: {distance:F1} 目標: ({nextWaypoint.X},{nextWaypoint.Y})");
+                            RefreshStatusBarPath(pathState);
                             _lastStatusUpdate = now;
                         }
 
@@ -187,6 +184,7 @@ namespace ArtaleAI
         {
             if (sender is not CheckBox chkBox) return;
             UpdateAutoAttackState();
+            SetGameWindowPollTimer(chkBox.Checked);
 
             try
             {
@@ -235,13 +233,13 @@ namespace ArtaleAI
 
                     if (hasMonsterTemplate && hasDetectionMode)
                     {
-                        MsgLog.ShowStatus(textBox1, $"怪物辨識已啟動（模板：{_monsterTemplates?.SelectedMonsterName}，模式：{Config.Vision.DetectionMode}）");
+                        MsgLog.ShowStatus(textBox1, $"怪物辨識已啟動（目標：{_monsterTemplates?.SelectedMonsterNamesDisplay}，模式：{Config.Vision.DetectionMode}）");
                     }
                     else
                     {
                         if (!hasMonsterTemplate)
                         {
-                            MsgLog.ShowStatus(textBox1, "警告：未選擇怪物模板，怪物辨識不會啟動");
+                            MsgLog.ShowStatus(textBox1, "警告：尚未勾選要打的怪，怪物辨識不會啟動");
                         }
                         if (!hasDetectionMode)
                         {
@@ -286,6 +284,7 @@ namespace ArtaleAI
                 }
 
                 UpdateMinimapViewerVisibility();
+                UpdatePrerequisitesLabel();
             }
             catch (Exception ex)
             {
@@ -295,6 +294,9 @@ namespace ArtaleAI
                 {
                     chkBox.Checked = false;
                 }
+
+                SetGameWindowPollTimer(false);
+                UpdatePrerequisitesLabel();
             }
         }
     }

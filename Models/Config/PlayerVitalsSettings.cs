@@ -31,15 +31,15 @@ namespace ArtaleAI.Models.Config
 
         public int[] LowerRedHsv { get; set; } = [0, 70, 70];
         public int[] UpperRedHsv { get; set; } = [12, 255, 255];
-        public int[] LowerBlueHsv { get; set; } = [90, 50, 50];
-        public int[] UpperBlueHsv { get; set; } = [135, 255, 255];
+        public int[] LowerBlueHsv { get; set; } = [95, 80, 100];
+        public int[] UpperBlueHsv { get; set; } = [130, 255, 255];
         public double EmaAlpha { get; set; } = 0.55;
 
         /// <summary>關閉 EMA 平滑，顯示每幀原始讀值（更精確、較抖動）。</summary>
         public bool SmoothReadings { get; set; } = true;
 
         /// <summary>欄位內垂直填充密度達此比例即視為「有色」（0~1）。</summary>
-        public double ColumnFillThreshold { get; set; } = 0.35;
+        public double ColumnFillThreshold { get; set; } = 0.45;
 
         public int MinFilledColumns { get; set; } = 1;
 
