@@ -37,8 +37,11 @@ using System.Threading.Tasks;
 
 namespace ArtaleAI
 {
-    public partial class MainForm : Form
+    public partial class MainForm
     {
+        private bool _suppressMonsterListEvents;
+        private bool _monsterReloadPending;
+
         #region 按鈕事件
 
         private void btn_SaveMap_Click(object sender, EventArgs e)
@@ -95,31 +98,81 @@ namespace ArtaleAI
         }
 
         #endregion
-        private async void OnMonsterSelectionChanged(object? sender, EventArgs e)
+
+        private void clb_MonsterTemplates_ItemCheck(object? sender, ItemCheckEventArgs e)
+        {
+            if (_suppressMonsterListEvents) return;
+
+            if (e.NewValue == CheckState.Checked)
+            {
+                int pending = CountPendingCheckedItems(e);
+                if (pending > MonsterTemplateStore.SoftSelectLimit)
+                {
+                    e.NewValue = CheckState.Unchecked;
+                    MsgLog.ShowStatus(
+                        textBox1,
+                        $"一次最多選 {MonsterTemplateStore.SoftSelectLimit} 種怪，勾太多會變慢、容易打錯");
+                    return;
+                }
+            }
+
+            if (_monsterReloadPending) return;
+            _monsterReloadPending = true;
+            BeginInvoke(new Action(async () =>
+            {
+                _monsterReloadPending = false;
+                await ReloadMonsterSelectionFromListAsync();
+            }));
+        }
+
+        private int CountPendingCheckedItems(ItemCheckEventArgs e)
+        {
+            int count = clb_MonsterTemplates.CheckedItems.Count;
+            if (e.NewValue == CheckState.Checked && e.CurrentValue != CheckState.Checked)
+                count++;
+            else if (e.NewValue != CheckState.Checked && e.CurrentValue == CheckState.Checked)
+                count--;
+            return count;
+        }
+
+        private async Task ReloadMonsterSelectionFromListAsync()
         {
             if (_monsterTemplates == null) return;
 
             try
             {
-                if (cbo_MonsterTemplates.SelectedItem == null) return;
-                string selectedMonster = cbo_MonsterTemplates.SelectedItem.ToString() ?? string.Empty;
-                if (string.IsNullOrEmpty(selectedMonster)) return;
+                var selected = clb_MonsterTemplates.CheckedItems
+                    .Cast<object>()
+                    .Select(item => item.ToString() ?? string.Empty)
+                    .Where(name => name.Length > 0)
+                    .ToList();
 
-                if (selectedMonster == "null")
+                if (selected.Count == 0)
                 {
                     _monsterTemplates.ReleaseSelection();
-                    MsgLog.ShowStatus(textBox1, "已清除怪物模板選擇");
+                    if (_gamePipeline != null)
+                        _gamePipeline.SelectedMonsterName = string.Empty;
+                    MsgLog.ShowStatus(textBox1, "尚未勾選要打的怪");
+                    UpdateAutoAttackState();
                     return;
                 }
 
-                MsgLog.ShowStatus(textBox1, $"載入怪物模板: {selectedMonster}");
-                await _monsterTemplates.LoadSelectionAsync(selectedMonster, PathManager.MonstersDirectory);
-                MsgLog.ShowStatus(textBox1, $"已載入 {_monsterTemplates.ActiveTemplateCount} 個模板");
+                MsgLog.ShowStatus(textBox1, $"載入怪物：{string.Join("、", selected)}");
+                await _monsterTemplates.LoadSelectionsAsync(selected, PathManager.MonstersDirectory);
+
+                if (_gamePipeline != null)
+                    _gamePipeline.SelectedMonsterName = _monsterTemplates.SelectedMonsterNamesDisplay;
+
+                MsgLog.ShowStatus(
+                    textBox1,
+                    $"已載入 {_monsterTemplates.SelectedMonsterNames.Count} 種怪（{_monsterTemplates.ActiveTemplateCount} 個模板）");
+                UpdateAutoAttackState();
             }
             catch (Exception ex)
             {
                 MsgLog.ShowError(textBox1, $"載入模板錯誤: {ex.Message}");
                 _monsterTemplates.ReleaseSelection();
+                UpdateAutoAttackState();
             }
         }
 
@@ -145,8 +198,19 @@ namespace ArtaleAI
 
                 if (result is { Success: true } ok)
                 {
-                    MonsterTemplateStore.PopulateMonsterCombo(cbo_MonsterTemplates, PathManager.MonstersDirectory);
-                    MsgLog.ShowStatus(textBox1, $" 成功下載 {ok.DownloadedCount} 個模板");
+                    _suppressMonsterListEvents = true;
+                    try
+                    {
+                        MonsterTemplateStore.PopulateMonsterList(
+                            clb_MonsterTemplates, PathManager.MonstersDirectory);
+                    }
+                    finally
+                    {
+                        _suppressMonsterListEvents = false;
+                    }
+
+                    await ReloadMonsterSelectionFromListAsync();
+                    MsgLog.ShowStatus(textBox1, $"成功下載 {ok.DownloadedCount} 個模板");
                 }
             }
             catch (Exception ex)
@@ -159,6 +223,7 @@ namespace ArtaleAI
                 btn_DownloadMonster.Text = "下載怪物";
             }
         }
+
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
             switch (keyData)

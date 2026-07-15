@@ -37,7 +37,7 @@ using System.Threading.Tasks;
 
 namespace ArtaleAI
 {
-    public partial class MainForm : Form
+    public partial class MainForm
     {
         #region PictureBox 滑鼠事件
 

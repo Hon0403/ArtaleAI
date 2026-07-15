@@ -200,7 +200,7 @@ namespace ArtaleAI.Vision.Detectors
             return ratio;
         }
 
-        /// <summary>由左而右量測連續填充寬度；邊界容忍抗鋸齒淡色與白字欄位。</summary>
+        /// <summary>由左而右量測連續填充寬度；遇明顯空洞即停，避免空條底色被算進填充。</summary>
         private static double MeasureHorizontalFillRatio(Mat mask, double columnFillThreshold, int sampleRowCount)
         {
             int width = mask.Width;
@@ -209,11 +209,13 @@ namespace ArtaleAI.Vision.Detectors
                 return 0;
 
             double threshold = Math.Clamp(columnFillThreshold, 0.1, 1.0);
-            double softThreshold = threshold * 0.45;
-            const double emptyThreshold = 0.06;
+            // 抗鋸齒淡色可短暫延續，但不得用近乎空白的密度把門檻拖到整條。
+            double softThreshold = Math.Max(0.2, threshold * 0.55);
             var sampleRows = BuildSampleRows(height, sampleRowCount);
             double filledWidth = 0;
             bool seenFill = false;
+            int softRun = 0;
+            const int maxSoftColumns = 3;
 
             for (int x = 0; x < width; x++)
             {
@@ -222,15 +224,17 @@ namespace ArtaleAI.Vision.Detectors
                 {
                     filledWidth = x + 1;
                     seenFill = true;
+                    softRun = 0;
                     continue;
                 }
 
                 if (!seenFill)
                     continue;
 
-                if (density >= softThreshold || density > emptyThreshold)
+                if (density >= softThreshold && softRun < maxSoftColumns)
                 {
                     filledWidth = x + density;
+                    softRun++;
                     continue;
                 }
 
@@ -313,7 +317,23 @@ namespace ArtaleAI.Vision.Detectors
             }
             else
             {
-                Cv2.InRange(bgr, new Scalar(110, 0, 0), new Scalar(185, 185, 210), mask);
+                // 實心青藍：B、G 都要夠高；排除空條暗藍灰底（B 高但 G/R 低）。
+                using var range = new Mat();
+                Cv2.InRange(bgr, new Scalar(140, 90, 0), new Scalar(255, 255, 140), range);
+                Mat[] channels = bgr.Split();
+                try
+                {
+                    using var gMinusR = new Mat();
+                    Cv2.Subtract(channels[1], channels[2], gMinusR);
+                    using var cyanBias = new Mat();
+                    Cv2.Threshold(gMinusR, cyanBias, 25, 255, ThresholdTypes.Binary);
+                    Cv2.BitwiseAnd(range, cyanBias, mask);
+                }
+                finally
+                {
+                    foreach (var ch in channels)
+                        ch.Dispose();
+                }
             }
 
             return mask;
@@ -335,7 +355,14 @@ namespace ArtaleAI.Vision.Detectors
             }
             else
             {
-                Cv2.InRange(hsv, lower, upper, mask);
+                // MP 實心條飽和度與亮度都較高；空槽低飽和暗藍不應入選。
+                int sMin = Math.Max(lowerHsv[1], 70);
+                int vMin = Math.Max(lowerHsv[2], 90);
+                Cv2.InRange(
+                    hsv,
+                    new Scalar(lowerHsv[0], sMin, vMin),
+                    upper,
+                    mask);
             }
 
             return mask;

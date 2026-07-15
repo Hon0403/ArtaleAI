@@ -37,6 +37,7 @@ namespace ArtaleAI.Models.Config
         public EditorSettings Editor { get; set; } = new();
         public AppearanceSettings Appearance { get; set; } = new();
         public PlayerVitalsSettings PlayerVitals { get; set; } = new();
+        public AutoFarmSettings AutoFarm { get; set; } = new();
 
         #endregion
 
