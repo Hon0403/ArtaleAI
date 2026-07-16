@@ -153,7 +153,7 @@ namespace ArtaleAI
                     return;
                 }
 
-                bool preferNode = (ModifierKeys & Keys.Shift) != 0;
+                bool preferNode = (Control.ModifierKeys & Keys.Shift) != 0;
                 _mapEditor.UpdateMousePosition(screenPoint);
                 _mapEditor.UpdateHoveredNode(screenPoint, preferNode);
                 pictureBoxMinimap.Invalidate();
@@ -323,7 +323,7 @@ namespace ArtaleAI
             if (_mapEditor == null || minimapBounds.IsEmpty || e.Button != MouseButtons.Left)
                 return;
 
-            if ((ModifierKeys & Keys.Control) != 0)
+            if ((Control.ModifierKeys & Keys.Control) != 0)
             {
                 _isMinimapPanning = true;
                 _minimapPanStartClient = e.Location;
@@ -371,7 +371,7 @@ namespace ArtaleAI
             if (_mapEditor == null || minimapBounds.IsEmpty) return;
             var imagePoint = TranslatePictureBoxPointToImage(new PointF(e.X, e.Y), pictureBoxMinimap);
             var screenPoint = new PointF(minimapBounds.X + imagePoint.X, minimapBounds.Y + imagePoint.Y);
-            bool preferNode = (ModifierKeys & Keys.Shift) != 0;
+            bool preferNode = (Control.ModifierKeys & Keys.Shift) != 0;
             _mapEditor.HandleClick(screenPoint, e.Button, preferNode, preferNode);
             pictureBoxMinimap.Invalidate();
             RefreshMapEditorPropertyPanel();
@@ -379,7 +379,7 @@ namespace ArtaleAI
 
         private void pictureBoxMinimap_MouseWheel(object? sender, MouseEventArgs e)
         {
-            if (ModifierKeys != Keys.Control || _mapEditor == null) return;
+            if (Control.ModifierKeys != Keys.Control || _mapEditor == null) return;
 
             float oldZoom = _mapEditor.ZoomScale;
             if (e.Delta > 0)

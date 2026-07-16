@@ -57,31 +57,89 @@ namespace ArtaleAI.Application.Movement
         [DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
-        private const int SW_RESTORE = 9; 
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
 
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetCursorPos(int X, int Y);
+
+        [DllImport("user32.dll")]
+        private static extern int GetSystemMetrics(int nIndex);
+
+        private const int SW_RESTORE = 9;
+        private const int SM_XVIRTUALSCREEN = 76;
+        private const int SM_YVIRTUALSCREEN = 77;
+        private const int SM_CXVIRTUALSCREEN = 78;
+        private const int SM_CYVIRTUALSCREEN = 79;
+        private const uint INPUT_MOUSE = 0;
+        private const uint MOUSEEVENTF_MOVE = 0x0001;
+        private const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+        private const uint MOUSEEVENTF_LEFTUP = 0x0004;
+        private const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
+        private const uint MOUSEEVENTF_VIRTUALDESK = 0x4000;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int X;
+            public int Y;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         private struct INPUT
         {
-            public uint type;      
-            public INPUTUNION U;   
+            public uint type;
+            public INPUTUNION U;
         }
 
         [StructLayout(LayoutKind.Explicit, Size = 32)]
         private struct INPUTUNION
         {
             [FieldOffset(0)]
+            public MOUSEINPUT mi;
+
+            [FieldOffset(0)]
             public KEYBDINPUT ki;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MOUSEINPUT
+        {
+            public int dx;
+            public int dy;
+            public uint mouseData;
+            public uint dwFlags;
+            public uint time;
+            public IntPtr dwExtraInfo;
         }
 
         [StructLayout(LayoutKind.Sequential)]
         private struct KEYBDINPUT
         {
-            public ushort wVk;          
-            public ushort wScan;        
-            public uint dwFlags;        
-            public uint time;           
-            public IntPtr dwExtraInfo;  
+            public ushort wVk;
+            public ushort wScan;
+            public uint dwFlags;
+            public uint time;
+            public IntPtr dwExtraInfo;
         }
 
         private const uint INPUT_KEYBOARD = 1;
@@ -438,7 +496,8 @@ namespace ArtaleAI.Application.Movement
             }
         }
 
-        private async Task TapKeyAsync(ushort key, int pressDurationMs, int intervalMs, CancellationToken ct)
+        /// <summary>短按虛擬鍵（先釋放任何按住的方向鍵），供換頻 Esc／技能等序列 await。</summary>
+        public async Task TapKeyAsync(ushort key, int pressDurationMs, int intervalMs, CancellationToken ct)
         {
             lock (_lockObject)
             {
@@ -472,6 +531,188 @@ namespace ArtaleAI.Application.Movement
             }
         }
 
+        /// <summary>
+        /// 將擷取幀座標換成客戶區座標後左鍵短按。
+        /// 幀可能接近 ClientRect 或含 Window chrome；依實際尺寸推對應方式，避免等比誤縮放。
+        /// </summary>
+        public async Task<bool> ClickCapturePointAsync(
+            int captureX,
+            int captureY,
+            int captureWidth,
+            int captureHeight,
+            CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(_gameWindowTitle))
+                return false;
+
+            try
+            {
+                IntPtr hwnd = FindWindow(null, _gameWindowTitle);
+                if (hwnd == IntPtr.Zero)
+                    return false;
+
+                if (!TryMapCaptureToClient(
+                        hwnd,
+                        captureX,
+                        captureY,
+                        captureWidth,
+                        captureHeight,
+                        out int clientX,
+                        out int clientY,
+                        out int clientWidth,
+                        out int clientHeight,
+                        out string mapMode))
+                    return false;
+
+                FocusGameWindow();
+                await Task.Delay(80, ct).ConfigureAwait(false);
+
+                var point = new POINT { X = clientX, Y = clientY };
+                if (!ClientToScreen(hwnd, ref point))
+                    return false;
+
+                // Absolute + VirtualDesk：多螢幕／DPI 下比「只 SetCursorPos 再相對按鍵」穩。
+                if (!SendAbsoluteClick(point.X, point.Y))
+                    return false;
+
+                Logger.Info(
+                    $"[移動] 滑鼠點擊 mode={mapMode} capture=({captureX},{captureY})/{Math.Max(1, captureWidth)}x{Math.Max(1, captureHeight)} " +
+                    $"client=({clientX},{clientY})/{clientWidth}x{clientHeight} screen=({point.X},{point.Y})");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"[移動] 滑鼠點擊失敗: {ex.Message}");
+                return false;
+            }
+        }
+
+        private static bool TryMapCaptureToClient(
+            IntPtr hwnd,
+            int captureX,
+            int captureY,
+            int captureWidth,
+            int captureHeight,
+            out int clientX,
+            out int clientY,
+            out int clientWidth,
+            out int clientHeight,
+            out string mapMode)
+        {
+            clientX = 0;
+            clientY = 0;
+            clientWidth = 1;
+            clientHeight = 1;
+            mapMode = "none";
+
+            if (!GetClientRect(hwnd, out RECT clientRect) || !GetWindowRect(hwnd, out RECT windowRect))
+                return false;
+
+            clientWidth = Math.Max(1, clientRect.Right - clientRect.Left);
+            clientHeight = Math.Max(1, clientRect.Bottom - clientRect.Top);
+            int frameW = Math.Max(1, captureWidth);
+            int frameH = Math.Max(1, captureHeight);
+            int windowW = Math.Max(1, windowRect.Right - windowRect.Left);
+            int windowH = Math.Max(1, windowRect.Bottom - windowRect.Top);
+
+            var clientOrigin = new POINT { X = 0, Y = 0 };
+            if (!ClientToScreen(hwnd, ref clientOrigin))
+                return false;
+
+            int borderLeft = clientOrigin.X - windowRect.Left;
+            int borderTop = clientOrigin.Y - windowRect.Top;
+
+            int deltaClient = Math.Abs(frameW - clientWidth) + Math.Abs(frameH - clientHeight);
+            int deltaWindow = Math.Abs(frameW - windowW) + Math.Abs(frameH - windowH);
+
+            if (deltaClient <= 4)
+            {
+                // 幀 ≈ 客戶區：幾乎 1:1，殘差用等比吸收。
+                clientX = (int)Math.Round(captureX * (double)clientWidth / frameW);
+                clientY = (int)Math.Round(captureY * (double)clientHeight / frameH);
+                mapMode = deltaClient == 0 ? "client-1:1" : "client-scale";
+            }
+            else if (deltaWindow < deltaClient)
+            {
+                // 幀 ≈ 整個視窗（含標題列／邊框）：先扣非客戶區再落到 client。
+                int winX = (int)Math.Round(captureX * (double)windowW / frameW);
+                int winY = (int)Math.Round(captureY * (double)windowH / frameH);
+                clientX = winX - borderLeft;
+                clientY = winY - borderTop;
+                mapMode = "window-chrome";
+            }
+            else
+            {
+                clientX = (int)Math.Round(captureX * (double)clientWidth / frameW);
+                clientY = (int)Math.Round(captureY * (double)clientHeight / frameH);
+                mapMode = "fallback-scale";
+            }
+
+            clientX = Math.Clamp(clientX, 0, clientWidth - 1);
+            clientY = Math.Clamp(clientY, 0, clientHeight - 1);
+            return true;
+        }
+
+        private bool SendAbsoluteClick(int screenX, int screenY)
+        {
+            int vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
+            int vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+            int vw = Math.Max(1, GetSystemMetrics(SM_CXVIRTUALSCREEN));
+            int vh = Math.Max(1, GetSystemMetrics(SM_CYVIRTUALSCREEN));
+
+            int absX = (int)Math.Round((screenX - vx) * 65535.0 / Math.Max(1, vw - 1));
+            int absY = (int)Math.Round((screenY - vy) * 65535.0 / Math.Max(1, vh - 1));
+            absX = Math.Clamp(absX, 0, 65535);
+            absY = Math.Clamp(absY, 0, 65535);
+
+            // 先 SetCursorPos 對齊游標視覺，再用 Absolute MOVE+CLICK 確保輸入送到正確位置。
+            SetCursorPos(screenX, screenY);
+
+            var move = CreateMouseInput(absX, absY, MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK);
+            var down = CreateMouseInput(absX, absY, MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK);
+            var up = CreateMouseInput(absX, absY, MOUSEEVENTF_LEFTUP | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK);
+            var inputs = new[] { move, down, up };
+            return SendInput((uint)inputs.Length, inputs, _cachedInputSize) == inputs.Length;
+        }
+
+        private static INPUT CreateMouseInput(int absX, int absY, uint flags) =>
+            new()
+            {
+                type = INPUT_MOUSE,
+                U = new INPUTUNION
+                {
+                    mi = new MOUSEINPUT
+                    {
+                        dx = absX,
+                        dy = absY,
+                        mouseData = 0,
+                        dwFlags = flags,
+                        time = 0,
+                        dwExtraInfo = IntPtr.Zero
+                    }
+                }
+            };
+
+        /// <summary>假設傳入已是客戶區座標（擷取尺寸＝客戶區）。</summary>
+        public bool ClickClientPoint(int clientX, int clientY)
+        {
+            if (string.IsNullOrEmpty(_gameWindowTitle))
+                return false;
+
+            IntPtr hwnd = FindWindow(null, _gameWindowTitle);
+            if (hwnd == IntPtr.Zero || !GetClientRect(hwnd, out RECT clientRect))
+                return false;
+
+            int clientWidth = Math.Max(1, clientRect.Right - clientRect.Left);
+            int clientHeight = Math.Max(1, clientRect.Bottom - clientRect.Top);
+            return ClickCapturePointAsync(clientX, clientY, clientWidth, clientHeight)
+                .GetAwaiter()
+                .GetResult();
+        }
+
+        private const ushort VK_CONTROL = 0x11;
+        private const ushort VK_MENU = 0x12;
+
         void IKeyboardService.SendKey(ushort vkCode, bool keyUp) => SendKeyInput(vkCode, keyUp);
 
         async Task IKeyboardService.TapKeyAsync(ushort vkCode, int durationMs, CancellationToken ct)
@@ -486,9 +727,6 @@ namespace ArtaleAI.Application.Movement
             var result = SendInput(1, inputs, inputSize);
             return result;
         }
-
-        private const ushort VK_CONTROL = 0x11;
-        private const ushort VK_MENU = 0x12;
 
         public async Task PerformAttackAsync(int cooldownMs, CancellationToken ct = default)
         {

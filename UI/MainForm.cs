@@ -21,6 +21,7 @@ using ArtaleAI.Domain.Navigation;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -55,7 +56,6 @@ namespace ArtaleAI
 
         private readonly object imageUpdateLock = new object();
 
-        private MinimapViewer? _minimapViewer;
         private MapFileManager? _mapFileManager;
         private MonsterImageFetcher? _monsterDownloader;
         private MapData? loadedPathData = null;
@@ -107,14 +107,17 @@ namespace ArtaleAI
 
         public MainForm()
         {
+            // 設計工具會實例化 Form：只跑 InitializeComponent，避免 Logger／Capture／設定檔把設計面打掛
+            InitializeComponent();
+            if (LicenseManager.UsageMode == LicenseUsageMode.Designtime)
+                return;
+
             Logger.Initialize(PathManager.LogsDirectory, enableConsole: true);
             Logger.Info("[系統] ArtaleAI 正在啟動...");
 
-            InitializeComponent();
             InitializeServices();
             BindEvents();
             InitializeConsolePanel();
-
         }
 
         private void InitializeServices()
@@ -136,7 +139,6 @@ namespace ArtaleAI
                 _monsterTemplates = new MonsterTemplateStore(gameVision);
 
                 _mapFileManager = new MapFileManager(_mapEditor);
-                _minimapViewer = new MinimapViewer(this, config);
                 _monsterDownloader = new MonsterImageFetcher(this);
 
                 pictureBoxMinimap.MouseWheel += pictureBoxMinimap_MouseWheel;

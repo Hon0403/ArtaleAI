@@ -78,12 +78,16 @@ namespace ArtaleAI
             {
                 var liveViewImage = pictureBoxLiveView.Image;
                 var minimapImage = pictureBoxMinimap.Image;
+                var consoleMinimapImage = pictureBox_ConsoleMinimap.Image;
                 pictureBoxLiveView.Image = null;
                 pictureBoxMinimap.Image = null;
+                pictureBox_ConsoleMinimap.Image = null;
+                lbl_ConsoleMinimapPlaceholder.Visible = true;
                 System.Windows.Forms.Application.DoEvents();
 
                 liveViewImage?.Dispose();
                 minimapImage?.Dispose();
+                consoleMinimapImage?.Dispose();
 
 
                 _monsterTemplates?.Dispose();
@@ -103,13 +107,13 @@ namespace ArtaleAI
                     liveViewManager.OnFrameReady -= OnFrameAvailable;
                 }
 
-                _minimapViewer?.Dispose();
                 _monsterDownloader?.Dispose();
                 gameVision?.Dispose();
 
                 _pathPlanningManager?.Dispose();
                 liveViewManager?.Dispose();
                 _movementController?.Dispose();
+                DisposeClientSizeGuardTimer();
 
                 MsgLog.ShowStatus(textBox1, "所有資源已清理");
             }

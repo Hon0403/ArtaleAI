@@ -6,10 +6,29 @@ namespace ArtaleAI.Models.Config
 {
     public class VisionSettings
     {
-        public double DefaultThreshold { get; set; } = 0.5;
+        public double DefaultThreshold { get; set; } = 0.75;
         public int MaxDetectionResults { get; set; } = 100;
         public string DetectionMode { get; set; } = "Default";
         public double NmsIouThreshold { get; set; } = 0.45;
+
+        /// <summary>
+        /// KenYu ContourOnly：SqDiff 最大允許值（res &lt;= 此值才算命中）。數值越低越嚴。
+        /// 對齊 MapleStoryAutoLevelUp <c>monster_detect.diff_thres</c> 預設 0.8。
+        /// </summary>
+        public double ContourDiffThreshold { get; set; } = 0.8;
+
+        /// <summary>
+        /// 怪血條關聯過濾（預設關閉）。
+        /// Artale 怪血條多半要先攻擊才出現，不能當「發現怪物」的條件，否則未交戰怪會全滅。
+        /// 僅適合作為已交戰目標的追蹤補強，不是主偵測過濾。
+        /// </summary>
+        public bool MonsterHpBarFilterEnabled { get; set; } = false;
+
+        /// <summary>怪血條與怪物頂部的最大垂直間距（像素）。</summary>
+        public int MonsterHpBarMaxGapPx { get; set; } = 36;
+
+        /// <summary>KenYu ContourOnly 高斯模糊核（奇數）。對齊 <c>monster_detect.contour_blur</c>。</summary>
+        public int ContourBlur { get; set; } = 5;
 
         public double PlayerThreshold { get; set; } = 0.7;
         public string PlayerMarker { get; set; } = "player.png";

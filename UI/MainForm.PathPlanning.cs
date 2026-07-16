@@ -190,6 +190,21 @@ namespace ArtaleAI
             {
                 if (chkBox.Checked)
                 {
+                    // 客戶區固定為設定尺寸（預設 1280×720）後再擷取，辨識才穩
+                    bool sizedOk = await EnsureGameClientSizeAsync(
+                        forceImmediate: true,
+                        relocateMinimapIfResized: liveViewManager?.IsRunning == true);
+                    if (Config.General.ForceClientSizeWhileCapture && !sizedOk)
+                    {
+                        int tw = Config.General.ForceClientWidth;
+                        int th = Config.General.ForceClientHeight;
+                        MsgLog.ShowError(
+                            textBox1,
+                            $"客戶區必須為 {tw}x{th} 才較易辨識。請改遊戲為視窗模式、取消最大化後再勾選。");
+                        chkBox.Checked = false;
+                        return;
+                    }
+
                     if (liveViewManager == null || !liveViewManager.IsRunning)
                     {
                         var captureItem = WindowFinder.TryCreateItemForWindow(Config.General.GameWindowTitle);
@@ -210,8 +225,6 @@ namespace ArtaleAI
                                 minimapBounds = minimapResult.MinimapScreenRect.Value;
                                 _gamePipeline?.SetMinimapBoxes(new List<Rectangle> { minimapResult.MinimapScreenRect.Value });
                                 MsgLog.ShowStatus(textBox1, "小地圖位置已定位");
-
-                                _minimapViewer?.Show();
                             }
                         }
                         catch (Exception ex)
@@ -222,10 +235,15 @@ namespace ArtaleAI
                         if (liveViewManager != null)
                         {
                             liveViewManager.StartLiveView(captureItem);
+                            SyncClientSizeGuardTimer();
                             bool firstFrame = await liveViewManager.WaitForFirstFrameAsync(TimeSpan.FromSeconds(2));
                             if (!firstFrame)
                                 Logger.Debug("[自動打怪] 首幀未於 2 秒內就緒，仍繼續後續流程。");
                         }
+                    }
+                    else
+                    {
+                        SyncClientSizeGuardTimer();
                     }
 
                     bool hasMonsterTemplate = _monsterTemplates?.Catalog.IsEmpty == false;
@@ -281,9 +299,10 @@ namespace ArtaleAI
                         await _pathPlanningManager.StopAsync();
                         MsgLog.ShowStatus(textBox1, "路徑規劃已停止");
                     }
+
+                    SyncClientSizeGuardTimer();
                 }
 
-                UpdateMinimapViewerVisibility();
                 UpdatePrerequisitesLabel();
             }
             catch (Exception ex)

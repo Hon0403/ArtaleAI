@@ -2,6 +2,7 @@ using ArtaleAI.Models.Config;
 using ArtaleAI.Shared;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Windows.Graphics.Capture;
 using WinRT;
 
@@ -43,8 +44,36 @@ namespace ArtaleAI.Infrastructure.Capture
             public int Bottom;
         }
 
+        [DllImport("user32.dll")]
+        private static extern bool IsZoomed(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool AdjustWindowRectEx(ref RECT lpRect, int dwStyle, bool bMenu, int dwExStyle);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int X;
+            public int Y;
+        }
+
+        private const int GWL_STYLE = -16;
+        private const int GWL_EXSTYLE = -20;
+        private const int SW_RESTORE = 9;
         private const uint SWP_NOMOVE = 0x0002;
         private const uint SWP_NOZORDER = 0x0004;
+        private const uint SWP_NOACTIVATE = 0x0010;
+        private const uint SWP_FRAMECHANGED = 0x0020;
         private const uint SWP_SHOWWINDOW = 0x0040;
 
         [DllImport("combase.dll")]
@@ -143,10 +172,98 @@ namespace ArtaleAI.Infrastructure.Capture
             progressReporter?.Invoke("所有自動方式都失敗，需要手動選擇");
             return null;
         }
+
+        /// <summary>與擷取相同的尋窗順序：設定標題 → 上次標題 → 程序主視窗。</summary>
+        public static IntPtr FindGameWindowHandle(AppConfig? config = null, Action<string>? progressReporter = null)
+        {
+            config ??= AppConfig.Instance;
+            var general = config.General;
+
+            foreach (var title in new[] { general.GameWindowTitle, general.LastSelectedWindowName })
+            {
+                if (string.IsNullOrWhiteSpace(title))
+                    continue;
+
+                var hwnd = FindWindow(null, title);
+                if (hwnd != IntPtr.Zero)
+                {
+                    progressReporter?.Invoke($"找到視窗: {title}");
+                    return hwnd;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(general.LastSelectedProcessName))
+            {
+                try
+                {
+                    foreach (var process in Process.GetProcessesByName(general.LastSelectedProcessName))
+                    {
+                        if (process.MainWindowHandle == IntPtr.Zero)
+                            continue;
+
+                        progressReporter?.Invoke(
+                            $"透過程序找到視窗: {general.LastSelectedProcessName} ({process.MainWindowTitle})");
+                        return process.MainWindowHandle;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    progressReporter?.Invoke($"程序尋窗失敗: {ex.Message}");
+                }
+            }
+
+            progressReporter?.Invoke("找不到遊戲視窗句柄");
+            return IntPtr.Zero;
+        }
+
+        /// <summary>讀取遊戲視窗客戶區寬高（不含標題列／邊框）。</summary>
+        public static bool TryGetClientSize(string windowTitle, out int clientWidth, out int clientHeight)
+        {
+            clientWidth = 0;
+            clientHeight = 0;
+            var hwnd = FindWindow(null, windowTitle);
+            if (hwnd == IntPtr.Zero)
+                hwnd = FindGameWindowHandle();
+            return hwnd != IntPtr.Zero && TryGetClientSize(hwnd, out clientWidth, out clientHeight);
+        }
+
+        public static bool TryGetClientSize(IntPtr gameWindowHandle, out int clientWidth, out int clientHeight)
+        {
+            clientWidth = 0;
+            clientHeight = 0;
+            if (gameWindowHandle == IntPtr.Zero)
+                return false;
+
+            if (!GetClientRect(gameWindowHandle, out RECT clientRect))
+                return false;
+
+            clientWidth = clientRect.Right - clientRect.Left;
+            clientHeight = clientRect.Bottom - clientRect.Top;
+            return clientWidth > 0 && clientHeight > 0;
+        }
+
+        public static bool IsClientSizeMatch(
+            int clientWidth,
+            int clientHeight,
+            int targetClientWidth,
+            int targetClientHeight,
+            int tolerancePx = 2)
+        {
+            return Math.Abs(clientWidth - targetClientWidth) <= tolerancePx
+                && Math.Abs(clientHeight - targetClientHeight) <= tolerancePx;
+        }
+
         /// <summary>將客戶區調為指定像素（保留邊框厚度），利於固定解析度辨識。</summary>
-        public static bool ForceGameWindowSize(string windowTitle, int targetClientWidth = 1600, int targetClientHeight = 900, Action<string>? progressReporter = null)
+        public static bool ForceGameWindowSize(
+            string windowTitle,
+            int targetClientWidth = 1280,
+            int targetClientHeight = 720,
+            Action<string>? progressReporter = null)
         {
             var hwnd = FindWindow(null, windowTitle);
+            if (hwnd == IntPtr.Zero)
+                hwnd = FindGameWindowHandle(progressReporter: progressReporter);
+
             if (hwnd == IntPtr.Zero)
             {
                 progressReporter?.Invoke($"找不到視窗: {windowTitle}");
@@ -156,7 +273,11 @@ namespace ArtaleAI.Infrastructure.Capture
             return ForceGameWindowSize(hwnd, targetClientWidth, targetClientHeight, progressReporter);
         }
 
-        public static bool ForceGameWindowSize(IntPtr gameWindowHandle, int targetClientWidth = 1600, int targetClientHeight = 900, Action<string>? progressReporter = null)
+        public static bool ForceGameWindowSize(
+            IntPtr gameWindowHandle,
+            int targetClientWidth = 1280,
+            int targetClientHeight = 720,
+            Action<string>? progressReporter = null)
         {
             if (gameWindowHandle == IntPtr.Zero)
             {
@@ -166,34 +287,38 @@ namespace ArtaleAI.Infrastructure.Capture
 
             try
             {
-                RECT windowRect, clientRect;
-                if (!GetWindowRect(gameWindowHandle, out windowRect))
+                if (IsIconic(gameWindowHandle) || IsZoomed(gameWindowHandle))
                 {
-                    progressReporter?.Invoke("無法取得視窗大小");
-                    return false;
+                    progressReporter?.Invoke("視窗為最小化／最大化，先還原再改尺寸");
+                    ShowWindow(gameWindowHandle, SW_RESTORE);
+                    Thread.Sleep(80);
                 }
 
-                if (!GetClientRect(gameWindowHandle, out clientRect))
+                if (!TryGetClientSize(gameWindowHandle, out int currentClientWidth, out int currentClientHeight))
                 {
                     progressReporter?.Invoke("無法取得視窗內容區域大小");
                     return false;
                 }
 
-                int currentClientWidth = clientRect.Right - clientRect.Left;
-                int currentClientHeight = clientRect.Bottom - clientRect.Top;
-                int currentWindowWidth = windowRect.Right - windowRect.Left;
-                int currentWindowHeight = windowRect.Bottom - windowRect.Top;
-                int borderThicknessX = currentWindowWidth - currentClientWidth;
-                int borderThicknessY = currentWindowHeight - currentClientHeight;
-
-                if (currentClientWidth == targetClientWidth && currentClientHeight == targetClientHeight)
+                if (IsClientSizeMatch(currentClientWidth, currentClientHeight, targetClientWidth, targetClientHeight))
                 {
-                    progressReporter?.Invoke($"視窗大小已是標準尺寸: {targetClientWidth}x{targetClientHeight}");
+                    progressReporter?.Invoke($"客戶區已是目標尺寸: {targetClientWidth}x{targetClientHeight}");
                     return true;
                 }
 
-                int finalWidth = targetClientWidth + borderThicknessX;
-                int finalHeight = targetClientHeight + borderThicknessY;
+                if (!TryComputeOuterSizeForClient(
+                        gameWindowHandle,
+                        targetClientWidth,
+                        targetClientHeight,
+                        out int finalWidth,
+                        out int finalHeight))
+                {
+                    progressReporter?.Invoke("無法計算含邊框的外框尺寸");
+                    return false;
+                }
+
+                progressReporter?.Invoke(
+                    $"客戶區 {currentClientWidth}x{currentClientHeight} → 目標 {targetClientWidth}x{targetClientHeight}，外框 {finalWidth}x{finalHeight}");
 
                 bool success = SetWindowPos(
                     gameWindowHandle,
@@ -201,22 +326,35 @@ namespace ArtaleAI.Infrastructure.Capture
                     0, 0,
                     finalWidth,
                     finalHeight,
-                    SWP_NOMOVE | SWP_NOZORDER | SWP_SHOWWINDOW
-                );
+                    SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
 
-                if (success)
-                {
-                    progressReporter?.Invoke($"視窗大小已重置: {finalWidth}x{finalHeight} (內容區域: {targetClientWidth}x{targetClientHeight})");
-                    Logger.Info($"[視窗管理] 強制重置視窗大小為: {finalWidth}x{finalHeight} (內容區域: {targetClientWidth}x{targetClientHeight})");
-                    return true;
-                }
-                else
+                if (!success)
                 {
                     int errorCode = Marshal.GetLastWin32Error();
-                    progressReporter?.Invoke($"設定視窗大小失敗，錯誤碼: {errorCode}");
+                    progressReporter?.Invoke($"SetWindowPos 失敗，錯誤碼: {errorCode}");
                     Logger.Error($"[視窗管理] SetWindowPos 失敗，錯誤碼: {errorCode}");
                     return false;
                 }
+
+                Thread.Sleep(120);
+
+                if (!TryGetClientSize(gameWindowHandle, out int afterW, out int afterH))
+                    return false;
+
+                if (!IsClientSizeMatch(afterW, afterH, targetClientWidth, targetClientHeight))
+                {
+                    // 遊戲常鎖解析度／無邊框全螢幕：API 成功但客戶區被立刻拉回
+                    string msg =
+                        $"強制後客戶區仍為 {afterW}x{afterH}（目標 {targetClientWidth}x{targetClientHeight}）。" +
+                        "請在遊戲內改為「視窗模式」並關閉最大化後再試。";
+                    progressReporter?.Invoke(msg);
+                    Logger.Warning($"[視窗管理] {msg}");
+                    return false;
+                }
+
+                progressReporter?.Invoke($"客戶區已校正: {afterW}x{afterH}");
+                Logger.Info($"[視窗管理] 客戶區已校正為 {afterW}x{afterH}");
+                return true;
             }
             catch (Exception ex)
             {
@@ -226,5 +364,53 @@ namespace ArtaleAI.Infrastructure.Capture
             }
         }
 
+        private static bool TryComputeOuterSizeForClient(
+            IntPtr hwnd,
+            int targetClientWidth,
+            int targetClientHeight,
+            out int outerWidth,
+            out int outerHeight)
+        {
+            outerWidth = 0;
+            outerHeight = 0;
+
+            int style = GetWindowLong(hwnd, GWL_STYLE);
+            int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+            var desired = new RECT
+            {
+                Left = 0,
+                Top = 0,
+                Right = targetClientWidth,
+                Bottom = targetClientHeight
+            };
+
+            if (AdjustWindowRectEx(ref desired, style, false, exStyle))
+            {
+                outerWidth = desired.Right - desired.Left;
+                outerHeight = desired.Bottom - desired.Top;
+                if (outerWidth >= targetClientWidth && outerHeight >= targetClientHeight)
+                    return true;
+            }
+
+            // 後備：以目前外框與客戶區差估算邊框（含陰影時較不準，但仍可用）
+            if (!GetWindowRect(hwnd, out RECT windowRect))
+                return false;
+
+            var origin = new POINT { X = 0, Y = 0 };
+            if (!ClientToScreen(hwnd, ref origin))
+                return false;
+
+            if (!TryGetClientSize(hwnd, out int clientW, out int clientH))
+                return false;
+
+            int borderLeft = origin.X - windowRect.Left;
+            int borderTop = origin.Y - windowRect.Top;
+            int borderRight = windowRect.Right - (origin.X + clientW);
+            int borderBottom = windowRect.Bottom - (origin.Y + clientH);
+
+            outerWidth = targetClientWidth + borderLeft + borderRight;
+            outerHeight = targetClientHeight + borderTop + borderBottom;
+            return outerWidth > 0 && outerHeight > 0;
+        }
     }
 }

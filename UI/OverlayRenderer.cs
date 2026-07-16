@@ -82,6 +82,37 @@ namespace ArtaleAI.UI
                 }
             }
 
+            // 其他玩家：與自己標記分色，方便即時顯示驗證有無命中。
+            if (result.OtherPlayerMarkers.Count > 0)
+            {
+                var otherColor = Color.OrangeRed;
+                using var brush = new SolidBrush(otherColor);
+                using var font = SystemFonts.DefaultFont;
+                foreach (var marker in result.OtherPlayerMarkers)
+                {
+                    var center = new PointF(marker.X + marker.Width / 2f, marker.Y + marker.Height / 2f);
+                    DrawingHelper.DrawCrosshair(graphics, center, 7f, otherColor, 2);
+                    graphics.DrawEllipse(
+                        Pens.OrangeRed,
+                        center.X - 8f,
+                        center.Y - 8f,
+                        16f,
+                        16f);
+                    graphics.DrawString("其他", font, brush, center.X + 8f, center.Y - 10f);
+                }
+
+                if (result.MinimapBoxes.Count > 0)
+                {
+                    var mm = result.MinimapBoxes[0];
+                    graphics.DrawString(
+                        $"其他玩家: {result.OtherPlayerMarkers.Count}",
+                        font,
+                        brush,
+                        mm.X + 4,
+                        mm.Y + 4);
+                }
+            }
+
             DrawPlayerVitalsOverlay(graphics, result.PlayerVitals, config);
 
             return (Bitmap)bitmap.Clone();

@@ -49,7 +49,7 @@
 |------|------|------------|
 | 全站 WinForms 主題／暗色皮膚 | ROI 低、易破壞既有編輯器視覺 | Phase 3+ |
 | `ConsolePresenter` / DI 完整抽離 | 切片已落地；完整 DI 可後續 | Phase 2 剩餘 |
-| 輔助技能 UI 內容 | 業務規格未定 | Phase 2 功能項 |
+| 輔助技能 UI 內容 | ~~業務規格未定~~ → 已定稿（週期熱鍵） | Phase 2 進行中 |
 | 第四個「營運設定」分頁 | 條件未滿足（見功能歸屬對照） | Phase 2+ 可選 |
 | RichTextBox 著色日誌 | 可選增強 | Phase 2 可選 |
 
@@ -75,7 +75,7 @@
 | `groupBox6` / `prg_Hp` / `prg_Mp` | 角色資訊 | ✓ | Phase 1 已綁定 vitals |
 | `groupBox7` / 自動喝水 | **補 HP／MP** | ✓ 閾值％＋快捷鍵；Pipeline 節流 | **留**主控台；需遊戲內先綁藥水鍵 |
 | `groupBox8` | **定時休息** | ✓ `AutoFarm` | **留** |
-| `groupBox9` | 輔助技能設定 | ✗ 空殼 | **隱藏**至 Phase 2 |
+| `groupBox9` | **補助技能** | ✓ 5 槽＋間隔＋快捷鍵（抖動程式內建 ±10%） | **留**主控台營運列 |
 | `panel_StatusBar` / `lbl_Status_*` | 結構化狀態 | ✓ | Phase 1 已綁定 |
 | `textBox1` | 日誌 | ✓ `MsgLog`；ReadOnly | LogPanel 子區 |
 
@@ -316,10 +316,11 @@ panel1
 
 - [x] **自動喝水 UI＋後端**：`groupBox7` 可見；`HealHp/Mp` 閾值％＋快捷鍵；`AutoHealCoordinator` 於自動打怪時節流按鍵
 - [ ] **進階收納**：低優先；喝水已直接常駐主控台（參數少）
-- [ ] **輔助技能**：業務規格定稿後才解除 `groupBox9` 隱藏
+- [x] **輔助技能**：`groupBox9` 可見；5 槽啟用／秒數／快捷鍵；間隔抖動 ±10% 程式內建
+- [x] **攻擊輪轉**：`groupBox_Attack`；主攻鍵＋最多 3 冷卻技；鎖定怪時優先按就緒技
 - [ ] **`groupBox8` rename（可選）**：`groupBox_Rest`，與攻擊設定脫鉤命名
 - [x] **ConsolePresenter（切片）**：`Application/Console/*` 聚合 `ConsoleViewState`；`MainForm.Console` 僅採集 Input＋綁定控件（尚未 DI）
-- [x] **設定持久化（喝水）**：寫入 `AutoFarm`（`healHp*`／`healMp*`）；休息參數同區塊
+- [x] **設定持久化（喝水／補助）**：寫入 `AutoFarm`（`heal*`／`buffSkills`）；休息參數同區塊
 
 **完成標準：** 進階功能與主流程解耦；主控台 partial 可獨立測試綁定邏輯。
 
@@ -352,7 +353,7 @@ panel1
 | 定時休息（`groupBox8`） | **留** | 主控台 | 與長開機運營強相關、參數少 |
 | 自動喝水（`groupBox7`） | **留** | 主控台 | 閾值％＋快捷鍵；遊戲內先綁藥水 |
 | 日誌（`textBox1`） | **留** | 主控台（次要） | 歷史事件；不得承擔高頻狀態 |
-| 輔助技能空殼（`groupBox9`） | **藏** | — | 業務規格未定 |
+| 輔助技能空殼（`groupBox9`） | **留** | 主控台營運列 | 5 槽週期 Buff；與喝水同列下方 |
 | 路徑新建／保存／檔案列表（`groupBox1`） | **留** | 路徑編輯 | 地圖 SSOT 管理 |
 | 標記模式／圖層／屬性／ManualEdge | **留** | 路徑編輯 | 幾何與行為邊編輯 |
 | 驗證層／連通回饋 | **留** | 路徑編輯 | 對應 map-editor 憲章 |

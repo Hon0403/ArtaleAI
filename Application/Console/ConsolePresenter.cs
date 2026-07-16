@@ -30,7 +30,7 @@ namespace ArtaleAI.Application.Console
                     : ConsoleStatusTone.Danger,
 
                 StatusCapture = FormatCapture(input),
-                StatusCaptureTone = input.IsResting
+                StatusCaptureTone = input.IsResting || input.IsAvoidingOtherPlayers
                     ? ConsoleStatusTone.Accent
                     : ConsoleStatusTone.Neutral,
 
@@ -39,6 +39,9 @@ namespace ArtaleAI.Application.Console
 
                 StatusVitals = FormatVitals(input, hpPercent, mpPercent, hasVitals),
                 StatusVitalsTone = string.IsNullOrEmpty(input.HealStatusHint)
+                    && string.IsNullOrEmpty(input.BuffStatusHint)
+                    && string.IsNullOrEmpty(input.AttackStatusHint)
+                    && string.IsNullOrEmpty(input.OtherPlayerAvoidanceHint)
                     ? ConsoleStatusTone.Neutral
                     : ConsoleStatusTone.Accent,
 
@@ -64,6 +67,9 @@ namespace ArtaleAI.Application.Console
 
         private static string FormatCapture(ConsoleStatusInput input)
         {
+            if (input.IsAvoidingOtherPlayers)
+                return "擷取：遇人退避中";
+
             if (input.IsResting)
                 return "擷取：小休中";
 
@@ -80,14 +86,26 @@ namespace ArtaleAI.Application.Console
                 ? $"HP {hpPercent}% · MP {mpPercent}%"
                 : "HP — · MP —";
 
-            if (string.IsNullOrEmpty(input.HealStatusHint))
-                return core;
+            var hints = new List<string>(4);
+            if (!string.IsNullOrEmpty(input.HealStatusHint))
+                hints.Add(input.HealStatusHint!);
+            if (!string.IsNullOrEmpty(input.BuffStatusHint))
+                hints.Add(input.BuffStatusHint!);
+            if (!string.IsNullOrEmpty(input.AttackStatusHint))
+                hints.Add(input.AttackStatusHint!);
+            if (!string.IsNullOrEmpty(input.OtherPlayerAvoidanceHint))
+                hints.Add(input.OtherPlayerAvoidanceHint!);
 
-            return $"{core} · {input.HealStatusHint}";
+            return hints.Count == 0
+                ? core
+                : $"{core} · {string.Join(" · ", hints)}";
         }
 
         private static string FormatFsm(ConsoleStatusInput input)
         {
+            if (input.IsAvoidingOtherPlayers)
+                return "導航：遇人退避";
+
             if (input.IsResting)
                 return "導航：小休中";
 
@@ -96,7 +114,7 @@ namespace ArtaleAI.Application.Console
 
         private static ConsoleStatusTone ResolveFsmTone(ConsoleStatusInput input)
         {
-            if (input.IsResting)
+            if (input.IsAvoidingOtherPlayers || input.IsResting)
                 return ConsoleStatusTone.Accent;
 
             return input.FsmState == NavigationState.Error

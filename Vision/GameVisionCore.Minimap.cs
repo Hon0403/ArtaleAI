@@ -300,14 +300,14 @@ namespace ArtaleAI.Vision
                 {
                     try
                     {
-                        var threshold = AppConfig.Instance.Navigation.PlayerPositionThreshold;
+                        // 遇人換頻只需「有沒有別人」；單次 MaxLoc 足夠且較省。
+                        double threshold = AppConfig.Instance.Navigation.OtherPlayersThreshold;
                         var result = MatchTemplateInternal(minimapMat, "OtherPlayers", threshold);
                         if (result.HasValue)
                         {
                             otherPlayers.Add(new System.Drawing.PointF(
                                 result.Value.Location.X,
-                                result.Value.Location.Y
-                            ));
+                                result.Value.Location.Y));
                         }
                     }
                     catch (Exception ex)

@@ -4,10 +4,7 @@ using SdSize = System.Drawing.Size;
 
 namespace ArtaleAI.Models.Detection
 {
-    /// <summary>
-    /// 統一檢測結果記錄
-    /// 用於儲存怪物或其他物件的檢測資訊
-    /// </summary>
+    /// <summary>統一檢測結果記錄。</summary>
     public record DetectionResult(
         string Name,
         SdPoint Position,

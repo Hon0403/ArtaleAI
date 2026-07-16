@@ -106,12 +106,15 @@ namespace ArtaleAI.Infrastructure.Capture
             {
                 sourceTexture = GetSharpDXTexture2D(frame.Surface);
                 var desc = sourceTexture.Description;
-                int width = desc.Width;
-                int height = desc.Height;
+                int textureWidth = desc.Width;
+                int textureHeight = desc.Height;
+                // Graphics Capture 紋理常大於 ContentSize；用完整紋理做辨識／點擊換算會讓滑鼠漂移。
+                int contentWidth = Math.Clamp(frame.ContentSize.Width, 1, textureWidth);
+                int contentHeight = Math.Clamp(frame.ContentSize.Height, 1, textureHeight);
 
                 if (_cachedStagingTexture == null ||
-                    _cachedWidth != width ||
-                    _cachedHeight != height)
+                    _cachedWidth != textureWidth ||
+                    _cachedHeight != textureHeight)
                 {
                     _cachedStagingTexture?.Dispose();
 
@@ -121,8 +124,8 @@ namespace ArtaleAI.Infrastructure.Capture
                         BindFlags = BindFlags.None,
                         CpuAccessFlags = CpuAccessFlags.Read,
                         Format = desc.Format,
-                        Height = height,
-                        Width = width,
+                        Height = textureHeight,
+                        Width = textureWidth,
                         MipLevels = 1,
                         OptionFlags = ResourceOptionFlags.None,
                         SampleDescription = new SharpDX.DXGI.SampleDescription(1, 0),
@@ -130,10 +133,11 @@ namespace ArtaleAI.Infrastructure.Capture
                     };
 
                     _cachedStagingTexture = new Texture2D(_device, stagingDesc);
-                    _cachedWidth = width;
-                    _cachedHeight = height;
+                    _cachedWidth = textureWidth;
+                    _cachedHeight = textureHeight;
                     
-                    Debug.WriteLine($"Staging texture recreated: {width}x{height}");
+                    Debug.WriteLine(
+                        $"Staging texture recreated: texture={textureWidth}x{textureHeight} content={contentWidth}x{contentHeight}");
                 }
 
                 _device.ImmediateContext.CopyResource(sourceTexture, _cachedStagingTexture);
@@ -142,7 +146,7 @@ namespace ArtaleAI.Infrastructure.Capture
 
                 try
                 {
-                    var matBGRA = new Mat(height, width, MatType.CV_8UC4);
+                    var matBGRA = new Mat(contentHeight, contentWidth, MatType.CV_8UC4);
 
                     unsafe
                     {
@@ -154,19 +158,26 @@ namespace ArtaleAI.Infrastructure.Capture
                             throw new InvalidOperationException("無效的記憶體指標");
                         }
 
-                        if (dataBox.RowPitch == matBGRA.Step())
+                        int bytesPerRow = contentWidth * 4;
+                        if (contentWidth == textureWidth
+                            && contentHeight == textureHeight
+                            && dataBox.RowPitch == matBGRA.Step())
                         {
-                            System.Buffer.MemoryCopy(sourcePtr, matPtr, matBGRA.Total() * matBGRA.ElemSize(), height * dataBox.RowPitch);
+                            System.Buffer.MemoryCopy(
+                                sourcePtr,
+                                matPtr,
+                                matBGRA.Total() * matBGRA.ElemSize(),
+                                contentHeight * dataBox.RowPitch);
                         }
                         else
                         {
-                            for (int y = 0; y < height; y++)
+                            for (int y = 0; y < contentHeight; y++)
                             {
                                 System.Buffer.MemoryCopy(
                                     sourcePtr + y * dataBox.RowPitch,
                                     matPtr + y * matBGRA.Step(),
-                                    width * 4,
-                                    width * 4);
+                                    bytesPerRow,
+                                    bytesPerRow);
                             }
                         }
                     }

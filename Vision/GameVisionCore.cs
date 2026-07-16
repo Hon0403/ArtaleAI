@@ -144,6 +144,38 @@ namespace ArtaleAI.Vision
             }
         }
 
+        /// <summary>回傳最佳匹配分數（即使低於閾值），供換頻診斷／等待選單用。</summary>
+        public static (System.Drawing.Point Location, double MaxValue)? PeekBestMatch(
+            Mat inputMat,
+            Mat templateMat,
+            bool useGrayscale = false)
+        {
+            if (inputMat?.Empty() != false || templateMat?.Empty() != false)
+                return null;
+
+            try
+            {
+                using var result = new Mat();
+                if (useGrayscale)
+                {
+                    using var inputGray = ConvertToGrayscale(inputMat);
+                    using var templateGray = ConvertToGrayscale(templateMat);
+                    OpenCvSharp.Cv2.MatchTemplate(inputGray, templateGray, result, OpenCvSharp.TemplateMatchModes.CCoeffNormed);
+                }
+                else
+                {
+                    OpenCvSharp.Cv2.MatchTemplate(inputMat, templateMat, result, OpenCvSharp.TemplateMatchModes.CCoeffNormed);
+                }
+
+                OpenCvSharp.Cv2.MinMaxLoc(result, out _, out var maxValue, out _, out var maxLoc);
+                return (new System.Drawing.Point(maxLoc.X, maxLoc.Y), maxValue);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         /// <summary>
         /// 解析顏色字串為 Color 物件
         /// 支援 "R,G,B" 格式（例如："255,0,0"）

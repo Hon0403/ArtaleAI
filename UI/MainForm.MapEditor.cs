@@ -262,34 +262,6 @@ namespace ArtaleAI
 
         #region Merged UI Events (from partial classes)
 
-        /// <summary>依 LiveView／自動導航狀態顯示或隱藏獨立小地圖視窗。</summary>
-        private void UpdateMinimapViewerVisibility()
-        {
-            try
-            {
-                if (_minimapViewer == null) return;
-                bool pathLoaded = loadedPathData != null && 
-                    ((loadedPathData.PolylinePlatforms?.Count ?? 0) > 0 ||
-                     (loadedPathData.Ropes?.Count ?? 0) > 0 ||
-                     (loadedPathData.JumpLinks?.Count ?? 0) > 0);
-                bool autoStartChecked = ckB_Start.Checked;
-                bool liveViewReady = liveViewManager?.IsRunning == true && _isLiveViewTabActive;
-
-                if (liveViewReady || (pathLoaded && autoStartChecked))
-                {
-                    _minimapViewer.Show();
-                }
-                else
-                {
-                    _minimapViewer.Hide();
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"[獨立視窗] 更新視窗可見性失敗: {ex.Message}");
-            }
-        }
-
         private void cbo_MapFiles_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (_suppressMapFileSelectionChange || cbo_MapFiles.SelectedItem == null) return;

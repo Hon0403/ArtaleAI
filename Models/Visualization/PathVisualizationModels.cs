@@ -4,7 +4,7 @@ using SdRectF = System.Drawing.RectangleF;
 
 namespace ArtaleAI.Models.Visualization
 {
-    /// <summary>供 MinimapViewer 繪製路徑、繩索與診斷標記之 DTO。</summary>
+    /// <summary>供主控台運行小地圖繪製路徑、繩索與診斷標記之 DTO。</summary>
     public class PathVisualizationData
     {
         /// <summary>路徑點列表（帶優先級，用於熱力圖）</summary>
@@ -13,6 +13,11 @@ namespace ArtaleAI.Models.Visualization
         /// <summary>繩索列表（帶可達性資訊）</summary>
         public List<RopeWithAccessibility>? Ropes { get; set; }
 
+        /// <summary>A*／導航目前規劃路徑（小地圖相對座標）</summary>
+        public List<SdPointF>? PlannedPath { get; set; }
+
+        /// <summary>目前目標在 <see cref="PlannedPath"/> 的索引（已走段為其之前的邊）</summary>
+        public int CurrentWaypointIndex { get; set; }
 
         /// <summary>玩家位置（小地圖相對座標）</summary>
         public SdPointF? PlayerPosition { get; set; }
@@ -22,7 +27,6 @@ namespace ArtaleAI.Models.Visualization
 
         /// <summary>臨時目標位置 (動作點/中間點) - 青色十字</summary>
         public SdPointF? TemporaryTarget { get; set; }
-
 
         /// <summary>動態插值點列表 - 亮綠色小點+連線</summary>
         public List<SdPointF>? IntermediatePoints { get; set; }

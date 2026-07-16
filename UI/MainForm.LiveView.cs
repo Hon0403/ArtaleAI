@@ -22,6 +22,7 @@ using OpenCvSharp;
 using OpenCvSharp.Extensions;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Text.RegularExpressions;
@@ -39,64 +40,59 @@ namespace ArtaleAI
 {
     public partial class MainForm
     {
+        private DateTime _lastConsoleMinimapOverlayUpdate = DateTime.MinValue;
+        private volatile bool _consoleMinimapUiUpdatePending;
+        private const int ConsoleMinimapOverlayIntervalMs = 33;
+
         #region UI 事件處理
 
         private async void TabControl1_SelectedIndexChanged(object? sender, EventArgs e)
         {
-            _isLiveViewTabActive = tabControl1.SelectedIndex == 2;
-            _isPathEditingTabActive = tabControl1.SelectedIndex == 1;
+            _isLiveViewTabActive = ReferenceEquals(tabControl1.SelectedTab, tabPage3);
+            _isPathEditingTabActive = ReferenceEquals(tabControl1.SelectedTab, tabPage2);
 
             bool isLiveViewRunning = liveViewManager?.IsRunning == true;
-            bool isSwitchingToLiveView = _isLiveViewTabActive;
+            bool keepCaptureForFarm =
+                ckB_Start.Checked || (_pathPlanningManager?.IsRunning == true);
 
-            if (!isSwitchingToLiveView || !isLiveViewRunning)
+            // 掛機／導航進行中切分頁不可停擷取；僅在閒置離開即時顯示時釋放
+            if (!_isLiveViewTabActive && !keepCaptureForFarm)
             {
                 StopAndReleaseAllResources();
             }
+            else if (!_isLiveViewTabActive && keepCaptureForFarm)
+            {
+                Logger.Debug("[系統] 掛機進行中切換分頁，保持 LiveView 擷取");
+            }
+
+            if (ReferenceEquals(tabControl1.SelectedTab, tabPage1))
+            {
+                UpdateWindowTitle("ArtaleAI");
+            }
+            else if (ReferenceEquals(tabControl1.SelectedTab, tabPageFarmSettings))
+            {
+                UpdateWindowTitle("ArtaleAI - 掛機設定");
+            }
+            else if (ReferenceEquals(tabControl1.SelectedTab, tabPage2))
+            {
+                await StartPathEditingModeAsync();
+                UpdateMapEditorWindowTitle();
+                RefreshMapEditorPropertyPanel();
+            }
+            else if (ReferenceEquals(tabControl1.SelectedTab, tabPage3))
+            {
+                UpdateWindowTitle("ArtaleAI - 即時顯示");
+
+                if (!isLiveViewRunning)
+                {
+                    await StartLiveViewModeAsync();
+                }
+            }
             else
             {
-                Logger.Debug("[系統] 切換到即時顯示分頁，保持 LiveView 運行以避免路徑追蹤中斷");
-            }
-
-            switch (tabControl1.SelectedIndex)
-            {
-                case 0:
-                    UpdateWindowTitle("ArtaleAI");
-                    if (ckB_Start.Checked)
-                    {
-                        _minimapViewer?.Show();
-                    }
-                    else
-                    {
-                        _minimapViewer?.Hide();
-                    }
-                    break;
-                case 1:
-                    await StartPathEditingModeAsync();
-                    _minimapViewer?.Hide();
-                    UpdateMapEditorWindowTitle();
-                    RefreshMapEditorPropertyPanel();
-                    break;
-                case 2:
-                    UpdateWindowTitle("ArtaleAI - 即時顯示");
-
-                    if (!isLiveViewRunning)
-                    {
-                        await StartLiveViewModeAsync();
-                    }
-
-                    _minimapViewer?.Show();
-                    break;
-                default:
-                    UpdateWindowTitle("ArtaleAI");
-                    _minimapViewer?.Hide();
-                    break;
+                UpdateWindowTitle("ArtaleAI");
             }
         }
-
-
-
-
 
         /// <summary>擷取並顯示小地圖底圖供路徑編輯。</summary>
         private async Task StartPathEditingModeAsync()
@@ -193,17 +189,32 @@ namespace ArtaleAI
 
             try
             {
+                // 先校正客戶區至設定尺寸（預設 1280×720），尺寸不對則不啟動——解析度漂移會大幅降低辨識率
+                bool sizedOk = await EnsureGameClientSizeAsync(
+                    forceImmediate: true, relocateMinimapIfResized: false);
+                if (Config.General.ForceClientSizeWhileCapture && !sizedOk)
+                {
+                    int tw = Config.General.ForceClientWidth;
+                    int th = Config.General.ForceClientHeight;
+                    MsgLog.ShowError(
+                        textBox1,
+                        $"客戶區必須為 {tw}x{th} 才較易辨識。請改遊戲為視窗模式、取消最大化後再啟動。");
+                    return;
+                }
+
                 var result = await LoadMinimapWithMat(MinimapUsage.LiveViewOverlay);
                 if (result?.MinimapScreenRect.HasValue == true)
                 {
                     minimapBounds = result.MinimapScreenRect.Value;
                     _gamePipeline?.SetMinimapBoxes(new List<Rectangle> { result.MinimapScreenRect.Value });
+                    SetConsoleMinimapImage(result.MinimapImage is null ? null : (Bitmap)result.MinimapImage.Clone());
                     MsgLog.ShowStatus(textBox1, "小地圖位置已定位");
 
                     var captureItem = WindowFinder.TryCreateItemForWindow(Config.General.GameWindowTitle);
                     if (captureItem != null)
                     {
                         liveViewManager?.StartLiveView(captureItem);
+                        SyncClientSizeGuardTimer();
                         MsgLog.ShowStatus(textBox1, "即時畫面已啟動");
                     }
                     else
@@ -240,6 +251,9 @@ namespace ArtaleAI
                     {
                         _gamePipeline.AutoAttackEnabled = _autoAttackEnabled;
                         _gamePipeline.AutoHealEnabled = ckB_Start.Checked;
+                        _gamePipeline.AutoBuffEnabled = ckB_Start.Checked;
+                        _gamePipeline.OtherPlayerAvoidanceEnabled =
+                            ckB_Start.Checked && chk_ChangeChannelOnOtherPlayers.Checked;
                         _gamePipeline.SelectedMonsterName = _monsterTemplates?.SelectedMonsterNamesDisplay ?? string.Empty;
 
                         _gamePipeline.ProcessFrame(frameMat, captureTime, config);
@@ -269,17 +283,29 @@ namespace ArtaleAI
                         }
                     }
 
-                    if (_minimapViewer?.IsVisible == true)
+                    using var consoleMinimapClone = gameVision?.GetLastMinimapMatClone();
+                    if (consoleMinimapClone != null && !consoleMinimapClone.Empty())
                     {
-                        using var minimapClone = gameVision?.GetLastMinimapMatClone();
-                        if (minimapClone != null)
+                        var overlayNow = DateTime.UtcNow;
+                        if ((overlayNow - _lastConsoleMinimapOverlayUpdate).TotalMilliseconds >= ConsoleMinimapOverlayIntervalMs &&
+                            !_consoleMinimapUiUpdatePending)
                         {
-                            PathVisualizationData? pathData = null;
+                            _lastConsoleMinimapOverlayUpdate = overlayNow;
+
+                            // Console minimap：先把 A* 狀態疊到小地圖 Bitmap，再交給 UI 顯示
+                            var consoleBmp = BitmapConverter.ToBitmap(consoleMinimapClone);
                             if (_pathPlanningManager?.IsRunning == true)
                             {
-                                pathData = BuildPathVisualizationData();
+                                var pathData = BuildPathVisualizationData();
+                                DrawAStarOverlayOnConsoleMinimap(consoleBmp, pathData);
                             }
-                            _minimapViewer.UpdateMinimapWithPath(minimapClone, pathData);
+                            else
+                            {
+                                DrawAStarOverlayOnConsoleMinimap(consoleBmp, pathData: null);
+                            }
+
+                            _consoleMinimapUiUpdatePending = true;
+                            SetConsoleMinimapImage(consoleBmp);
                         }
                     }
                 }
@@ -287,6 +313,186 @@ namespace ArtaleAI
             catch (Exception ex)
             {
                 Logger.Error($"[系統] 處理畫面錯誤: {ex.Message}");
+            }
+        }
+
+        private void SetConsoleMinimapImage(Bitmap? newImage)
+        {
+            if (IsDisposed || Disposing)
+            {
+                newImage?.Dispose();
+                _consoleMinimapUiUpdatePending = false;
+                return;
+            }
+
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => SetConsoleMinimapImage(newImage)));
+                return;
+            }
+
+            try
+            {
+                var old = pictureBox_ConsoleMinimap.Image;
+                pictureBox_ConsoleMinimap.Image = newImage;
+                lbl_ConsoleMinimapPlaceholder.Visible = newImage == null;
+                old?.Dispose();
+            }
+            finally
+            {
+                _consoleMinimapUiUpdatePending = false;
+            }
+        }
+
+        private void DrawAStarOverlayOnConsoleMinimap(Bitmap bitmap, PathVisualizationData? pathData)
+        {
+            if (bitmap.Width <= 0 || bitmap.Height <= 0)
+                return;
+
+            if (pathData == null)
+                return;
+
+            using var g = Graphics.FromImage(bitmap);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.InterpolationMode = InterpolationMode.NearestNeighbor;
+
+            // 繩索（背景層）
+            if (pathData.Ropes != null)
+            {
+                foreach (var rope in pathData.Ropes)
+                {
+                    var c = rope.IsPlayerOnRope ? Color.Cyan : Color.FromArgb(160, 220, 60, 60);
+                    using var pen = new Pen(c, 1.5f);
+                    g.DrawLine(pen, rope.X, rope.TopY, rope.X, rope.BottomY);
+                }
+            }
+
+            // A* planned path：已走＝綠、未走＝黃；玩家→下一點＝藍虛線
+            DrawPlannedPathPolyline(g, pathData);
+
+            // 圖上其餘平台節點（淡紅），目前目標加亮
+            if (pathData.WaypointPaths != null)
+            {
+                const float waypointRadius = 1.8f;
+                foreach (var wp in pathData.WaypointPaths)
+                {
+                    var color = wp.IsBlacklisted
+                        ? Color.Black
+                        : wp.IsCurrentTarget
+                            ? Color.Lime
+                            : Color.FromArgb(140, 220, 40, 40);
+
+                    using var brush = new SolidBrush(color);
+                    g.FillEllipse(
+                        brush,
+                        wp.Position.X - waypointRadius,
+                        wp.Position.Y - waypointRadius,
+                        waypointRadius * 2,
+                        waypointRadius * 2);
+                }
+            }
+
+            // 玩家位置
+            if (pathData.PlayerPosition.HasValue)
+            {
+                var style = Config.Appearance.MinimapPlayer;
+                var frameColor = GameVisionCore.ParseColor(style.FrameColor);
+                float size = Math.Max(4f, style.FrameThickness * 1.5f);
+                DrawingHelper.DrawCrosshair(g, pathData.PlayerPosition.Value, size, frameColor, style.FrameThickness);
+            }
+
+            // 下一目標 / 臨時目標
+            if (pathData.TargetPosition.HasValue)
+            {
+                using var pen = new Pen(Color.Gold, 2f);
+                float r = 5f;
+                var p = pathData.TargetPosition.Value;
+                g.DrawEllipse(pen, p.X - r, p.Y - r, r * 2, r * 2);
+            }
+
+            if (pathData.TemporaryTarget.HasValue)
+            {
+                using var pen = new Pen(Color.Cyan, 1.5f);
+                float s = 6f;
+                var p = pathData.TemporaryTarget.Value;
+                g.DrawLine(pen, p.X - s, p.Y, p.X + s, p.Y);
+                g.DrawLine(pen, p.X, p.Y - s, p.X, p.Y + s);
+            }
+
+            // 目前目標 Hitbox
+            if (pathData.TargetHitbox.HasValue)
+            {
+                var hb = pathData.TargetHitbox.Value;
+                bool inside = pathData.IsPlayerInsideTargetHitbox == true;
+
+                using var pen = new Pen(inside ? Color.LimeGreen : Color.OrangeRed, 2f);
+                using var brush = new SolidBrush(inside
+                    ? Color.FromArgb(80, 0, 255, 0)
+                    : Color.FromArgb(80, 255, 69, 0));
+
+                g.FillRectangle(brush, hb.X, hb.Y, hb.Width, hb.Height);
+                g.DrawRectangle(pen, hb.X, hb.Y, hb.Width, hb.Height);
+            }
+
+            // 診斷文字
+            if (!string.IsNullOrWhiteSpace(pathData.CurrentAction))
+            {
+                using var font = new Font("Consolas", 9f, FontStyle.Bold);
+                var text = $"ACT:{pathData.CurrentAction}";
+                var textSize = g.MeasureString(text, font);
+
+                using var bg = new SolidBrush(Color.FromArgb(120, 20, 20, 20));
+                using var fg = new SolidBrush(Color.WhiteSmoke);
+
+                var rect = new RectangleF(bitmap.Width - textSize.Width - 8, 6, textSize.Width + 4, textSize.Height + 2);
+                g.FillRectangle(bg, rect);
+                g.DrawString(text, font, fg, rect.X + 2, rect.Y + 1);
+            }
+        }
+
+        /// <summary>
+        /// 畫 planned path polyline。
+        /// CurrentWaypointIndex 指向「下一個要到」；其前的邊視為已走。
+        /// </summary>
+        private static void DrawPlannedPathPolyline(Graphics g, PathVisualizationData pathData)
+        {
+            var path = pathData.PlannedPath;
+            if (path == null || path.Count < 2)
+                return;
+
+            int current = Math.Clamp(pathData.CurrentWaypointIndex, 0, path.Count - 1);
+
+            using var traveledPen = new Pen(Color.FromArgb(220, 40, 200, 80), 2.2f);
+            using var remainingPen = new Pen(Color.FromArgb(220, 255, 200, 40), 2.2f);
+            using var activePen = new Pen(Color.DeepSkyBlue, 2f) { DashStyle = DashStyle.Dash };
+
+            for (int i = 0; i < path.Count - 1; i++)
+            {
+                // 邊 i→i+1：若終點已過 current 則已走；否則未走
+                bool traveled = (i + 1) < current;
+                g.DrawLine(traveled ? traveledPen : remainingPen, path[i], path[i + 1]);
+            }
+
+            // 強調「正在執行」的路段：玩家 → 下一目標（或臨時目標）
+            if (pathData.PlayerPosition.HasValue)
+            {
+                var liveTarget = pathData.TemporaryTarget ?? pathData.TargetPosition;
+                if (liveTarget.HasValue)
+                    g.DrawLine(activePen, pathData.PlayerPosition.Value, liveTarget.Value);
+            }
+
+            // planned path 節點：已走／目前／未走分色
+            for (int i = 0; i < path.Count; i++)
+            {
+                var p = path[i];
+                Color c =
+                    i < current ? Color.LimeGreen :
+                    i == current ? Color.Gold :
+                    Color.Orange;
+
+                float r = i == current ? 3.2f : 2.4f;
+                using var brush = new SolidBrush(c);
+                g.FillEllipse(brush, p.X - r, p.Y - r, r * 2, r * 2);
             }
         }
 
@@ -361,12 +567,19 @@ namespace ArtaleAI
 
 
 
-        /// <summary>組裝獨立小地圖視窗所需的路徑／繩索／Hitbox 疊加資料。</summary>
+        /// <summary>組裝主控台運行小地圖所需的路徑／繩索／Hitbox 疊加資料。</summary>
         private PathVisualizationData? BuildPathVisualizationData()
         {
             try
             {
                 var pathData = new PathVisualizationData();
+                var state = _pathPlanningManager?.CurrentState;
+
+                if (state?.PlannedPath is { Count: > 0 })
+                {
+                    pathData.PlannedPath = new List<SdPointF>(state.PlannedPath);
+                    pathData.CurrentWaypointIndex = state.CurrentWaypointIndex;
+                }
 
                 var graph = _pathPlanningManager?.Tracker?.NavGraph;
                 if (graph != null && graph.NodeCount > 0)
@@ -405,27 +618,24 @@ namespace ArtaleAI
                     }
                 }
 
-                var playerPosOpt = _pathPlanningManager?.CurrentState?.CurrentPlayerPosition;
+                var playerPosOpt = state?.CurrentPlayerPosition;
                 if (playerPosOpt.HasValue)
                 {
                     pathData.PlayerPosition = playerPosOpt.Value;
                 }
-                var nextWp = _pathPlanningManager?.CurrentState?.NextWaypoint;
+                var nextWp = state?.NextWaypoint;
                 if (nextWp.HasValue)
                 {
                     pathData.TargetPosition = nextWp.Value;
                 }
 
-
-                var tempTarget = _pathPlanningManager?.Tracker?.CurrentPathState?.TemporaryTarget;
-                if (tempTarget.HasValue && !minimapBounds.IsEmpty)
+                var tempTarget = state?.TemporaryTarget;
+                if (tempTarget.HasValue)
                 {
                     pathData.TemporaryTarget = new SdPointF(
                         tempTarget.Value.X,
                         tempTarget.Value.Y);
                 }
-
-
 
                 var tracker = _pathPlanningManager?.Tracker;
                 var currentTargetNode = tracker?.CurrentTarget;
@@ -462,7 +672,7 @@ namespace ArtaleAI
             }
             catch (Exception ex)
             {
-                Logger.Error($"[MinimapViewer] BuildPathVisualizationData 錯誤: {ex.Message}");
+                Logger.Error($"[運行小地圖] BuildPathVisualizationData 錯誤: {ex.Message}");
                 return null;
             }
         }
@@ -473,6 +683,7 @@ namespace ArtaleAI
             try
             {
                 liveViewManager?.StopLiveView();
+                SyncClientSizeGuardTimer();
                 MsgLog.ShowStatus(textBox1, "所有資源已釋放");
             }
             catch (Exception ex)
