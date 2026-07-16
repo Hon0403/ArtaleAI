@@ -21,11 +21,55 @@ namespace ArtaleAI
 
         private void InitializeConsolePanel()
         {
-            ConfigureStatusBarAppearance();
+            // 可視尺寸（含 splitConsoleMonitor.SplitterDistance）只認 Designer，勿在此覆寫
             BindConsoleEvents();
             InitializeRestSettings();
             InitializeHealSettings();
+            InitializeBuffSettings();
+            InitializeAttackSettings();
+            InitializeOtherPlayerAvoidanceSettings();
             RefreshConsoleUi();
+        }
+
+        private void InitializeOtherPlayerAvoidanceSettings()
+        {
+            var farm = Config.AutoFarm;
+            chk_ChangeChannelOnOtherPlayers.Checked = farm.ChangeChannelOnOtherPlayers;
+            chk_ChangeChannelOnOtherPlayers.CheckedChanged += (_, _) => CommitOtherPlayerAvoidanceSettings();
+
+            var tip = new ToolTip
+            {
+                AutoPopDelay = 10000,
+                InitialDelay = 400,
+                ReshowDelay = 200,
+                ShowAlways = true
+            };
+            tip.SetToolTip(
+                chk_ChangeChannelOnOtherPlayers,
+                "勾選且開始自動打怪後：小地圖偵到其他玩家會暫停走路／攻擊，" +
+                "並執行 Esc → 點「頻道」→ 在列表可見格隨機點一頻（可於 config 改 preferLowOccupancy）。");
+        }
+
+        private void CommitOtherPlayerAvoidanceSettings()
+        {
+            var farm = Config.AutoFarm;
+            if (farm.ChangeChannelOnOtherPlayers == chk_ChangeChannelOnOtherPlayers.Checked)
+                return;
+
+            farm.ChangeChannelOnOtherPlayers = chk_ChangeChannelOnOtherPlayers.Checked;
+            try
+            {
+                Config.Save();
+                MsgLog.ShowStatus(
+                    textBox1,
+                    farm.ChangeChannelOnOtherPlayers
+                        ? "已開啟遇人換頻／退避"
+                        : "已關閉遇人換頻／退避");
+            }
+            catch (Exception ex)
+            {
+                MsgLog.ShowError(textBox1, $"儲存遇人換頻設定失敗: {ex.Message}");
+            }
         }
 
         private void InitializeRestSettings()
@@ -66,9 +110,9 @@ namespace ArtaleAI
             txt_HealHpThreshold.Leave += (_, _) => CommitHealSettings();
             txt_HealMpThreshold.Leave += (_, _) => CommitHealSettings();
 
-            ConfigureHealHotkeyCapture(txt_HealHpHotkey);
-            ConfigureHealHotkeyCapture(txt_HealMpHotkey);
-            KeyDown += MainForm_HealHotkeyForm_KeyDown;
+            ConfigureHotkeyCapture(txt_HealHpHotkey, "Insert");
+            ConfigureHotkeyCapture(txt_HealMpHotkey, "Delete");
+            KeyDown += MainForm_HotkeyForm_KeyDown;
 
             var tip = new ToolTip
             {
@@ -84,43 +128,144 @@ namespace ArtaleAI
             tip.SetToolTip(groupBox7, "快捷鍵可設成鍵盤上幾乎任一鍵；錄製時 Esc 僅用來取消，不會寫入。");
         }
 
-        private void ConfigureHealHotkeyCapture(TextBox box)
+        private void InitializeBuffSettings()
         {
-            box.ReadOnly = true;
-            box.Cursor = Cursors.Hand;
-            box.ShortcutsEnabled = false;
-            box.MaxLength = 32;
-            box.Enter += HealHotkeyBox_Enter;
-            box.Leave += HealHotkeyBox_Leave;
-            box.PreviewKeyDown += HealHotkeyBox_PreviewKeyDown;
+            var farm = Config.AutoFarm;
+            farm.EnsureBuffSkillSlots();
+
+            BindBuffSlot(0, chk_Buff1, txt_Buff1Interval, txt_Buff1Hotkey);
+            BindBuffSlot(1, chk_Buff2, txt_Buff2Interval, txt_Buff2Hotkey);
+            BindBuffSlot(2, chk_Buff3, txt_Buff3Interval, txt_Buff3Hotkey);
+            BindBuffSlot(3, chk_Buff4, txt_Buff4Interval, txt_Buff4Hotkey);
+            BindBuffSlot(4, chk_Buff5, txt_Buff5Interval, txt_Buff5Hotkey);
+
+            chk_Buff1.CheckedChanged += (_, _) => CommitBuffSettings();
+            chk_Buff2.CheckedChanged += (_, _) => CommitBuffSettings();
+            chk_Buff3.CheckedChanged += (_, _) => CommitBuffSettings();
+            chk_Buff4.CheckedChanged += (_, _) => CommitBuffSettings();
+            chk_Buff5.CheckedChanged += (_, _) => CommitBuffSettings();
+            txt_Buff1Interval.KeyPress += txt_RestNumeric_KeyPress;
+            txt_Buff2Interval.KeyPress += txt_RestNumeric_KeyPress;
+            txt_Buff3Interval.KeyPress += txt_RestNumeric_KeyPress;
+            txt_Buff4Interval.KeyPress += txt_RestNumeric_KeyPress;
+            txt_Buff5Interval.KeyPress += txt_RestNumeric_KeyPress;
+            txt_Buff1Interval.Leave += (_, _) => CommitBuffSettings();
+            txt_Buff2Interval.Leave += (_, _) => CommitBuffSettings();
+            txt_Buff3Interval.Leave += (_, _) => CommitBuffSettings();
+            txt_Buff4Interval.Leave += (_, _) => CommitBuffSettings();
+            txt_Buff5Interval.Leave += (_, _) => CommitBuffSettings();
+
+            ConfigureHotkeyCapture(txt_Buff1Hotkey, "F1");
+            ConfigureHotkeyCapture(txt_Buff2Hotkey, "F2");
+            ConfigureHotkeyCapture(txt_Buff3Hotkey, "F3");
+            ConfigureHotkeyCapture(txt_Buff4Hotkey, "F4");
+            ConfigureHotkeyCapture(txt_Buff5Hotkey, "F5");
+
+            var tip = new ToolTip
+            {
+                AutoPopDelay = 9000,
+                InitialDelay = 400,
+                ReshowDelay = 200,
+                ShowAlways = true
+            };
+            tip.SetToolTip(
+                groupBox9,
+                "勾選自動打怪後，依「秒數」週期重按各技能鍵。" +
+                "間隔會自動加減約 10% 隨機，降低固定腳本節奏；不讀畫面，請遊戲內先綁好 Buff。");
+        }
+
+        private void InitializeAttackSettings()
+        {
+            var farm = Config.AutoFarm;
+            farm.EnsureAttackSkillSlots();
+
+            txt_AttackPrimaryHotkey.Text = string.IsNullOrWhiteSpace(farm.AttackPrimaryHotkey)
+                ? "Ctrl"
+                : farm.AttackPrimaryHotkey;
+            BindAttackSlot(0, chk_Attack1, txt_Attack1Cooldown, txt_Attack1Hotkey);
+            BindAttackSlot(1, chk_Attack2, txt_Attack2Cooldown, txt_Attack2Hotkey);
+            BindAttackSlot(2, chk_Attack3, txt_Attack3Cooldown, txt_Attack3Hotkey);
+
+            chk_Attack1.CheckedChanged += (_, _) => CommitAttackSettings();
+            chk_Attack2.CheckedChanged += (_, _) => CommitAttackSettings();
+            chk_Attack3.CheckedChanged += (_, _) => CommitAttackSettings();
+            txt_Attack1Cooldown.KeyPress += txt_RestNumeric_KeyPress;
+            txt_Attack2Cooldown.KeyPress += txt_RestNumeric_KeyPress;
+            txt_Attack3Cooldown.KeyPress += txt_RestNumeric_KeyPress;
+            txt_Attack1Cooldown.Leave += (_, _) => CommitAttackSettings();
+            txt_Attack2Cooldown.Leave += (_, _) => CommitAttackSettings();
+            txt_Attack3Cooldown.Leave += (_, _) => CommitAttackSettings();
+
+            ConfigureHotkeyCapture(txt_AttackPrimaryHotkey, "Ctrl");
+            ConfigureHotkeyCapture(txt_Attack1Hotkey, "A");
+            ConfigureHotkeyCapture(txt_Attack2Hotkey, "S");
+            ConfigureHotkeyCapture(txt_Attack3Hotkey, "D");
+
+            var tip = new ToolTip
+            {
+                AutoPopDelay = 9000,
+                InitialDelay = 400,
+                ReshowDelay = 200,
+                ShowAlways = true
+            };
+            tip.SetToolTip(
+                groupBox_Attack,
+                "鎖定怪時：冷卻就緒的技優先，否則按主攻鍵。冷卻自動 ±10%。預設主攻為 Ctrl。");
+        }
+
+        private void BindAttackSlot(int index, CheckBox enabled, TextBox cooldown, TextBox hotkey)
+        {
+            AttackSkillEntry slot = Config.AutoFarm.AttackSkills[index];
+            enabled.Checked = slot.Enabled;
+            cooldown.Text = Math.Clamp(slot.CooldownSeconds, 5, 600).ToString();
+            hotkey.Text = string.IsNullOrWhiteSpace(slot.Hotkey)
+                ? (index == 0 ? "A" : index == 1 ? "S" : "D")
+                : slot.Hotkey;
+        }
+
+        private void BindBuffSlot(int index, CheckBox enabled, TextBox interval, TextBox hotkey)
+        {
+            BuffSkillEntry slot = Config.AutoFarm.BuffSkills[index];
+            enabled.Checked = slot.Enabled;
+            interval.Text = Math.Clamp(slot.IntervalSeconds, 5, 3600).ToString();
+            hotkey.Text = string.IsNullOrWhiteSpace(slot.Hotkey) ? $"F{index + 1}" : slot.Hotkey;
+        }
+
+        private void ConfigureHotkeyCapture(TextBox box, string fallbackHotkey)
+        {
+            // ReadOnly／Cursor／ShortcutsEnabled／MaxLength 已在 Designer
+            box.Tag = fallbackHotkey;
+            box.Enter += HotkeyBox_Enter;
+            box.Leave += HotkeyBox_Leave;
+            box.PreviewKeyDown += HotkeyBox_PreviewKeyDown;
             box.KeyPress += (_, e) => e.Handled = true;
         }
 
-        private void HealHotkeyBox_Enter(object? sender, EventArgs e)
+        private void HotkeyBox_Enter(object? sender, EventArgs e)
         {
             if (sender is not TextBox box)
                 return;
 
             if (_healHotkeyListeningBox != null && _healHotkeyListeningBox != box)
-                CancelHealHotkeyCapture();
+                CancelHotkeyCapture();
 
             _healHotkeyListeningBox = box;
+            string fallback = box.Tag as string ?? "F1";
             _healHotkeyBackup = VirtualKeyParser.TryParse(box.Text, out _)
                 ? box.Text
-                : (box == txt_HealHpHotkey ? "Insert" : "Delete");
+                : fallback;
             box.Text = "按鍵…";
             box.BackColor = HealHotkeyListenBackColor;
-            // Shift／Ctrl／Insert 在 TextBox 上常收不到；聆聽期間由 Form 攔截。
             KeyPreview = true;
         }
 
-        private void HealHotkeyBox_Leave(object? sender, EventArgs e)
+        private void HotkeyBox_Leave(object? sender, EventArgs e)
         {
             if (sender is TextBox box && _healHotkeyListeningBox == box)
-                CancelHealHotkeyCapture();
+                CancelHotkeyCapture();
         }
 
-        private void HealHotkeyBox_PreviewKeyDown(object? sender, PreviewKeyDownEventArgs e)
+        private void HotkeyBox_PreviewKeyDown(object? sender, PreviewKeyDownEventArgs e)
         {
             if (_healHotkeyListeningBox == null)
                 return;
@@ -128,15 +273,15 @@ namespace ArtaleAI
             e.IsInputKey = true;
         }
 
-        private void MainForm_HealHotkeyForm_KeyDown(object? sender, KeyEventArgs e)
+        private void MainForm_HotkeyForm_KeyDown(object? sender, KeyEventArgs e)
         {
             if (_healHotkeyListeningBox == null)
                 return;
 
-            TryCaptureHealHotkey(e);
+            TryCaptureHotkey(e);
         }
 
-        private void TryCaptureHealHotkey(KeyEventArgs e)
+        private void TryCaptureHotkey(KeyEventArgs e)
         {
             TextBox? box = _healHotkeyListeningBox;
             if (box == null)
@@ -145,14 +290,13 @@ namespace ArtaleAI
             e.SuppressKeyPress = true;
             e.Handled = true;
 
-            // Esc 保留為「取消錄製」；若要喝水綁 Escape，請手填 Escape 後存設定。
+            // Esc 保留為「取消錄製」；若要綁 Escape，請手填 Escape 後存設定。
             if (e.KeyCode == Keys.Escape)
             {
-                CancelHealHotkeyCapture();
+                CancelHotkeyCapture();
                 return;
             }
 
-            // 滑鼠鍵不是鍵盤熱鍵；其餘 Virtual-Key（含 OEM／小鍵盤／修飾鍵）一律接受。
             if (IsMouseButton(e.KeyCode))
             {
                 MsgLog.ShowStatus(textBox1, "請按鍵盤按鍵（不支援滑鼠鍵）");
@@ -169,11 +313,11 @@ namespace ArtaleAI
             _healHotkeyListeningBox = null;
             KeyPreview = false;
             box.Text = displayName;
-            EndHealHotkeyCaptureVisual(box);
-            CommitHealSettings();
+            EndHotkeyCaptureVisual(box);
+            PersistHotkeyBox(box);
         }
 
-        private void CancelHealHotkeyCapture()
+        private void CancelHotkeyCapture()
         {
             if (_healHotkeyListeningBox == null)
                 return;
@@ -182,18 +326,32 @@ namespace ArtaleAI
             _healHotkeyListeningBox = null;
             KeyPreview = false;
 
+            string fallback = box.Tag as string ?? "F1";
             box.Text = string.IsNullOrWhiteSpace(_healHotkeyBackup)
-                ? (box == txt_HealHpHotkey ? "Insert" : "Delete")
+                ? fallback
                 : _healHotkeyBackup;
             if (!VirtualKeyParser.TryParse(box.Text, out _))
-                box.Text = box == txt_HealHpHotkey ? "Insert" : "Delete";
+                box.Text = fallback;
 
-            EndHealHotkeyCaptureVisual(box);
+            EndHotkeyCaptureVisual(box);
         }
 
-        private static void EndHealHotkeyCaptureVisual(TextBox box)
+        private static void EndHotkeyCaptureVisual(TextBox box)
         {
             box.BackColor = SystemColors.Window;
+        }
+
+        private void PersistHotkeyBox(TextBox box)
+        {
+            if (box == txt_HealHpHotkey || box == txt_HealMpHotkey)
+                CommitHealSettings();
+            else if (box == txt_AttackPrimaryHotkey
+                     || box == txt_Attack1Hotkey
+                     || box == txt_Attack2Hotkey
+                     || box == txt_Attack3Hotkey)
+                CommitAttackSettings();
+            else
+                CommitBuffSettings();
         }
 
         private static bool IsMouseButton(Keys keyCode)
@@ -245,6 +403,131 @@ namespace ArtaleAI
             {
                 MsgLog.ShowError(textBox1, $"儲存自動喝水設定失敗: {ex.Message}");
             }
+        }
+
+        private void CommitBuffSettings()
+        {
+            if (_healHotkeyListeningBox != null)
+                return;
+
+            var farm = Config.AutoFarm;
+            farm.EnsureBuffSkillSlots();
+
+            bool slotChanged =
+                ApplyBuffSlotFromUi(0, chk_Buff1, txt_Buff1Interval, txt_Buff1Hotkey, "F1")
+                | ApplyBuffSlotFromUi(1, chk_Buff2, txt_Buff2Interval, txt_Buff2Hotkey, "F2")
+                | ApplyBuffSlotFromUi(2, chk_Buff3, txt_Buff3Interval, txt_Buff3Hotkey, "F3")
+                | ApplyBuffSlotFromUi(3, chk_Buff4, txt_Buff4Interval, txt_Buff4Hotkey, "F4")
+                | ApplyBuffSlotFromUi(4, chk_Buff5, txt_Buff5Interval, txt_Buff5Hotkey, "F5");
+
+            if (!slotChanged)
+                return;
+
+            _gamePipeline?.ResetBuffSchedule();
+
+            try
+            {
+                Config.Save();
+                int enabledCount = farm.BuffSkills.Count(s => s.Enabled);
+                MsgLog.ShowStatus(
+                    textBox1,
+                    enabledCount == 0
+                        ? "已儲存補助技能：全部關閉"
+                        : $"已儲存補助技能：啟用 {enabledCount} 個");
+            }
+            catch (Exception ex)
+            {
+                MsgLog.ShowError(textBox1, $"儲存補助技能設定失敗: {ex.Message}");
+            }
+        }
+
+        private bool ApplyBuffSlotFromUi(
+            int index,
+            CheckBox enabled,
+            TextBox intervalBox,
+            TextBox hotkeyBox,
+            string fallbackHotkey)
+        {
+            BuffSkillEntry slot = Config.AutoFarm.BuffSkills[index];
+            string hotkey = NormalizeHotkeyOrFallback(hotkeyBox.Text, fallbackHotkey);
+            hotkeyBox.Text = hotkey;
+            int interval = ParseClampedInt(intervalBox.Text, 5, 3600, 180);
+            intervalBox.Text = interval.ToString();
+
+            bool changed = slot.Enabled != enabled.Checked
+                || slot.IntervalSeconds != interval
+                || !string.Equals(slot.Hotkey, hotkey, StringComparison.OrdinalIgnoreCase);
+
+            slot.Enabled = enabled.Checked;
+            slot.Hotkey = hotkey;
+            slot.IntervalSeconds = interval;
+            return changed;
+        }
+
+        private void CommitAttackSettings()
+        {
+            if (_healHotkeyListeningBox != null)
+                return;
+
+            var farm = Config.AutoFarm;
+            farm.EnsureAttackSkillSlots();
+
+            string primary = NormalizeHotkeyOrFallback(txt_AttackPrimaryHotkey.Text, "Ctrl");
+            txt_AttackPrimaryHotkey.Text = primary;
+
+            bool slotChanged =
+                ApplyAttackSlotFromUi(0, chk_Attack1, txt_Attack1Cooldown, txt_Attack1Hotkey, "A")
+                | ApplyAttackSlotFromUi(1, chk_Attack2, txt_Attack2Cooldown, txt_Attack2Hotkey, "S")
+                | ApplyAttackSlotFromUi(2, chk_Attack3, txt_Attack3Cooldown, txt_Attack3Hotkey, "D");
+
+            bool primaryChanged = !string.Equals(
+                farm.AttackPrimaryHotkey,
+                primary,
+                StringComparison.OrdinalIgnoreCase);
+            farm.AttackPrimaryHotkey = primary;
+
+            if (!slotChanged && !primaryChanged)
+                return;
+
+            _gamePipeline?.ResetAttackCooldowns();
+
+            try
+            {
+                Config.Save();
+                int enabledCount = farm.AttackSkills.Count(s => s.Enabled);
+                MsgLog.ShowStatus(
+                    textBox1,
+                    enabledCount == 0
+                        ? $"已儲存攻擊輪轉：僅主攻 {primary}"
+                        : $"已儲存攻擊輪轉：主攻 {primary}＋{enabledCount} 技");
+            }
+            catch (Exception ex)
+            {
+                MsgLog.ShowError(textBox1, $"儲存攻擊輪轉設定失敗: {ex.Message}");
+            }
+        }
+
+        private bool ApplyAttackSlotFromUi(
+            int index,
+            CheckBox enabled,
+            TextBox cooldownBox,
+            TextBox hotkeyBox,
+            string fallbackHotkey)
+        {
+            AttackSkillEntry slot = Config.AutoFarm.AttackSkills[index];
+            string hotkey = NormalizeHotkeyOrFallback(hotkeyBox.Text, fallbackHotkey);
+            hotkeyBox.Text = hotkey;
+            int cooldown = ParseClampedInt(cooldownBox.Text, 5, 600, 30);
+            cooldownBox.Text = cooldown.ToString();
+
+            bool changed = slot.Enabled != enabled.Checked
+                || slot.CooldownSeconds != cooldown
+                || !string.Equals(slot.Hotkey, hotkey, StringComparison.OrdinalIgnoreCase);
+
+            slot.Enabled = enabled.Checked;
+            slot.Hotkey = hotkey;
+            slot.CooldownSeconds = cooldown;
+            return changed;
         }
 
         private static string NormalizeHotkeyOrFallback(string text, string fallback)
@@ -311,27 +594,6 @@ namespace ArtaleAI
                 return fallback;
 
             return Math.Clamp(value, min, max);
-        }
-
-        private void ConfigureStatusBarAppearance()
-        {
-            foreach (var label in new[]
-            {
-                lbl_Status_Game,
-                lbl_Status_Capture,
-                lbl_Status_Fsm,
-                lbl_Status_Vitals,
-                lbl_Status_Path
-            })
-            {
-                label.AutoSize = false;
-                label.BackColor = Color.FromArgb(50, 50, 50);
-                label.ForeColor = Color.Gainsboro;
-                label.TextAlign = ContentAlignment.MiddleLeft;
-                label.Dock = DockStyle.Fill;
-                label.Margin = new Padding(0);
-                label.Padding = new Padding(4, 0, 0, 0);
-            }
         }
 
         private void BindConsoleEvents()
@@ -422,11 +684,15 @@ namespace ArtaleAI
                 GameFound = gameFound,
                 CaptureRunning = liveViewManager?.IsRunning == true,
                 IsResting = _gamePipeline?.IsResting == true,
+                IsAvoidingOtherPlayers = _gamePipeline?.IsAvoidingOtherPlayers == true,
                 FsmState = _fsm?.CurrentState ?? NavigationState.Idle,
                 HpRatio = hasVitals ? vitals!.HpRatio : null,
                 MpRatio = hasVitals ? vitals!.MpRatio : null,
                 HasVitalsReading = hasVitals,
                 HealStatusHint = _gamePipeline?.GetAutoHealStatusHint(),
+                BuffStatusHint = _gamePipeline?.GetBuffStatusHint(),
+                AttackStatusHint = _gamePipeline?.GetAttackStatusHint(),
+                OtherPlayerAvoidanceHint = _gamePipeline?.GetOtherPlayerAvoidanceStatusHint(),
                 PathRunning = pathRunning,
                 WaypointIndex = pathState?.CurrentWaypointIndex ?? 0,
                 WaypointTotal = pathState?.PlannedPath.Count ?? 0,
@@ -463,21 +729,6 @@ namespace ArtaleAI
             lbl_Prerequisites.ForeColor = state.PrerequisitesTone == ConsoleStatusTone.Neutral
                 ? SystemColors.ControlText
                 : ToUiColor(state.PrerequisitesTone, forPrereqPanel: true);
-
-            if (state.HasVitalsReading)
-            {
-                prg_Hp.Value = state.HpPercent;
-                prg_Mp.Value = state.MpPercent;
-                lbl_HpPercent.Text = $"{state.HpPercent}%";
-                lbl_MpPercent.Text = $"{state.MpPercent}%";
-            }
-            else
-            {
-                prg_Hp.Value = 0;
-                prg_Mp.Value = 0;
-                lbl_HpPercent.Text = "—";
-                lbl_MpPercent.Text = "—";
-            }
         }
 
         private static Color ToUiColor(ConsoleStatusTone tone, bool forPrereqPanel = false)

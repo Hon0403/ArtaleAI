@@ -40,9 +40,18 @@ namespace ArtaleAI.Application.Pipeline
         private List<DetectionResult> _currentMonsters = new();
         private List<SdRect> _currentMinimapBoxes = new();
         private List<SdRect> _currentMinimapMarkers = new();
+        private List<SdRect> _currentOtherPlayerMarkers = new();
         private PlayerVitalsSnapshot? _currentPlayerVitals;
 
         private readonly AutoHealCoordinator _autoHeal = new();
+        private readonly BuffSkillCoordinator _buffSkills = new();
+        private readonly AttackRotationCoordinator _attackRotation = new();
+        private readonly OtherPlayerAvoidanceCoordinator _otherPlayerAvoidance = new();
+        private readonly ChangeChannelSequence _changeChannelSequence = new();
+        private readonly FarmUiInterruptCoordinator _farmUiInterrupt = new();
+        private readonly object _changeChannelFrameLock = new();
+        private Mat? _changeChannelFrameCache;
+        private int _changeChannelInFlight;
         private DateTime _lastBloodBarDetection = DateTime.MinValue;
         private DateTime _lastPlayerVitalsDetection = DateTime.MinValue;
         private DateTime _lastMonsterDetection = DateTime.MinValue;
@@ -62,7 +71,6 @@ namespace ArtaleAI.Application.Pipeline
         private DateTime _lastDirectionChangeTime = DateTime.MinValue;
         private const int AttackCooldownMs = 500;
         private const int DirectionChangeCooldownMs = 200;
-        private const ushort VK_CONTROL = 0x11;
         private const ushort VK_LEFT = 0x25;
         private const ushort VK_RIGHT = 0x27;
 
@@ -93,6 +101,12 @@ namespace ArtaleAI.Application.Pipeline
         /// </summary>
         public volatile bool AutoHealEnabled;
 
+        /// <summary>補助技能循環：與喝水相同，勾選自動打怪即可週期施放。</summary>
+        public volatile bool AutoBuffEnabled;
+
+        /// <summary>遇人換頻／退避：勾選自動打怪且設定開啟時生效。</summary>
+        public volatile bool OtherPlayerAvoidanceEnabled;
+
         /// <summary>執行期啟用的怪物模板 catalog（與 <see cref="MonsterTemplateStore.Catalog"/> 共用參考）。</summary>
         public MonsterDetectionCatalog MonsterCatalog { get; set; } = new();
 
@@ -112,9 +126,17 @@ namespace ArtaleAI.Application.Pipeline
         /// <summary>防偵測休息中（暫停攻擊與導航輸入）。</summary>
         public bool IsResting => _isResting;
 
-        /// <summary>攻擊或攻擊輸入租約進行中時，導航 Walk 應讓出鍵盤。</summary>
+        /// <summary>小地圖遇人退避中。</summary>
+        public bool IsAvoidingOtherPlayers => _otherPlayerAvoidance.IsAvoiding;
+
+        /// <summary>攻擊／小休／遇人退避／換頻／打怪清窗期間，導航 Walk 應讓出鍵盤。</summary>
         public bool BlocksNavigationInput =>
-            _isResting || _isAttacking || Volatile.Read(ref _attackInputLease) > 0;
+            _isResting
+            || _isAttacking
+            || _otherPlayerAvoidance.IsAvoiding
+            || _farmUiInterrupt.IsDismissing
+            || Volatile.Read(ref _attackInputLease) > 0
+            || Volatile.Read(ref _changeChannelInFlight) != 0;
 
         /// <summary>每幀處理完成後觸發，攜帶所有偵測結果的快照</summary>
         public event Action<FrameProcessingResult>? OnFrameProcessed;
@@ -146,13 +168,17 @@ namespace ArtaleAI.Application.Pipeline
         /// <summary>取得當前偵測結果的線程安全快照</summary>
         public FrameProcessingResult GetCurrentSnapshot()
         {
-            List<SdRect> bloodBars, detectionBoxes, attackRangeBoxes, minimapBoxes, minimapMarkers;
+            List<SdRect> bloodBars, detectionBoxes, attackRangeBoxes, minimapBoxes, minimapMarkers, otherPlayerMarkers;
             List<DetectionResult> monsters;
 
             lock (_bloodBarLock) bloodBars = _currentBloodBars.ToList();
             lock (_monsterLock) monsters = _currentMonsters.ToList();
             lock (_minimapBoxLock) minimapBoxes = _currentMinimapBoxes.ToList();
-            lock (_minimapMarkerLock) minimapMarkers = _currentMinimapMarkers.ToList();
+            lock (_minimapMarkerLock)
+            {
+                minimapMarkers = _currentMinimapMarkers.ToList();
+                otherPlayerMarkers = _currentOtherPlayerMarkers.ToList();
+            }
             detectionBoxes = _currentDetectionBoxes.ToList();
             attackRangeBoxes = _currentAttackRangeBoxes.ToList();
             PlayerVitalsSnapshot? playerVitals;
@@ -166,6 +192,7 @@ namespace ArtaleAI.Application.Pipeline
                 Monsters = monsters,
                 MinimapBoxes = minimapBoxes,
                 MinimapMarkers = minimapMarkers,
+                OtherPlayerMarkers = otherPlayerMarkers,
                 PlayerVitals = playerVitals
             };
         }
@@ -180,6 +207,9 @@ namespace ArtaleAI.Application.Pipeline
             {
                 var now = DateTime.UtcNow;
                 double captureLagMs = (now - captureTime).TotalMilliseconds;
+
+                if (OtherPlayerAvoidanceEnabled || Volatile.Read(ref _changeChannelInFlight) != 0)
+                    CacheFrameForChangeChannel(frameMat);
 
                 MinimapTrackingResult? trackingResult = null;
                 List<SdRect> minimapBoxes;
@@ -199,11 +229,16 @@ namespace ArtaleAI.Application.Pipeline
                 if (trackingResult != null)
                     FeedPlayerTracking(trackingResult);
 
+                if (OtherPlayerAvoidanceEnabled)
+                    ProcessOtherPlayerAvoidance(trackingResult, config, now);
+
+                TryProcessFarmUiInterrupt(frameMat, trackingResult, config);
+
                 if (AutoAttackEnabled)
                     ProcessAntiDetectRest(config, now);
 
                 bool attackTriggered = false;
-                if (AutoAttackEnabled && !_isResting)
+                if (AutoAttackEnabled && !_isResting && !_otherPlayerAvoidance.IsAvoiding)
                     attackTriggered = ProcessAutoAttackDecision();
 
                 if (!attackTriggered)
@@ -219,6 +254,9 @@ namespace ArtaleAI.Application.Pipeline
 
                 if (AutoHealEnabled)
                     ProcessAutoHeal(config, now);
+
+                if (AutoBuffEnabled && !_otherPlayerAvoidance.IsAvoiding)
+                    ProcessBuffSkills(config, now);
 
                 double msAfterBlood = sw.Elapsed.TotalMilliseconds;
 
@@ -271,6 +309,7 @@ namespace ArtaleAI.Application.Pipeline
                     lock (_minimapMarkerLock)
                     {
                         _currentMinimapMarkers.Clear();
+                        _currentOtherPlayerMarkers.Clear();
                         if (trackingResult?.PlayerPosition.HasValue == true)
                         {
                             var playerPos = trackingResult.PlayerPosition.Value;
@@ -279,6 +318,18 @@ namespace ArtaleAI.Application.Pipeline
                                 minimapRect.Value.Y + (int)playerPos.Y);
                             _currentMinimapMarkers.Add(new SdRect(
                                 screenPlayerPos.X - 5, screenPlayerPos.Y - 5, 10, 10));
+                        }
+
+                        if (trackingResult?.OtherPlayers != null)
+                        {
+                            foreach (var other in trackingResult.OtherPlayers)
+                            {
+                                var screenPos = new SdPoint(
+                                    minimapRect.Value.X + (int)other.X,
+                                    minimapRect.Value.Y + (int)other.Y);
+                                _currentOtherPlayerMarkers.Add(new SdRect(
+                                    screenPos.X - 6, screenPos.Y - 6, 12, 12));
+                            }
                         }
                     }
                 }
@@ -366,6 +417,131 @@ namespace ArtaleAI.Application.Pipeline
             OnStatusMessage?.Invoke($"開始小休，暫停約 {durationSeconds} 秒…");
         }
 
+        private void ProcessOtherPlayerAvoidance(
+            MinimapTrackingResult? trackingResult,
+            AppConfig config,
+            DateTime now)
+        {
+            int otherCount = trackingResult?.OtherPlayers?.Count ?? 0;
+            bool justTriggered = _otherPlayerAvoidance.TryUpdate(
+                config.AutoFarm,
+                otherCount,
+                now);
+
+            if (!justTriggered)
+                return;
+
+            _movementController?.StopMovement();
+            OnStatusMessage?.Invoke("偵測到其他玩家：暫停並執行 Esc→點頻道");
+            TryStartChangeChannel(config.AutoFarm);
+        }
+
+        /// <summary>自動打怪開啟即清突發窗（與遇人換頻開關無關；換頻進行中讓出）。</summary>
+        private void TryProcessFarmUiInterrupt(
+            Mat frameMat,
+            MinimapTrackingResult? trackingResult,
+            AppConfig config)
+        {
+            // AutoAttack／Heal／Buff 皆由「自動打怪」勾選驅動。
+            bool autoFarmActive = AutoAttackEnabled || AutoHealEnabled || AutoBuffEnabled;
+            bool changeChannelBusy = Volatile.Read(ref _changeChannelInFlight) != 0;
+            bool hasMinimap = trackingResult?.MinimapBounds != null;
+
+            if (!hasMinimap
+                && autoFarmActive
+                && !changeChannelBusy
+                && config.AutoFarm.InterruptDismissEnabled
+                && config.AutoFarm.InterruptDismissDuringAutoFarm)
+            {
+                hasMinimap = _gameVision.FindMinimapOnScreen(frameMat).HasValue;
+            }
+
+            _farmUiInterrupt.ObserveFrame(
+                frameMat,
+                hasMinimap,
+                autoFarmActive,
+                changeChannelBusy,
+                config.AutoFarm,
+                _movementController,
+                msg => OnStatusMessage?.Invoke(msg));
+        }
+
+        private void TryStartChangeChannel(AutoFarmSettings settings)
+        {
+            if (_movementController == null)
+            {
+                _otherPlayerAvoidance.SetPulse("換頻失敗：無輸入控制器");
+                return;
+            }
+
+            if (Interlocked.CompareExchange(ref _changeChannelInFlight, 1, 0) != 0)
+                return;
+
+            CharacterMovementController movement = _movementController;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    bool ok = await _changeChannelSequence.ExecuteAsync(
+                        settings,
+                        CloneCachedChangeChannelFrame,
+                        movement.FocusGameWindow,
+                        async (vk, token) =>
+                        {
+                            movement.FocusGameWindow();
+                            await movement.TapKeyAsync(vk, pressDurationMs: 100, intervalMs: 40, token)
+                                .ConfigureAwait(false);
+                        },
+                        async (x, y, frameW, frameH, token) =>
+                            await movement.ClickCapturePointAsync(x, y, frameW, frameH, token)
+                                .ConfigureAwait(false),
+                        msg =>
+                        {
+                            _otherPlayerAvoidance.SetPulse(msg);
+                            OnStatusMessage?.Invoke(msg);
+                        },
+                        frame => _gameVision.FindMinimapOnScreen(frame).HasValue).ConfigureAwait(false);
+
+                    _otherPlayerAvoidance.SetPulse(ok ? "換頻指令已送出" : "換頻失敗");
+                }
+                catch (OperationCanceledException)
+                {
+                    _otherPlayerAvoidance.SetPulse("換頻已取消");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning($"[換頻] 序列例外: {ex.Message}");
+                    _otherPlayerAvoidance.SetPulse("換頻例外");
+                    OnStatusMessage?.Invoke($"換頻失敗：{ex.Message}");
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref _changeChannelInFlight, 0);
+                }
+            });
+        }
+
+        private void CacheFrameForChangeChannel(Mat frameMat)
+        {
+            Mat clone = frameMat.Clone();
+            lock (_changeChannelFrameLock)
+            {
+                _changeChannelFrameCache?.Dispose();
+                _changeChannelFrameCache = clone;
+            }
+        }
+
+        /// <summary>回傳快取幀的 Clone；呼叫端（ChangeChannelSequence）負責 Dispose。</summary>
+        private Mat? CloneCachedChangeChannelFrame()
+        {
+            lock (_changeChannelFrameLock)
+            {
+                if (_changeChannelFrameCache == null || _changeChannelFrameCache.Empty())
+                    return null;
+                return _changeChannelFrameCache.Clone();
+            }
+        }
+
         /// <summary>自動打怪勾選、擷取運行中即可依血魔％按藥水快捷鍵；不依賴路徑／怪物就緒。</summary>
         private void ProcessAutoHeal(AppConfig config, DateTime now)
         {
@@ -380,7 +556,16 @@ namespace ArtaleAI.Application.Pipeline
                 config.AutoFarm,
                 vitals,
                 now,
-                TapHealHotkey);
+                TapSkillHotkey);
+        }
+
+        private void ProcessBuffSkills(AppConfig config, DateTime now)
+        {
+            if (_movementController == null)
+                return;
+
+            config.AutoFarm.EnsureBuffSkillSlots();
+            _buffSkills.TryCast(config.AutoFarm, now, TapSkillHotkey);
         }
 
         /// <summary>供主控台 StatusBar 顯示剛補／冷卻短提示。</summary>
@@ -396,13 +581,26 @@ namespace ArtaleAI.Application.Pipeline
                 nowUtc ?? DateTime.UtcNow);
         }
 
-        private void TapHealHotkey(ushort virtualKey)
+        public string? GetBuffStatusHint(DateTime? nowUtc = null)
+            => _buffSkills.GetStatusHint(nowUtc ?? DateTime.UtcNow);
+
+        public string? GetAttackStatusHint(DateTime? nowUtc = null)
+            => _attackRotation.GetStatusHint(nowUtc ?? DateTime.UtcNow);
+
+        public string? GetOtherPlayerAvoidanceStatusHint(DateTime? nowUtc = null)
+            => _otherPlayerAvoidance.GetStatusHint(nowUtc ?? DateTime.UtcNow);
+
+        public void ResetBuffSchedule() => _buffSkills.ResetSchedule();
+
+        public void ResetAttackCooldowns() => _attackRotation.ResetCooldowns();
+
+        private void TapSkillHotkey(ushort virtualKey)
         {
             var movement = _movementController;
             if (movement == null)
                 return;
 
-            // fire-and-forget：短按不阻塞幀迴圈；間隔由 AutoHealCoordinator 節流。
+            // fire-and-forget：短按不阻塞幀迴圈；間隔由各 Coordinator 節流。
             _ = Task.Run(async () =>
             {
                 try
@@ -413,7 +611,7 @@ namespace ArtaleAI.Application.Pipeline
                 }
                 catch (Exception ex)
                 {
-                    Logger.Warning($"[自動喝水] 按鍵失敗: {ex.Message}");
+                    Logger.Warning($"[自動按鍵] 失敗: {ex.Message}");
                 }
             });
         }
@@ -488,12 +686,22 @@ namespace ArtaleAI.Application.Pipeline
                     _lastDirectionChangeTime = now;
                 }
 
-                _movementController.SendKeyInput(VK_CONTROL, false);
+                if (!_attackRotation.TrySelectAttackKey(
+                        AppConfig.Instance.AutoFarm,
+                        now,
+                        out ushort attackKey,
+                        out string attackLabel))
+                {
+                    Logger.Warning("[自動攻擊] 主攻快捷鍵無法解析，略過此次攻擊");
+                    return;
+                }
+
+                _movementController.SendKeyInput(attackKey, false);
                 await Task.Delay(20);
-                _movementController.SendKeyInput(VK_CONTROL, true);
+                _movementController.SendKeyInput(attackKey, true);
 
                 _lastAttackTime = now;
-                OnStatusMessage?.Invoke($"自動攻擊: 鎖定 {target.Name}");
+                OnStatusMessage?.Invoke($"自動攻擊: 鎖定 {target.Name}（{attackLabel}）");
             }
             finally
             {
@@ -741,11 +949,16 @@ namespace ArtaleAI.Application.Pipeline
             if (!Enum.TryParse<MonsterDetectionMode>(detectionModeString, out var detectionMode))
                 detectionMode = MonsterDetectionMode.Color;
 
+            // ContourOnly：threshold 語意為 KenYu maxAllowedDiff；其餘模式為最低信心分數
+            double detectionThreshold = detectionMode == MonsterDetectionMode.ContourOnly
+                ? Math.Clamp(config.Vision.ContourDiffThreshold, 0.05, 1.0)
+                : config.Vision.DefaultThreshold;
+
             return new MonsterDetectionWorkItem(
                 crops,
                 MonsterCatalog,
                 detectionMode,
-                config.Vision.DefaultThreshold,
+                detectionThreshold,
                 config.Vision.MaxDetectionResults);
         }
 
@@ -836,6 +1049,47 @@ namespace ArtaleAI.Application.Pipeline
 
             if (aggregateStats.HasValue)
                 LogMonsterMatchTiming(timedMonsterName ?? "unknown", aggregateStats.Value);
+
+            // 怪血條關聯：預設關閉。血條多半攻擊後才出現，不可當發現過濾。
+            var vision = AppConfig.Instance?.Vision;
+            if (vision?.MonsterHpBarFilterEnabled == true && allResults.Count > 0)
+            {
+                var enemyBars = new List<SdRect>();
+                foreach (var (validCropRect, croppedMat) in crops)
+                {
+                    var bars = GameVisionCore.FindEnemyHpBars(croppedMat, AppConfig.Instance!);
+                    foreach (var bar in bars)
+                    {
+                        enemyBars.Add(new SdRect(
+                            bar.X + validCropRect.X,
+                            bar.Y + validCropRect.Y,
+                            bar.Width,
+                            bar.Height));
+                    }
+                }
+
+                SdRect? playerBar = null;
+                lock (_bloodBarLock)
+                {
+                    if (_currentBloodBars.Count > 0)
+                        playerBar = _currentBloodBars[0];
+                }
+
+                int before = allResults.Count;
+                allResults = GameVisionCore.FilterMonstersByEnemyHpBars(
+                    allResults,
+                    enemyBars,
+                    vision.MonsterHpBarMaxGapPx > 0
+                        ? vision.MonsterHpBarMaxGapPx
+                        : 36,
+                    playerBar);
+
+                if (before != allResults.Count)
+                {
+                    OnStatusMessage?.Invoke(
+                        $"怪血條過濾：{before} → {allResults.Count}（血條 {enemyBars.Count}）");
+                }
+            }
 
             List<DetectionResult> finalResults;
             if (allResults.Count > 1)

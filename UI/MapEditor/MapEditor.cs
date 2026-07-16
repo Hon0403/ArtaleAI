@@ -24,6 +24,10 @@ namespace ArtaleAI.UI.MapEditor
 
         private const float PointRadius = 4.0f;
         private const float SelectionRadius = 5.0f;
+        /// <summary>路線標記：點擊／hover 吸附到既有折線的距離（地圖像素）。刻意小於選取半徑，避免鄰近無法開新路徑。</summary>
+        private const float PolylineInsertSnapThreshold = 3.0f;
+        /// <summary>插點投影若距既有頂點過近則略過，避免重複折點。</summary>
+        private const float MinVertexDistanceThreshold = 5.0f;
         /// <summary>runtime 節點命中範圍（地圖像素）；大於視覺半徑以便選取。</summary>
         private const float RuntimeNodeHitSlop = 12.0f;
         /// <summary>Shift 點擊循環選節點時，判定為「同一區域」的錨點容差。</summary>
@@ -630,65 +634,9 @@ namespace ArtaleAI.UI.MapEditor
                 {
                     if (_activeDrawingPoints.Count == 0)
                     {
-                        // 插點檢測 (Phase 3 核心)
-                        PolylinePlatformData? hitPlat = null;
-                        PolylineHitResult? hitResult = null;
-                        float bestDist = float.MaxValue;
-                        float threshold = SelectionRadius * 2.0f; // 10 像素
-                        
-                        if (_currentMapData.PolylinePlatforms != null)
-                        {
-                            foreach (var plat in _currentMapData.PolylinePlatforms)
-                            {
-                                var hit = GetDistanceToPolyline(relativePoint, plat);
-                                if (hit.Distance < threshold && hit.Distance < bestDist)
-                                {
-                                    bestDist = hit.Distance;
-                                    hitPlat = plat;
-                                    hitResult = hit;
-                                }
-                            }
-                        }
+                        if (TryInsertVertexOnNearbyPolyline(relativePoint))
+                            return;
 
-                        // 防呆規則：如果命中點距離此折線平台上的任何既有頂點 (Vertex) 過近，則忽略插點
-                        bool isTooCloseToVertex = false;
-                        const float MinVertexDistanceThreshold = 5.0f; // 5 像素
-
-                        if (hitPlat != null && hitResult != null)
-                        {
-                            foreach (var v in hitPlat.Points)
-                            {
-                                float dx = hitResult.ProjectionPoint.X - v.X;
-                                float dy = hitResult.ProjectionPoint.Y - v.Y;
-                                float distToVertex = (float)Math.Sqrt(dx * dx + dy * dy);
-                                if (distToVertex <= MinVertexDistanceThreshold)
-                                {
-                                    isTooCloseToVertex = true;
-                                    break;
-                                }
-                            }
-
-                            if (!isTooCloseToVertex)
-                            {
-                                // 插入新折點
-                                var newPt = new PlatformPointData
-                                {
-                                    X = (float)Math.Round(hitResult.ProjectionPoint.X, 1),
-                                    Y = (float)Math.Round(hitResult.ProjectionPoint.Y, 1)
-                                };
-                                hitPlat.Points.Insert(hitResult.SegmentIndex + 1, newPt);
-                                Logger.Info($"[編輯器] 於折線平台 {hitPlat.Id} 的段 {hitResult.SegmentIndex} 插入折點: ({newPt.X:F1}, {newPt.Y:F1})");
-                                
-                                CommitTopologyChange();
-                                return; // 結束，不進入繪製起點
-                            }
-                            else
-                            {
-                                Logger.Warning("[編輯器] 點擊位置距離既有折點過近，忽略此次插點操作");
-                            }
-                        }
-
-                        // 開始新平台的繪製
                         _activeDrawingPoints.Add(relativePoint);
                         Logger.Info($"[編輯器] 設定折線平台起點: ({relativePoint.X:F1}, {relativePoint.Y:F1})");
                     }
@@ -770,8 +718,7 @@ namespace ArtaleAI.UI.MapEditor
                 }
                 else
                 {
-                    float threshold = SelectionRadius * 2.0f;
-                    var hitAnchor = FindNearestPlatformProjection(relativePoint, threshold);
+                    var hitAnchor = FindNearestPlatformProjection(relativePoint, PolylineInsertSnapThreshold);
                     if (hitAnchor == null) return;
 
                     if (_manualEdgeStartAnchor == null)
@@ -1236,6 +1183,84 @@ namespace ArtaleAI.UI.MapEditor
             return result;
         }
 
+        /// <summary>若點落在既有折線吸附範圍內，插入折點並重建拓樸。</summary>
+        private bool TryInsertVertexOnNearbyPolyline(PointF relativePoint)
+        {
+            if (!TryFindNearbyPolylineInsertTarget(
+                relativePoint,
+                out var hitPlat,
+                out var hitResult,
+                out bool tooCloseToVertex))
+            {
+                if (tooCloseToVertex)
+                    Logger.Warning("[編輯器] 點擊位置距離既有折點過近，忽略此次插點操作");
+                return false;
+            }
+
+            var newPt = new PlatformPointData
+            {
+                X = (float)Math.Round(hitResult.ProjectionPoint.X, 1),
+                Y = (float)Math.Round(hitResult.ProjectionPoint.Y, 1)
+            };
+            hitPlat.Points.Insert(hitResult.SegmentIndex + 1, newPt);
+            Logger.Info(
+                $"[編輯器] 於折線平台 {hitPlat.Id} 的段 {hitResult.SegmentIndex} 插入折點: ({newPt.X:F1}, {newPt.Y:F1})");
+            CommitTopologyChange();
+            return true;
+        }
+
+        /// <summary>
+        /// 尋找可插點的最近折線投影。
+        /// 若僅因「距既有頂點過近」而拒絕，<paramref name="tooCloseToVertex"/> 為 true。
+        /// </summary>
+        private bool TryFindNearbyPolylineInsertTarget(
+            PointF relativePoint,
+            out PolylinePlatformData hitPlat,
+            out PolylineHitResult hitResult,
+            out bool tooCloseToVertex)
+        {
+            hitPlat = null!;
+            hitResult = null!;
+            tooCloseToVertex = false;
+
+            PolylinePlatformData? bestPlat = null;
+            PolylineHitResult? bestHit = null;
+            float bestDist = float.MaxValue;
+
+            if (_currentMapData.PolylinePlatforms == null)
+                return false;
+
+            foreach (var plat in _currentMapData.PolylinePlatforms)
+            {
+                var hit = GetDistanceToPolyline(relativePoint, plat);
+                if (hit.Distance < PolylineInsertSnapThreshold && hit.Distance < bestDist)
+                {
+                    bestDist = hit.Distance;
+                    bestPlat = plat;
+                    bestHit = hit;
+                }
+            }
+
+            if (bestPlat == null || bestHit == null)
+                return false;
+
+            foreach (var v in bestPlat.Points)
+            {
+                float dx = bestHit.ProjectionPoint.X - v.X;
+                float dy = bestHit.ProjectionPoint.Y - v.Y;
+                float distToVertex = (float)Math.Sqrt(dx * dx + dy * dy);
+                if (distToVertex <= MinVertexDistanceThreshold)
+                {
+                    tooCloseToVertex = true;
+                    return false;
+                }
+            }
+
+            hitPlat = bestPlat;
+            hitResult = bestHit;
+            return true;
+        }
+
         private bool TryGetManualEdgeDrawSegment(ManualEdgeAnchor anchor, out PointF from, out PointF to)
         {
             foreach (var edge in _currentMapData.Edges)
@@ -1555,7 +1580,6 @@ namespace ArtaleAI.UI.MapEditor
             _hoveredPlatform = null;
             _hoveredRope = null;
             _hoveredJumpLink = null;
-            _hoveredJumpLink = null;
             _hoveredManualEdgeAnchor = null;
             _hoveredSegmentIndex = -1;
             _hoveredProjectionPoint = PointF.Empty;
@@ -1597,58 +1621,20 @@ namespace ArtaleAI.UI.MapEditor
 
             if (isPlatformModeNotDrawing)
             {
-                float threshold = SelectionRadius * 2.0f;
-
-                PolylinePlatformData? bestPlatform = null;
-                PolylineHitResult? bestHitResult = null;
-                float bestPlatformDist = float.MaxValue;
-                if (_currentMapData.PolylinePlatforms != null)
+                if (TryFindNearbyPolylineInsertTarget(
+                    relativePoint,
+                    out var bestPlatform,
+                    out var bestHitResult,
+                    out _))
                 {
-                    foreach (var plat in _currentMapData.PolylinePlatforms)
-                    {
-                        var hit = GetDistanceToPolyline(relativePoint, plat);
-                        if (hit.Distance < threshold && hit.Distance < bestPlatformDist)
-                        {
-                            bestPlatformDist = hit.Distance;
-                            bestPlatform = plat;
-                            bestHitResult = hit;
-                        }
-                    }
-                }
-
-                if (bestPlatform != null)
-                {
-                    bool isTooCloseToVertex = false;
-                    if (bestHitResult != null)
-                    {
-                        foreach (var v in bestPlatform.Points)
-                        {
-                            float dx = bestHitResult.ProjectionPoint.X - v.X;
-                            float dy = bestHitResult.ProjectionPoint.Y - v.Y;
-                            float distToVertex = (float)Math.Sqrt(dx * dx + dy * dy);
-                            if (distToVertex <= 5.0f)
-                            {
-                                isTooCloseToVertex = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (!isTooCloseToVertex)
-                    {
-                        _hoveredPlatform = bestPlatform;
-                        if (bestHitResult != null)
-                        {
-                            _hoveredSegmentIndex = bestHitResult.SegmentIndex;
-                            _hoveredProjectionPoint = bestHitResult.ProjectionPoint;
-                        }
-                    }
+                    _hoveredPlatform = bestPlatform;
+                    _hoveredSegmentIndex = bestHitResult.SegmentIndex;
+                    _hoveredProjectionPoint = bestHitResult.ProjectionPoint;
                 }
             }
             else if (_currentEditMode == EditMode.ManualEdge)
             {
-                float threshold = SelectionRadius * 2.0f;
-                var hit = FindNearestPlatformProjection(relativePoint, threshold);
+                var hit = FindNearestPlatformProjection(relativePoint, PolylineInsertSnapThreshold);
                 if (hit != null)
                 {
                     _hoveredPlatform = hit.Platform;

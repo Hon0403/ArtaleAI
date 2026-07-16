@@ -5,11 +5,20 @@ general:
   lastSelectedProcessId: 25336
   minimapUpscaleFactor: 1
   crosshairSize: 2
+  forceClientSizeWhileCapture: true
+  forceClientWidth: 1280
+  forceClientHeight: 720
+  forceClientSizeCheckIntervalMs: 1500
+  forceClientSizeCooldownMs: 2500
 vision:
-  defaultThreshold: 0.7
+  defaultThreshold: 0.75
   maxDetectionResults: 5
-  detectionMode: ContourOnly
+  detectionMode: Basic
   nmsIouThreshold: 0.45
+  contourDiffThreshold: 0.8
+  monsterHpBarFilterEnabled: false
+  monsterHpBarMaxGapPx: 36
+  contourBlur: 5
   playerThreshold: 0.7
   playerMarker: templates/minimap/player_marker.png
   otherPlayers: templates/minimap/other_players.png
@@ -77,7 +86,7 @@ vision:
   minMinimapHeight: 80
 navigation:
   playerPositionThreshold: 0.7
-  otherPlayersThreshold: 0.5
+  otherPlayersThreshold: 0.7
   enableOtherPlayersDetection: true
   platformHitboxWidth: 3
   platformHitboxHeight: 3
@@ -217,3 +226,57 @@ autoFarm:
   healMpThresholdPercent: 30
   healMpHotkey: Insert
   healCooldownMs: 800
+  buffSkills:
+  - enabled: false
+    hotkey: F1
+    intervalSeconds: 180
+  - enabled: false
+    hotkey: F2
+    intervalSeconds: 180
+  - enabled: false
+    hotkey: F3
+    intervalSeconds: 300
+  - enabled: false
+    hotkey: F4
+    intervalSeconds: 180
+  - enabled: false
+    hotkey: F5
+    intervalSeconds: 180
+  buffCastGapMs: 450
+  attackPrimaryHotkey: Ctrl
+  attackSkills:
+  - enabled: true
+    hotkey: Delete
+    cooldownSeconds: 5
+  - enabled: false
+    hotkey: S
+    cooldownSeconds: 20
+  - enabled: false
+    hotkey: D
+    cooldownSeconds: 15
+  changeChannelOnOtherPlayers: false
+  changeChannelMenuTemplate: templates/MainScreen/channel_menu_button.png
+  changeChannelPickTemplate: templates/MainScreen/channel_pick_panel.png
+  changeChannelConfirmTemplate: templates/MainScreen/channel_confirm_button.png
+  changeChannelLoginTemplate: templates/MainScreen/channel_login_button.png
+  changeChannelSelectCharacterTemplate: templates/MainScreen/channel_select_character_button.png
+  changeChannelMatchThreshold: 0.68
+  changeChannelGrid:
+    columns: 5
+    visibleRows: 10
+    leftRatio: 0.018
+    topRatio: 0.135
+    rightRatio: 0.955
+    bottomRatio: 0.985
+  changeChannelPickStrategy: random
+  changeChannelPauseSeconds: 90
+  changeChannelCooldownSeconds: 120
+  interruptDismissEnabled: true
+  interruptDismissDuringAutoFarm: true
+  farmInterruptMinimapLostMs: 1200
+  farmInterruptCooldownMs: 3000
+  interruptDarkOverlayCloseTemplate: templates/MainScreen/interrupt_close_dark_x.png
+  interruptPreferEscape: true
+  interruptEscapeCooldownMs: 2800
+  interruptMatchThreshold: 0.72
+  interruptDismissTemplates: []

@@ -1,16 +1,18 @@
 using System.Windows.Forms;
 using ArtaleAI.Vision;
 using ArtaleAI.Models.Detection;
-using OpenCvSharp;
 
 namespace ArtaleAI.Infrastructure.Persistence
 {
     /// <summary>怪物模板 bundle 與 Catalog 的 UI 層單一來源；Mat 生命週期由 <see cref="GameVisionCore"/> 快取管理。</summary>
     public sealed class MonsterTemplateStore : IDisposable
     {
+        /// <summary>UI 建議上限：再多效能與誤打風險上升。</summary>
+        public const int SoftSelectLimit = 3;
+
         private readonly GameVisionCore _gameVision;
         private readonly MonsterDetectionCatalog _catalog = new();
-        private string? _selectedMonsterName;
+        private readonly List<string> _selectedMonsterNames = new();
 
         public MonsterTemplateStore(GameVisionCore gameVision)
         {
@@ -22,7 +24,15 @@ namespace ArtaleAI.Infrastructure.Persistence
         public MonsterTemplateBundle? ActiveBundle =>
             _catalog.Bundles.Count > 0 ? _catalog.Bundles[0] : null;
 
-        public string? SelectedMonsterName => _selectedMonsterName;
+        public IReadOnlyList<string> SelectedMonsterNames => _selectedMonsterNames;
+
+        /// <summary>日誌／狀態列用白話摘要。</summary>
+        public string SelectedMonsterNamesDisplay =>
+            _selectedMonsterNames.Count == 0
+                ? string.Empty
+                : string.Join("、", _selectedMonsterNames);
+
+        public bool HasSelection => _selectedMonsterNames.Count > 0;
 
         public int ActiveTemplateCount => _catalog.TotalTemplateCount;
 
@@ -37,40 +47,71 @@ namespace ArtaleAI.Infrastructure.Persistence
                 if (!string.IsNullOrEmpty(name)) names.Add(name);
             }
 
+            names.Sort(StringComparer.OrdinalIgnoreCase);
             return names;
         }
 
-        public static void PopulateMonsterCombo(ComboBox combo, string monstersDirectory)
+        public static void PopulateMonsterList(CheckedListBox list, string monstersDirectory)
         {
-            combo.Items.Clear();
-            combo.Items.Add("null");
-            foreach (var name in EnumerateMonsterFolderNames(monstersDirectory))
-                combo.Items.Add(name);
+            var previouslyChecked = list.CheckedItems
+                .Cast<object>()
+                .Select(item => item.ToString() ?? string.Empty)
+                .Where(name => name.Length > 0)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            list.BeginUpdate();
+            try
+            {
+                list.Items.Clear();
+                foreach (var name in EnumerateMonsterFolderNames(monstersDirectory))
+                {
+                    int index = list.Items.Add(name);
+                    if (previouslyChecked.Contains(name))
+                        list.SetItemChecked(index, true);
+                }
+            }
+            finally
+            {
+                list.EndUpdate();
+            }
         }
 
-        public async Task LoadSelectionAsync(string selectedItemText, string monstersDirectory)
+        public async Task LoadSelectionsAsync(
+            IReadOnlyList<string> selectedNames,
+            string monstersDirectory)
         {
-            if (selectedItemText == "null")
-            {
-                ReleaseSelection();
-                return;
-            }
-
             ReleaseSelection();
 
-            var bundle = await _gameVision.LoadMonsterTemplateBundleAsync(selectedItemText, monstersDirectory)
-                .ConfigureAwait(true);
+            if (selectedNames == null || selectedNames.Count == 0)
+                return;
 
-            if (bundle != null && !bundle.IsEmpty)
-                _catalog.SetSingle(bundle);
+            var uniqueNames = selectedNames
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(MonsterDetectionCatalog.HardSelectLimit)
+                .ToList();
 
-            _selectedMonsterName = bundle != null && !bundle.IsEmpty ? selectedItemText : null;
+            var bundles = new List<MonsterTemplateBundle>();
+            foreach (var name in uniqueNames)
+            {
+                var bundle = await _gameVision
+                    .LoadMonsterTemplateBundleAsync(name, monstersDirectory)
+                    .ConfigureAwait(true);
+
+                if (bundle == null || bundle.IsEmpty)
+                    continue;
+
+                bundles.Add(bundle);
+                _selectedMonsterNames.Add(name);
+            }
+
+            _catalog.SetMany(bundles);
         }
 
         public void ReleaseSelection()
         {
             _catalog.Clear();
-            _selectedMonsterName = null;
+            _selectedMonsterNames.Clear();
         }
 
         public void Dispose()

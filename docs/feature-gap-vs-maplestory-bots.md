@@ -35,10 +35,10 @@
 | 地圖／路徑編輯 | 高 | 有（Map Editor 完整） | 依 map-editor 憲章驗收 |
 | 多怪模板 | 中 | 有（UI 最多 3、硬上限 5） | 完成；可選持久化勾選 |
 | 定時休息／節奏抖動 | 中高 | 有（定時休息 + ±% 抖動） | 完成 |
-| **自動喝水（HP／MP）** | 必備 | UI `groupBox7` 隱藏、未接線；已有 `PlayerVitals` | **P0** |
-| **補助技能／Buff 循環** | 很高 | `groupBox9` 空殼 | **P0** |
-| **攻擊技能輪轉** | 很高 | 單鍵攻擊為主 | **P0** |
-| **遇人換頻／Panic** | 高 | 無（小地圖可偵其他玩家） | **P1** |
+| **自動喝水（HP／MP）** | 必備 | `groupBox7`＋`AutoHealCoordinator` | **完成（P0-1）** |
+| **補助技能／Buff 循環** | 很高 | `groupBox9`＋`BuffSkillCoordinator`（週期熱鍵） | **完成（P0-2）** |
+| **攻擊技能輪轉** | 很高 | `groupBox_Attack`＋`AttackRotationCoordinator` | **完成（P0-3）** |
+| **遇人換頻／Panic** | 高 | checkbox＋小地圖 other players：暫停／可選熱鍵 | **完成（P1 初版）** |
 | **自動解符文／強制事件** | Artale 腳本高 | 無 | **P1** |
 | 卡死救援／熔斷 | 高 | 有導航 Rescue；無回城停損 | **P1**（補回城／停損） |
 | 跨圖傳送／換圖刷 | 高（商業） | Teleport 邊有；跨圖流程弱 | P2 |
