@@ -4,9 +4,10 @@ namespace ArtaleAI.UI.MapEditor
 {
     public sealed class MapEditorMapSummary
     {
-        public int PlatformCount { get; init; }
+            public int PlatformCount { get; init; }
         public int RopeCount { get; init; }
         public int JumpLinkCount { get; init; }
+        public int SafeZoneCount { get; init; }
         public int ManualEdgeCount { get; init; }
         public int RuntimeNodeCount { get; init; }
         public int RuntimeEdgeCount { get; init; }
@@ -54,6 +55,7 @@ namespace ArtaleAI.UI.MapEditor
                 PlatformCount = _currentMapData.PolylinePlatforms?.Count ?? 0,
                 RopeCount = _currentMapData.Ropes?.Count ?? 0,
                 JumpLinkCount = _currentMapData.JumpLinks?.Count ?? 0,
+                SafeZoneCount = CountSafeZonePoints(),
                 ManualEdgeCount = _currentMapData.ManualEdgeAnchors?.Count ?? 0,
                 RuntimeNodeCount = _currentMapData.Nodes.Count,
                 RuntimeEdgeCount = _currentMapData.Edges.Count
@@ -332,6 +334,76 @@ namespace ArtaleAI.UI.MapEditor
                     "確定刪除此手動邊錨點？",
                 _ => "確定刪除選取的物件？"
             };
+        }
+
+        public bool TrySetPlatformPointSafeZone(
+            PolylinePlatformData platform,
+            int pointIndex,
+            bool isSafeZone,
+            out string? error)
+        {
+            error = null;
+            if (platform.Points == null || pointIndex < 0 || pointIndex >= platform.Points.Count)
+            {
+                error = "折點索引無效。";
+                return false;
+            }
+
+            if (platform.Points[pointIndex].IsSafeZone == isSafeZone)
+                return true;
+
+            platform.Points[pointIndex].IsSafeZone = isSafeZone;
+            CommitMutation();
+            RefreshPlatformSelection(platform);
+            return true;
+        }
+
+        public bool TrySetAllPlatformPointsSafeZone(
+            PolylinePlatformData platform,
+            bool isSafeZone,
+            out string? error)
+        {
+            error = null;
+            if (platform.Points == null || platform.Points.Count == 0)
+            {
+                error = "平台沒有折點。";
+                return false;
+            }
+
+            bool changed = false;
+            foreach (var point in platform.Points)
+            {
+                if (point.IsSafeZone == isSafeZone)
+                    continue;
+                point.IsSafeZone = isSafeZone;
+                changed = true;
+            }
+
+            if (!changed)
+                return true;
+
+            CommitMutation();
+            RefreshPlatformSelection(platform);
+            return true;
+        }
+
+        private int CountSafeZonePoints()
+        {
+            int count = 0;
+            if (_currentMapData.PolylinePlatforms == null)
+                return 0;
+
+            foreach (var plat in _currentMapData.PolylinePlatforms)
+            {
+                if (plat.Points == null) continue;
+                foreach (var p in plat.Points)
+                {
+                    if (p.IsSafeZone)
+                        count++;
+                }
+            }
+
+            return count;
         }
 
         private void CommitMutation() => CommitTopologyChange();

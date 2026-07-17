@@ -240,7 +240,10 @@ namespace ArtaleAI.Infrastructure.Persistence
             try
             {
                 string json = File.ReadAllText(filePath);
-                return Newtonsoft.Json.JsonConvert.DeserializeObject<ArtaleAI.Models.Map.MapData>(json);
+                var loaded = Newtonsoft.Json.JsonConvert.DeserializeObject<ArtaleAI.Models.Map.MapData>(json);
+                if (loaded != null)
+                    ArtaleAI.Application.MapEditor.MapSafeZoneMigration.MigrateLegacySafeZones(loaded);
+                return loaded;
             }
             catch (Exception ex)
             {

@@ -122,21 +122,25 @@ namespace ArtaleAI.UI.MapEditor
                         BuildPlatformView(editor, selection.Platform, selection.SegmentIndex);
                         break;
                     case MapEditorSelectionKind.Rope when selection.RopeIndex >= 0:
+                        AddHint("目前選到繩索。安全區請改選綠色「路線標記」。");
                         BuildRopeView(editor, selection.RopeIndex);
                         break;
                     case MapEditorSelectionKind.JumpLink when selection.JumpLinkIndex >= 0:
+                        AddHint("目前選到跳點。安全區請改選綠色「路線標記」。");
                         BuildJumpLinkView(editor, selection.JumpLinkIndex);
                         break;
                     case MapEditorSelectionKind.ManualEdge when selection.ManualEdge != null:
                         BuildManualEdgeView(editor, selection.ManualEdge);
                         break;
                     case MapEditorSelectionKind.RuntimeNode:
+                        AddHint("目前選到 Runtime 節點。安全區請改選綠色「路線標記」。");
                         BuildRuntimeNodeView(editor, selection.RuntimeNodeIndex);
                         break;
                 }
             }
 
-            if (!editor.Selection.IsEmpty)
+            if (!editor.Selection.IsEmpty &&
+                editor.Selection.Kind != MapEditorSelectionKind.Platform)
                 AppendInspectorFooter(editor);
 
             AppendValidationSection(editor);
@@ -221,16 +225,47 @@ namespace ArtaleAI.UI.MapEditor
             AddRow($"平台: {summary.PlatformCount}");
             AddRow($"繩索: {summary.RopeCount}");
             AddRow($"跳點: {summary.JumpLinkCount}");
+            AddRow($"安全折點: {summary.SafeZoneCount}");
             AddRow($"手動邊: {summary.ManualEdgeCount}");
             AddRow($"Runtime 節點: {summary.RuntimeNodeCount}");
             AddRow($"Runtime 邊: {summary.RuntimeEdgeCount}");
+            AddHint("安全區：選取綠色路線後，在屬性面板勾選折點。");
             AddCanvasGuide(
                 "路線標記：在畫布點擊建立折線",
-                "繩索標記：拖曳上下兩端",
-                "跳點標記：拖曳上下兩端（自動 Jump/JumpDown）",
-                "兩點連線（進階）：點選起終點平台",
-                "選取：檢視屬性；拖曳折點調整形狀",
-                "Shift+點擊：循環選節點");
+                "安全區：選取平台 → 勾選折點",
+                "繩索標記：拖曳上下兩端（端點須貼齊平台線）",
+                "跳點標記：拖曳上下兩端（端點須貼齊平台線）",
+                "選取：檢視屬性；拖曳折點調整形狀");
+        }
+
+        private void AddPlatformSafeZoneCheckboxes(MapEditor editor, PolylinePlatformData platform)
+        {
+            if (platform.Points == null)
+                return;
+
+            for (int i = 0; i < platform.Points.Count; i++)
+            {
+                var p = platform.Points[i];
+                int pointIndex = i;
+                var platRef = platform;
+                var chkSafe = new CheckBox
+                {
+                    Text = $"[{i}] ({p.X:F1}, {p.Y:F1})  安全區",
+                    AutoSize = true,
+                    Checked = p.IsSafeZone,
+                    Margin = new Padding(0, 2, 0, 2),
+                    MaximumSize = new Size(ContentMaxWidth - 8, 0),
+                    ForeColor = p.IsSafeZone ? Color.DarkGreen : SystemColors.ControlText
+                };
+                chkSafe.CheckedChanged += (_, _) =>
+                {
+                    if (editor.TrySetPlatformPointSafeZone(platRef, pointIndex, chkSafe.Checked, out var error))
+                        RefreshFromEditor(editor);
+                    else
+                        ShowError(error);
+                };
+                _content.Controls.Add(chkSafe);
+            }
         }
 
         private void BuildPlatformView(MapEditor editor, PolylinePlatformData platform, int segmentIndex)
@@ -264,12 +299,9 @@ namespace ArtaleAI.UI.MapEditor
             AddRow($"點數: {stats.PointCount} | 長度: {stats.TotalLength:F1}px");
             AddRow($"相依 ManualEdge: {stats.DependentManualEdgeCount}");
 
-            AddSectionTitle("折點（唯讀）");
-            for (int i = 0; i < platform.Points.Count; i++)
-            {
-                var p = platform.Points[i];
-                AddRow($"  [{i}] ({p.X:F1}, {p.Y:F1})");
-            }
+            AddSectionTitle("安全區");
+            AddPlatformSafeZoneCheckboxes(editor, platform);
+            AddHint("兩端都勾選時，該段會淺綠高亮。");
 
             AddCanvasGuide(
                 "修改形狀：選取模式下拖曳折點",
@@ -296,6 +328,7 @@ namespace ArtaleAI.UI.MapEditor
             AddRow($"bottomY: {rope[2]:F1}");
             AddRow($"Climb 邊（全圖）: {stats.ClimbEdgeCount}");
             AddCanvasGuide(
+                "上下端點須貼齊平台線（容差 2px），浮空端點不會建 Climb 邊",
                 "調整位置：刪除後用「繩索標記」在畫布重畫",
                 "刪除：切到「刪除標記」再點選");
         }
@@ -319,6 +352,7 @@ namespace ArtaleAI.UI.MapEditor
             AddRow($"Jump/JumpDown 邊（全圖）: {stats.JumpEdgeCount}");
             AddHint("拓撲自動建立下→上 Jump、上→下 JumpDown 雙向邊。");
             AddCanvasGuide(
+                "上下端點須貼齊平台線（容差 2px），浮空端點不會建 Jump 邊",
                 "調整位置：刪除後用「跳點標記」在畫布重畫",
                 "刪除：切到「刪除標記」再點選");
         }

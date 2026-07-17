@@ -95,11 +95,17 @@ namespace ArtaleAI
             lbl_AttackPrimary = new Label();
             panel2 = new Panel();
             splitConsoleMonitor = new SplitContainer();
+            splitConsoleViews = new SplitContainer();
             groupBox_ConsoleMinimap = new GroupBox();
             pictureBox_ConsoleMinimap = new PictureBox();
             lbl_ConsoleMinimapPlaceholder = new Label();
             panel_ConsoleMinimapHeader = new Panel();
             lbl_ConsoleMinimapHint = new Label();
+            groupBox_ConsoleGameView = new GroupBox();
+            pictureBox_ConsoleGameView = new PictureBox();
+            lbl_ConsoleGamePlaceholder = new Label();
+            panel_ConsoleGameHeader = new Panel();
+            lbl_ConsoleGameHint = new Label();
             groupBox_Log = new GroupBox();
             textBox1 = new TextBox();
             panel_StatusBar = new Panel();
@@ -130,6 +136,7 @@ namespace ArtaleAI
             chk_AdvancedMode = new CheckBox();
             rdo_TwoPointLink = new RadioButton();
             rdo_DeleteMarker = new RadioButton();
+            rdo_SafeZoneMarker = new RadioButton();
             rdo_JumpLinkMarker = new RadioButton();
             rdo_RopeMarker = new RadioButton();
             rdo_PathMarker = new RadioButton();
@@ -146,6 +153,7 @@ namespace ArtaleAI
             chk_LayerNodes = new CheckBox();
             chk_LayerEdges = new CheckBox();
             chk_LayerValidation = new CheckBox();
+            chk_LayerSafeZones = new CheckBox();
             groupBox_PropertyPanel = new GroupBox();
             panel4BottomHost = new Panel();
             lbl_MouseCoords = new Label();
@@ -166,10 +174,18 @@ namespace ArtaleAI
             splitConsoleMonitor.Panel1.SuspendLayout();
             splitConsoleMonitor.Panel2.SuspendLayout();
             splitConsoleMonitor.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)splitConsoleViews).BeginInit();
+            splitConsoleViews.Panel1.SuspendLayout();
+            splitConsoleViews.Panel2.SuspendLayout();
+            splitConsoleViews.SuspendLayout();
             groupBox_ConsoleMinimap.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)pictureBox_ConsoleMinimap).BeginInit();
             pictureBox_ConsoleMinimap.SuspendLayout();
             panel_ConsoleMinimapHeader.SuspendLayout();
+            groupBox_ConsoleGameView.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)pictureBox_ConsoleGameView).BeginInit();
+            pictureBox_ConsoleGameView.SuspendLayout();
+            panel_ConsoleGameHeader.SuspendLayout();
             groupBox_Log.SuspendLayout();
             panel_StatusBar.SuspendLayout();
             tableLayoutPanel_Status.SuspendLayout();
@@ -1138,7 +1154,7 @@ namespace ArtaleAI
             // 
             // splitConsoleMonitor.Panel1
             // 
-            splitConsoleMonitor.Panel1.Controls.Add(groupBox_ConsoleMinimap);
+            splitConsoleMonitor.Panel1.Controls.Add(splitConsoleViews);
             // 
             // splitConsoleMonitor.Panel2
             // 
@@ -1148,6 +1164,24 @@ namespace ArtaleAI
             splitConsoleMonitor.SplitterWidth = 6;
             splitConsoleMonitor.TabIndex = 2;
             // 
+            // splitConsoleViews
+            // 
+            splitConsoleViews.Dock = DockStyle.Fill;
+            splitConsoleViews.Location = new Point(0, 0);
+            splitConsoleViews.Name = "splitConsoleViews";
+            // 
+            // splitConsoleViews.Panel1
+            // 
+            splitConsoleViews.Panel1.Controls.Add(groupBox_ConsoleMinimap);
+            // 
+            // splitConsoleViews.Panel2
+            // 
+            splitConsoleViews.Panel2.Controls.Add(groupBox_ConsoleGameView);
+            splitConsoleViews.Size = new Size(730, 372);
+            splitConsoleViews.SplitterDistance = 360;
+            splitConsoleViews.SplitterWidth = 6;
+            splitConsoleViews.TabIndex = 0;
+            // 
             // groupBox_ConsoleMinimap
             // 
             groupBox_ConsoleMinimap.Controls.Add(pictureBox_ConsoleMinimap);
@@ -1156,7 +1190,7 @@ namespace ArtaleAI
             groupBox_ConsoleMinimap.Location = new Point(0, 0);
             groupBox_ConsoleMinimap.Name = "groupBox_ConsoleMinimap";
             groupBox_ConsoleMinimap.Padding = new Padding(4);
-            groupBox_ConsoleMinimap.Size = new Size(730, 372);
+            groupBox_ConsoleMinimap.Size = new Size(360, 372);
             groupBox_ConsoleMinimap.TabIndex = 0;
             groupBox_ConsoleMinimap.TabStop = false;
             groupBox_ConsoleMinimap.Text = "運行小地圖";
@@ -1169,7 +1203,7 @@ namespace ArtaleAI
             pictureBox_ConsoleMinimap.Dock = DockStyle.Fill;
             pictureBox_ConsoleMinimap.Location = new Point(4, 48);
             pictureBox_ConsoleMinimap.Name = "pictureBox_ConsoleMinimap";
-            pictureBox_ConsoleMinimap.Size = new Size(722, 320);
+            pictureBox_ConsoleMinimap.Size = new Size(352, 320);
             pictureBox_ConsoleMinimap.SizeMode = PictureBoxSizeMode.Zoom;
             pictureBox_ConsoleMinimap.TabIndex = 1;
             pictureBox_ConsoleMinimap.TabStop = false;
@@ -1180,7 +1214,7 @@ namespace ArtaleAI
             lbl_ConsoleMinimapPlaceholder.ForeColor = Color.FromArgb(160, 168, 176);
             lbl_ConsoleMinimapPlaceholder.Location = new Point(0, 0);
             lbl_ConsoleMinimapPlaceholder.Name = "lbl_ConsoleMinimapPlaceholder";
-            lbl_ConsoleMinimapPlaceholder.Size = new Size(720, 318);
+            lbl_ConsoleMinimapPlaceholder.Size = new Size(350, 318);
             lbl_ConsoleMinimapPlaceholder.TabIndex = 0;
             lbl_ConsoleMinimapPlaceholder.Text = "小地圖預覽區\r\n（啟動自動打怪後將顯示路徑／玩家）";
             lbl_ConsoleMinimapPlaceholder.TextAlign = ContentAlignment.MiddleCenter;
@@ -1191,18 +1225,74 @@ namespace ArtaleAI
             panel_ConsoleMinimapHeader.Dock = DockStyle.Top;
             panel_ConsoleMinimapHeader.Location = new Point(4, 20);
             panel_ConsoleMinimapHeader.Name = "panel_ConsoleMinimapHeader";
-            panel_ConsoleMinimapHeader.Size = new Size(722, 28);
+            panel_ConsoleMinimapHeader.Size = new Size(352, 28);
             panel_ConsoleMinimapHeader.TabIndex = 0;
             // 
             // lbl_ConsoleMinimapHint
             // 
             lbl_ConsoleMinimapHint.AutoSize = true;
             lbl_ConsoleMinimapHint.ForeColor = Color.Gray;
-            lbl_ConsoleMinimapHint.Location = new Point(100, 6);
+            lbl_ConsoleMinimapHint.Location = new Point(4, 6);
             lbl_ConsoleMinimapHint.Name = "lbl_ConsoleMinimapHint";
-            lbl_ConsoleMinimapHint.Size = new Size(154, 15);
+            lbl_ConsoleMinimapHint.Size = new Size(175, 15);
             lbl_ConsoleMinimapHint.TabIndex = 1;
-            lbl_ConsoleMinimapHint.Text = "之後接路徑繪製（UI 骨架）";
+            lbl_ConsoleMinimapHint.Text = "路徑／玩家疊加（運行時更新）";
+            // 
+            // groupBox_ConsoleGameView
+            // 
+            groupBox_ConsoleGameView.Controls.Add(pictureBox_ConsoleGameView);
+            groupBox_ConsoleGameView.Controls.Add(panel_ConsoleGameHeader);
+            groupBox_ConsoleGameView.Dock = DockStyle.Fill;
+            groupBox_ConsoleGameView.Location = new Point(0, 0);
+            groupBox_ConsoleGameView.Name = "groupBox_ConsoleGameView";
+            groupBox_ConsoleGameView.Padding = new Padding(4);
+            groupBox_ConsoleGameView.Size = new Size(364, 372);
+            groupBox_ConsoleGameView.TabIndex = 1;
+            groupBox_ConsoleGameView.TabStop = false;
+            groupBox_ConsoleGameView.Text = "遊戲監控";
+            // 
+            // pictureBox_ConsoleGameView
+            // 
+            pictureBox_ConsoleGameView.BackColor = Color.FromArgb(32, 36, 40);
+            pictureBox_ConsoleGameView.BorderStyle = BorderStyle.FixedSingle;
+            pictureBox_ConsoleGameView.Controls.Add(lbl_ConsoleGamePlaceholder);
+            pictureBox_ConsoleGameView.Dock = DockStyle.Fill;
+            pictureBox_ConsoleGameView.Location = new Point(4, 48);
+            pictureBox_ConsoleGameView.Name = "pictureBox_ConsoleGameView";
+            pictureBox_ConsoleGameView.Size = new Size(356, 320);
+            pictureBox_ConsoleGameView.SizeMode = PictureBoxSizeMode.Zoom;
+            pictureBox_ConsoleGameView.TabIndex = 1;
+            pictureBox_ConsoleGameView.TabStop = false;
+            // 
+            // lbl_ConsoleGamePlaceholder
+            // 
+            lbl_ConsoleGamePlaceholder.Dock = DockStyle.Fill;
+            lbl_ConsoleGamePlaceholder.ForeColor = Color.FromArgb(160, 168, 176);
+            lbl_ConsoleGamePlaceholder.Location = new Point(0, 0);
+            lbl_ConsoleGamePlaceholder.Name = "lbl_ConsoleGamePlaceholder";
+            lbl_ConsoleGamePlaceholder.Size = new Size(354, 318);
+            lbl_ConsoleGamePlaceholder.TabIndex = 0;
+            lbl_ConsoleGamePlaceholder.Text = "遊戲畫面監控\r\n（啟動自動打怪後顯示；請勿點擊此區以免搶走遊戲焦點）";
+            lbl_ConsoleGamePlaceholder.TextAlign = ContentAlignment.MiddleCenter;
+            // 
+            // panel_ConsoleGameHeader
+            // 
+            panel_ConsoleGameHeader.Controls.Add(lbl_ConsoleGameHint);
+            panel_ConsoleGameHeader.Dock = DockStyle.Top;
+            panel_ConsoleGameHeader.Location = new Point(4, 20);
+            panel_ConsoleGameHeader.Name = "panel_ConsoleGameHeader";
+            panel_ConsoleGameHeader.Size = new Size(356, 28);
+            panel_ConsoleGameHeader.TabIndex = 0;
+            // 
+            // lbl_ConsoleGameHint
+            // 
+            lbl_ConsoleGameHint.AutoSize = true;
+            lbl_ConsoleGameHint.ForeColor = Color.Gray;
+            lbl_ConsoleGameHint.Location = new Point(4, 6);
+            lbl_ConsoleGameHint.Name = "lbl_ConsoleGameHint";
+            lbl_ConsoleGameHint.Size = new Size(249, 15);
+            lbl_ConsoleGameHint.TabIndex = 0;
+            lbl_ConsoleGameHint.Text = "僅監看；點擊 ArtaleAI 會搶焦點導致無法控角";
             // 
             // groupBox_Log
             // 
@@ -1462,7 +1552,6 @@ namespace ArtaleAI
             // splitSidebar
             // 
             splitSidebar.Dock = DockStyle.Fill;
-            splitSidebar.FixedPanel = FixedPanel.Panel2;
             splitSidebar.Location = new Point(0, 0);
             splitSidebar.Name = "splitSidebar";
             splitSidebar.Orientation = Orientation.Horizontal;
@@ -1475,9 +1564,9 @@ namespace ArtaleAI
             // splitSidebar.Panel2
             // 
             splitSidebar.Panel2.Controls.Add(groupBox_PropertyPanel);
-            splitSidebar.Panel2MinSize = 160;
+            splitSidebar.Panel2MinSize = 280;
             splitSidebar.Size = new Size(300, 598);
-            splitSidebar.SplitterDistance = 351;
+            splitSidebar.SplitterDistance = 240;
             splitSidebar.TabIndex = 0;
             // 
             // panelToolsScroll
@@ -1488,7 +1577,7 @@ namespace ArtaleAI
             panelToolsScroll.Location = new Point(0, 0);
             panelToolsScroll.Name = "panelToolsScroll";
             panelToolsScroll.Padding = new Padding(0, 0, 0, 2);
-            panelToolsScroll.Size = new Size(300, 351);
+            panelToolsScroll.Size = new Size(300, 240);
             panelToolsScroll.TabIndex = 0;
             // 
             // flowToolsStack
@@ -1503,7 +1592,7 @@ namespace ArtaleAI
             flowToolsStack.FlowDirection = FlowDirection.TopDown;
             flowToolsStack.Location = new Point(0, 0);
             flowToolsStack.Name = "flowToolsStack";
-            flowToolsStack.Size = new Size(283, 468);
+            flowToolsStack.Size = new Size(283, 478);
             flowToolsStack.TabIndex = 0;
             flowToolsStack.WrapContents = false;
             // 
@@ -1561,6 +1650,7 @@ namespace ArtaleAI
             groupBox3.Controls.Add(chk_AdvancedMode);
             groupBox3.Controls.Add(rdo_TwoPointLink);
             groupBox3.Controls.Add(rdo_DeleteMarker);
+            groupBox3.Controls.Add(rdo_SafeZoneMarker);
             groupBox3.Controls.Add(rdo_JumpLinkMarker);
             groupBox3.Controls.Add(rdo_RopeMarker);
             groupBox3.Controls.Add(rdo_PathMarker);
@@ -1570,7 +1660,7 @@ namespace ArtaleAI
             groupBox3.MaximumSize = new Size(320, 0);
             groupBox3.MinimumSize = new Size(280, 0);
             groupBox3.Name = "groupBox3";
-            groupBox3.Size = new Size(280, 153);
+            groupBox3.Size = new Size(280, 163);
             groupBox3.TabIndex = 1;
             groupBox3.TabStop = false;
             groupBox3.Text = "標記編輯模式";
@@ -1578,7 +1668,7 @@ namespace ArtaleAI
             // chk_AdvancedMode
             // 
             chk_AdvancedMode.AutoSize = true;
-            chk_AdvancedMode.Location = new Point(8, 112);
+            chk_AdvancedMode.Location = new Point(8, 122);
             chk_AdvancedMode.Name = "chk_AdvancedMode";
             chk_AdvancedMode.Size = new Size(134, 19);
             chk_AdvancedMode.TabIndex = 7;
@@ -1589,7 +1679,7 @@ namespace ArtaleAI
             // rdo_TwoPointLink
             // 
             rdo_TwoPointLink.AutoSize = true;
-            rdo_TwoPointLink.Location = new Point(119, 72);
+            rdo_TwoPointLink.Location = new Point(8, 97);
             rdo_TwoPointLink.Name = "rdo_TwoPointLink";
             rdo_TwoPointLink.Size = new Size(73, 19);
             rdo_TwoPointLink.TabIndex = 6;
@@ -1608,6 +1698,19 @@ namespace ArtaleAI
             rdo_DeleteMarker.TabStop = true;
             rdo_DeleteMarker.Text = "刪除標記";
             rdo_DeleteMarker.UseVisualStyleBackColor = true;
+            // 
+            // rdo_SafeZoneMarker
+            // 
+            rdo_SafeZoneMarker.AutoSize = true;
+            rdo_SafeZoneMarker.Enabled = false;
+            rdo_SafeZoneMarker.Location = new Point(119, 72);
+            rdo_SafeZoneMarker.Name = "rdo_SafeZoneMarker";
+            rdo_SafeZoneMarker.Size = new Size(85, 19);
+            rdo_SafeZoneMarker.TabIndex = 9;
+            rdo_SafeZoneMarker.TabStop = true;
+            rdo_SafeZoneMarker.Text = "安全區標記";
+            rdo_SafeZoneMarker.UseVisualStyleBackColor = true;
+            rdo_SafeZoneMarker.Visible = false;
             // 
             // rdo_JumpLinkMarker
             // 
@@ -1659,7 +1762,7 @@ namespace ArtaleAI
             groupBox_Action.AutoSize = true;
             groupBox_Action.Controls.Add(cbo_ActionType);
             groupBox_Action.Controls.Add(lbl_Action);
-            groupBox_Action.Location = new Point(0, 269);
+            groupBox_Action.Location = new Point(0, 279);
             groupBox_Action.Margin = new Padding(0, 0, 0, 4);
             groupBox_Action.MaximumSize = new Size(320, 0);
             groupBox_Action.MinimumSize = new Size(280, 0);
@@ -1692,7 +1795,7 @@ namespace ArtaleAI
             // 
             groupBox_Layers.AutoSize = true;
             groupBox_Layers.Controls.Add(tableLayoutPanel_Layers);
-            groupBox_Layers.Location = new Point(0, 340);
+            groupBox_Layers.Location = new Point(0, 350);
             groupBox_Layers.Margin = new Padding(0, 0, 0, 4);
             groupBox_Layers.MaximumSize = new Size(320, 0);
             groupBox_Layers.MinimumSize = new Size(280, 0);
@@ -1716,6 +1819,7 @@ namespace ArtaleAI
             tableLayoutPanel_Layers.Controls.Add(chk_LayerNodes, 0, 2);
             tableLayoutPanel_Layers.Controls.Add(chk_LayerEdges, 1, 2);
             tableLayoutPanel_Layers.Controls.Add(chk_LayerValidation, 0, 3);
+            tableLayoutPanel_Layers.Controls.Add(chk_LayerSafeZones, 1, 3);
             tableLayoutPanel_Layers.Dock = DockStyle.Fill;
             tableLayoutPanel_Layers.Location = new Point(4, 20);
             tableLayoutPanel_Layers.Name = "tableLayoutPanel_Layers";
@@ -1818,13 +1922,26 @@ namespace ArtaleAI
             chk_LayerValidation.UseVisualStyleBackColor = true;
             chk_LayerValidation.CheckedChanged += OnLayerCheckboxChanged;
             // 
+            // chk_LayerSafeZones
+            // 
+            chk_LayerSafeZones.AutoSize = true;
+            chk_LayerSafeZones.Checked = true;
+            chk_LayerSafeZones.CheckState = CheckState.Checked;
+            chk_LayerSafeZones.Location = new Point(139, 78);
+            chk_LayerSafeZones.Name = "chk_LayerSafeZones";
+            chk_LayerSafeZones.Size = new Size(74, 19);
+            chk_LayerSafeZones.TabIndex = 7;
+            chk_LayerSafeZones.Text = "安全旗標";
+            chk_LayerSafeZones.UseVisualStyleBackColor = true;
+            chk_LayerSafeZones.CheckedChanged += OnLayerCheckboxChanged;
+            // 
             // groupBox_PropertyPanel
             // 
             groupBox_PropertyPanel.Dock = DockStyle.Fill;
             groupBox_PropertyPanel.Location = new Point(0, 0);
             groupBox_PropertyPanel.Name = "groupBox_PropertyPanel";
             groupBox_PropertyPanel.Padding = new Padding(4);
-            groupBox_PropertyPanel.Size = new Size(300, 243);
+            groupBox_PropertyPanel.Size = new Size(300, 354);
             groupBox_PropertyPanel.TabIndex = 0;
             groupBox_PropertyPanel.TabStop = false;
             groupBox_PropertyPanel.Text = "屬性面板";
@@ -1916,11 +2033,20 @@ namespace ArtaleAI
             splitConsoleMonitor.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)splitConsoleMonitor).EndInit();
             splitConsoleMonitor.ResumeLayout(false);
+            splitConsoleViews.Panel1.ResumeLayout(false);
+            splitConsoleViews.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)splitConsoleViews).EndInit();
+            splitConsoleViews.ResumeLayout(false);
             groupBox_ConsoleMinimap.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)pictureBox_ConsoleMinimap).EndInit();
             pictureBox_ConsoleMinimap.ResumeLayout(false);
             panel_ConsoleMinimapHeader.ResumeLayout(false);
             panel_ConsoleMinimapHeader.PerformLayout();
+            groupBox_ConsoleGameView.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)pictureBox_ConsoleGameView).EndInit();
+            pictureBox_ConsoleGameView.ResumeLayout(false);
+            panel_ConsoleGameHeader.ResumeLayout(false);
+            panel_ConsoleGameHeader.PerformLayout();
             groupBox_Log.ResumeLayout(false);
             groupBox_Log.PerformLayout();
             panel_StatusBar.ResumeLayout(false);
@@ -1965,11 +2091,17 @@ namespace ArtaleAI
         private System.Windows.Forms.Panel panelConsoleStack;
         private System.Windows.Forms.Panel panel2;
         private System.Windows.Forms.SplitContainer splitConsoleMonitor;
+        private System.Windows.Forms.SplitContainer splitConsoleViews;
         private System.Windows.Forms.GroupBox groupBox_ConsoleMinimap;
         private System.Windows.Forms.Panel panel_ConsoleMinimapHeader;
         private System.Windows.Forms.Label lbl_ConsoleMinimapHint;
         private System.Windows.Forms.PictureBox pictureBox_ConsoleMinimap;
         private System.Windows.Forms.Label lbl_ConsoleMinimapPlaceholder;
+        private System.Windows.Forms.GroupBox groupBox_ConsoleGameView;
+        private System.Windows.Forms.Panel panel_ConsoleGameHeader;
+        private System.Windows.Forms.Label lbl_ConsoleGameHint;
+        private System.Windows.Forms.PictureBox pictureBox_ConsoleGameView;
+        private System.Windows.Forms.Label lbl_ConsoleGamePlaceholder;
         private System.Windows.Forms.GroupBox groupBox_Log;
         private System.Windows.Forms.Panel panel_StatusBar;
         private System.Windows.Forms.TableLayoutPanel tableLayoutPanel_Ops;
@@ -1994,6 +2126,7 @@ namespace ArtaleAI
         private GroupBox groupBox3;
         private RadioButton rdo_DeleteMarker;
         private RadioButton rdo_JumpLinkMarker;
+        private RadioButton rdo_SafeZoneMarker;
         private RadioButton rdo_RopeMarker;
         private RadioButton rdo_PathMarker;
         private Button btn_New;
@@ -2096,6 +2229,7 @@ namespace ArtaleAI
         private CheckBox chk_LayerPlatforms;
         private CheckBox chk_LayerRopes;
         private CheckBox chk_LayerJumpLinks;
+        private CheckBox chk_LayerSafeZones;
         private CheckBox chk_LayerManualAnchors;
         private CheckBox chk_LayerNodes;
         private CheckBox chk_LayerEdges;

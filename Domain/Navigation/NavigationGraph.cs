@@ -41,7 +41,8 @@ namespace ArtaleAI.Domain.Navigation
                 {
                     Id = node.Id,
                     Type = node.Type == "Rope" ? NavigationNodeType.Rope : NavigationNodeType.Platform,
-                    PlatformId = node.PlatformId
+                    PlatformId = node.PlatformId,
+                    IsSafeZone = node.IsSafeZone
                 };
 
                 if (string.IsNullOrEmpty(navNode.PlatformId) &&

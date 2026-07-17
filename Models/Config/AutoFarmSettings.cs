@@ -49,6 +49,18 @@ namespace ArtaleAI.Models.Config
         /// <summary>攻擊輪轉技（冷卻就緒時優先於主攻）。</summary>
         public List<AttackSkillEntry> AttackSkills { get; set; } = CreateDefaultAttackSkills();
 
+        /// <summary>
+        /// 導航進行中暫緩攻擊（優先走位）。
+        /// 避免站在不同層高（如安全區）被螢幕攻擊框咬到下層怪而卡住。
+        /// </summary>
+        public bool PreferNavigationOverAttack { get; set; } = true;
+
+        /// <summary>
+        /// 攻擊目標與攻擊框中心的最大垂直差（螢幕像素）。
+        /// 超過視為不同層高、打不到，不觸發攻擊。
+        /// </summary>
+        public int AttackMaxVerticalDeltaPx { get; set; } = 80;
+
         /// <summary>小地圖偵到其他玩家時暫停並執行換頻序列（Esc＋點選單模板）。</summary>
         public bool ChangeChannelOnOtherPlayers { get; set; }
 

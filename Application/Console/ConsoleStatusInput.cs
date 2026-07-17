@@ -9,6 +9,8 @@ namespace ArtaleAI.Application.Console
         public bool GameFound { get; init; }
         public bool CaptureRunning { get; init; }
         public bool IsResting { get; init; }
+        /// <summary>休息流程的前段：正在前往安全區／繩索休息點（尚未開始倒數）。</summary>
+        public bool IsSeekingRestSpot { get; init; }
         public bool IsAvoidingOtherPlayers { get; init; }
         public NavigationState FsmState { get; init; } = NavigationState.Idle;
         public double? HpRatio { get; init; }

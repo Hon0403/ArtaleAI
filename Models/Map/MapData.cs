@@ -11,6 +11,13 @@ namespace ArtaleAI.Models.Map
     {
         public float X { get; set; }
         public float Y { get; set; }
+
+        /// <summary>
+        /// 策略旗標：不改拓撲幾何，僅影響巡邏終點權重等決策。
+        /// JSON 省略時視為 false。
+        /// </summary>
+        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+        public bool IsSafeZone { get; set; }
     }
 
     /// <summary>
@@ -72,10 +79,14 @@ namespace ArtaleAI.Models.Map
         /// <summary>手動例外邊幾何錨點（持久化 SSOT）</summary>
         public List<ManualEdgeAnchor> ManualEdgeAnchors { get; set; } = new();
 
-        /// <summary>安全區列表</summary>
-        public List<float[]> SafeZones { get; set; } = new();
+        /// <summary>
+        /// 舊版安全區線段（僅供載入遷移）。新 SSOT 為 <see cref="PlatformPointData.IsSafeZone"/>。
+        /// 遷移後設為 null，存檔時省略。
+        /// </summary>
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public List<float[]>? SafeZones { get; set; }
 
-        /// <summary>禁制區列表</summary>
+        /// <summary>禁制區列表。格式 <c>[x1, y1, x2, y2]</c>。</summary>
         public List<float[]> RestrictedZones { get; set; } = new();
     }
 
@@ -86,6 +97,9 @@ namespace ArtaleAI.Models.Map
         public float Y { get; set; }
         public string Type { get; set; } = "Platform";
         public string? PlatformId { get; set; }
+
+        /// <summary>由平台折點旗標推導；不持久化。</summary>
+        public bool IsSafeZone { get; set; }
     }
 
     public class NavEdgeData

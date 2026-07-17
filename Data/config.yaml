@@ -3,7 +3,6 @@ general:
   lastSelectedWindowName: MapleStory Worlds-Artale (繁體中文版)
   lastSelectedProcessName: msw
   lastSelectedProcessId: 25336
-  minimapUpscaleFactor: 1
   crosshairSize: 2
   forceClientSizeWhileCapture: true
   forceClientWidth: 1280
@@ -216,7 +215,7 @@ playerVitals:
   sampleRowCount: 0
   useAutoLayout: false
 autoFarm:
-  restIntervalMinutes: 0
+  restIntervalMinutes: 1
   restDurationSeconds: 60
   restJitterPercent: 20
   healHpEnabled: true
@@ -254,7 +253,9 @@ autoFarm:
   - enabled: false
     hotkey: D
     cooldownSeconds: 15
-  changeChannelOnOtherPlayers: false
+  preferNavigationOverAttack: true
+  attackMaxVerticalDeltaPx: 80
+  changeChannelOnOtherPlayers: true
   changeChannelMenuTemplate: templates/MainScreen/channel_menu_button.png
   changeChannelPickTemplate: templates/MainScreen/channel_pick_panel.png
   changeChannelConfirmTemplate: templates/MainScreen/channel_confirm_button.png

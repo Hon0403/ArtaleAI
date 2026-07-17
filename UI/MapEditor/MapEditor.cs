@@ -23,17 +23,44 @@ namespace ArtaleAI.UI.MapEditor
         }
 
         private const float PointRadius = 4.0f;
-        private const float SelectionRadius = 5.0f;
-        /// <summary>路線標記：點擊／hover 吸附到既有折線的距離（地圖像素）。刻意小於選取半徑，避免鄰近無法開新路徑。</summary>
-        private const float PolylineInsertSnapThreshold = 3.0f;
-        /// <summary>插點投影若距既有頂點過近則略過，避免重複折點。</summary>
-        private const float MinVertexDistanceThreshold = 5.0f;
-        /// <summary>runtime 節點命中範圍（地圖像素）；大於視覺半徑以便選取。</summary>
-        private const float RuntimeNodeHitSlop = 12.0f;
-        /// <summary>Shift 點擊循環選節點時，判定為「同一區域」的錨點容差。</summary>
-        private const float RuntimeNodeCycleAnchorSlop = 18.0f;
-        /// <summary>手動邊為細線，刪除命中需比平台/繩索更寬，且優先於幾何底圖。</summary>
-        private const float ManualEdgeDeleteHitSlop = 8.0f;
+        /// <summary>
+        /// 編輯器唯一命中／吸附半徑（地圖像素）。
+        /// hover、選取、刪除、折線插點、跳點、安全區、runtime 節點皆共用。
+        /// </summary>
+        private const float HitRadius = 1.5f;
+
+        private const float MarkerLineWidthNormal = 3.5f;
+        private const float MarkerLineWidthHovered = 5.5f;
+        private const float MarkerLineWidthSelected = 6.5f;
+        /// <summary>hover／select 發光底層相對主線加寬的量（螢幕像素）。</summary>
+        private const float MarkerGlowExtraWidth = 6.0f;
+        private const float MarkerCapHalfSize = 3.0f;
+        private const float MarkerSelectionRingRadius = 6.0f;
+
+        private enum MarkerVisualState { Normal, Hovered, Selected }
+
+        /// <summary>單段線標記（繩索／跳點／安全區）的配色與樣式；由型別決定，與實例狀態無關。</summary>
+        private readonly record struct LineMarkerStyle(
+            Color NormalColor,
+            Color HoverColor,
+            Color SelectColor,
+            Color StartCapColor,
+            Color EndCapColor,
+            bool Dashed);
+
+        /// <summary>單次繪製一段線標記所需的幾何與狀態。</summary>
+        private readonly record struct LineMarker(
+            PointF A,
+            PointF B,
+            LineMarkerStyle Style,
+            MarkerVisualState State);
+
+        private static readonly LineMarkerStyle RopeStyle = new(
+            Color.Yellow, Color.LightYellow, Color.Orange, Color.Red, Color.Green, Dashed: false);
+        private static readonly LineMarkerStyle JumpLinkStyle = new(
+            Color.Cyan, Color.LightSkyBlue, Color.DeepSkyBlue, Color.OrangeRed, Color.LimeGreen, Dashed: true);
+        private static readonly LineMarkerStyle SafeZoneStyle = new(
+            Color.LimeGreen, Color.PaleGreen, Color.DeepSkyBlue, Color.LimeGreen, Color.LimeGreen, Dashed: true);
 
         private enum DeleteTargetKind { None, ManualEdge, JumpLink, Rope, Platform }
 
@@ -70,6 +97,7 @@ namespace ArtaleAI.UI.MapEditor
         public bool IsDirty => _isDirty;
         public MapEditorSelection Selection => _selection;
 
+        /// <summary>路徑編輯：每個小地圖邏輯像素對應的螢幕像素數（整數 1–12）。</summary>
         public float ZoomScale { get; set; } = 1.0f;
         public float PanOffsetX { get; set; }
         public float PanOffsetY { get; set; }
@@ -252,6 +280,7 @@ namespace ArtaleAI.UI.MapEditor
                 $"平台: {_currentMapData.PolylinePlatforms?.Count ?? 0}",
                 $"繩索: {_currentMapData.Ropes?.Count ?? 0}",
                 $"跳點: {_currentMapData.JumpLinks?.Count ?? 0}",
+                $"安全折點: {GetMapSummary().SafeZoneCount}",
                 $"手動邊: {_currentMapData.ManualEdgeAnchors?.Count ?? 0}",
                 $"Runtime 節點: {_currentMapData.Nodes.Count}",
                 $"Runtime 邊: {_currentMapData.Edges.Count}",
@@ -323,7 +352,8 @@ namespace ArtaleAI.UI.MapEditor
                 for (int i = 0; i < platform.Points.Count; i++)
                 {
                     var p = platform.Points[i];
-                    lines.Add($"  [{i}] ({p.X:F1}, {p.Y:F1})");
+                    string safeTag = p.IsSafeZone ? " [安全區]" : "";
+                    lines.Add($"  [{i}] ({p.X:F1}, {p.Y:F1}){safeTag}");
                 }
             }
 
@@ -451,6 +481,7 @@ namespace ArtaleAI.UI.MapEditor
         public void LoadMapData(MapData data)
         {
             _currentMapData = data ?? new MapData();
+            ArtaleAI.Application.MapEditor.MapSafeZoneMigration.MigrateLegacySafeZones(_currentMapData);
             _currentMapData.Nodes ??= new List<NavNodeData>();
             _currentMapData.Edges ??= new List<NavEdgeData>();
             _currentMapData.Ropes ??= new List<float[]>();
@@ -718,7 +749,7 @@ namespace ArtaleAI.UI.MapEditor
                 }
                 else
                 {
-                    var hitAnchor = FindNearestPlatformProjection(relativePoint, PolylineInsertSnapThreshold);
+                    var hitAnchor = FindNearestPlatformProjection(relativePoint, HitRadius);
                     if (hitAnchor == null) return;
 
                     if (_manualEdgeStartAnchor == null)
@@ -808,6 +839,8 @@ namespace ArtaleAI.UI.MapEditor
                 DrawRopesLayer(g, convert);
             if (Layers.ShowJumpLinks)
                 DrawJumpLinksLayer(g, convert);
+            if (Layers.ShowSafeZones)
+                DrawSafeZonesLayer(g, convert);
 
             if (Layers.ShowManualAnchors)
                 DrawManualEdgeAnchors(g, convert);
@@ -994,16 +1027,9 @@ namespace ArtaleAI.UI.MapEditor
                     _currentMapData.Ropes != null &&
                     _selection.RopeIndex < _currentMapData.Ropes.Count &&
                     ReferenceEquals(rope, _currentMapData.Ropes[_selection.RopeIndex]);
-                Color ropeColor = isRopeSelected ? Color.Orange :
-                    isRopeHovered ? Color.LightYellow : Color.Yellow;
-                float ropeWidth = isRopeSelected ? 6.5f :
-                    isRopeHovered ? 5.5f : 3.5f;
 
-                using var pen = new Pen(ropeColor, ropeWidth);
-                g.DrawLine(pen, pTop, pBottom);
-
-                g.FillRectangle(Brushes.Red, pTop.X - 3, pTop.Y - 3, 6, 6);
-                g.FillRectangle(Brushes.Green, pBottom.X - 3, pBottom.Y - 3, 6, 6);
+                DrawLineMarker(g, new LineMarker(
+                    pTop, pBottom, RopeStyle, ResolveMarkerState(isRopeSelected, isRopeHovered)));
             }
         }
 
@@ -1029,17 +1055,118 @@ namespace ArtaleAI.UI.MapEditor
                     _currentMapData.JumpLinks != null &&
                     _selection.JumpLinkIndex < _currentMapData.JumpLinks.Count &&
                     ReferenceEquals(link, _currentMapData.JumpLinks[_selection.JumpLinkIndex]);
-                Color color = isSelected ? Color.DeepSkyBlue :
-                    isHovered ? Color.LightSkyBlue : Color.Cyan;
-                float width = isSelected ? 6.5f : isHovered ? 5.5f : 3.5f;
 
-                using var pen = new Pen(color, width) { DashStyle = DashStyle.Dash };
-                g.DrawLine(pen, pTop, pBottom);
-
-                g.FillRectangle(Brushes.OrangeRed, pTop.X - 3, pTop.Y - 3, 6, 6);
-                g.FillRectangle(Brushes.LimeGreen, pBottom.X - 3, pBottom.Y - 3, 6, 6);
+                DrawLineMarker(g, new LineMarker(
+                    pTop, pBottom, JumpLinkStyle, ResolveMarkerState(isSelected, isHovered)));
             }
         }
+
+        private void DrawSafeZonesLayer(Graphics g, Func<PointF, PointF> convert)
+        {
+            if (_currentMapData.PolylinePlatforms?.Any() != true)
+                return;
+
+            foreach (var plat in _currentMapData.PolylinePlatforms)
+            {
+                if (plat.Points == null || plat.Points.Count < 2)
+                    continue;
+
+                for (int i = 0; i < plat.Points.Count - 1; i++)
+                {
+                    var a = plat.Points[i];
+                    var b = plat.Points[i + 1];
+                    if (!a.IsSafeZone || !b.IsSafeZone)
+                        continue;
+
+                    var p1 = convert(new PointF(minimapBounds.X + a.X, minimapBounds.Y + a.Y));
+                    var p2 = convert(new PointF(minimapBounds.X + b.X, minimapBounds.Y + b.Y));
+                    DrawLineMarker(g, new LineMarker(p1, p2, SafeZoneStyle, MarkerVisualState.Normal));
+                }
+
+                for (int i = 0; i < plat.Points.Count; i++)
+                {
+                    if (!plat.Points[i].IsSafeZone)
+                        continue;
+
+                    var pt = convert(new PointF(
+                        minimapBounds.X + plat.Points[i].X,
+                        minimapBounds.Y + plat.Points[i].Y));
+                    using var brush = new SolidBrush(Color.LimeGreen);
+                    g.FillEllipse(brush, pt.X - 3.5f, pt.Y - 3.5f, 7f, 7f);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 單段線標記的統一繪製器：比照路徑標記的視覺層次
+        /// （hover／select 發光底層 + 主線粗細分級 + 選取端點高亮環）。
+        /// 繩索、跳點、安全區共用，確保外觀一致並消除重複繪製碼。
+        /// </summary>
+        private void DrawLineMarker(Graphics g, LineMarker marker)
+        {
+            Color mainColor = marker.State switch
+            {
+                MarkerVisualState.Selected => marker.Style.SelectColor,
+                MarkerVisualState.Hovered => marker.Style.HoverColor,
+                _ => marker.Style.NormalColor
+            };
+            float mainWidth = marker.State switch
+            {
+                MarkerVisualState.Selected => MarkerLineWidthSelected,
+                MarkerVisualState.Hovered => MarkerLineWidthHovered,
+                _ => MarkerLineWidthNormal
+            };
+
+            if (marker.State != MarkerVisualState.Normal)
+            {
+                using var glow = new Pen(Color.FromArgb(70, mainColor), mainWidth + MarkerGlowExtraWidth)
+                {
+                    StartCap = LineCap.Round,
+                    EndCap = LineCap.Round
+                };
+                g.DrawLine(glow, marker.A, marker.B);
+            }
+
+            using (var pen = new Pen(mainColor, mainWidth)
+            {
+                DashStyle = marker.Style.Dashed ? DashStyle.Dash : DashStyle.Solid
+            })
+            {
+                g.DrawLine(pen, marker.A, marker.B);
+            }
+
+            DrawMarkerCap(g, marker.A, marker.Style.StartCapColor, marker.State);
+            DrawMarkerCap(g, marker.B, marker.Style.EndCapColor, marker.State);
+        }
+
+        private static void DrawMarkerCap(Graphics g, PointF p, Color capColor, MarkerVisualState state)
+        {
+            using (var brush = new SolidBrush(capColor))
+            {
+                g.FillRectangle(
+                    brush,
+                    p.X - MarkerCapHalfSize,
+                    p.Y - MarkerCapHalfSize,
+                    MarkerCapHalfSize * 2,
+                    MarkerCapHalfSize * 2);
+            }
+
+            if (state == MarkerVisualState.Selected)
+            {
+                using var ringPen = new Pen(Color.White, 2f);
+                g.DrawEllipse(
+                    ringPen,
+                    p.X - MarkerSelectionRingRadius,
+                    p.Y - MarkerSelectionRingRadius,
+                    MarkerSelectionRingRadius * 2,
+                    MarkerSelectionRingRadius * 2);
+            }
+        }
+
+        private static MarkerVisualState ResolveMarkerState(bool isSelected, bool isHovered) =>
+            isSelected ? MarkerVisualState.Selected :
+            isHovered ? MarkerVisualState.Hovered :
+            MarkerVisualState.Normal;
 
         /// <summary>保留供舊註解對照；實際繪製改用 GetEdgePreviewColor。</summary>
         private static Color GetEdgeDrawColor(NavEdgeData edge) => GetEdgePreviewColor(edge, false);
@@ -1095,7 +1222,8 @@ namespace ArtaleAI.UI.MapEditor
             }
             else
             {
-                bool isLineMode = _currentEditMode is EditMode.Rope or EditMode.JumpLink or EditMode.ManualEdge;
+                bool isLineMode = _currentEditMode
+                    is EditMode.Rope or EditMode.JumpLink or EditMode.ManualEdge;
 
                 if (_startPoint.HasValue && _previewPoint.HasValue && isLineMode)
                 {
@@ -1106,7 +1234,9 @@ namespace ArtaleAI.UI.MapEditor
                         minimapBounds.X + _previewPoint.Value.X,
                         minimapBounds.Y + _previewPoint.Value.Y);
 
-                    using (var pen = new Pen(Color.Cyan, 2) { DashStyle = DashStyle.Dash })
+                    // 安全區為策略圖層，預覽用 LimeGreen 與拓撲線段（Cyan）區隔。
+                    var previewColor = Color.Cyan;
+                    using (var pen = new Pen(previewColor, 2) { DashStyle = DashStyle.Dash })
                     {
                         g.DrawLine(pen, convert(startScreen), convert(previewScreen));
                     }
@@ -1233,7 +1363,7 @@ namespace ArtaleAI.UI.MapEditor
             foreach (var plat in _currentMapData.PolylinePlatforms)
             {
                 var hit = GetDistanceToPolyline(relativePoint, plat);
-                if (hit.Distance < PolylineInsertSnapThreshold && hit.Distance < bestDist)
+                if (hit.Distance < HitRadius && hit.Distance < bestDist)
                 {
                     bestDist = hit.Distance;
                     bestPlat = plat;
@@ -1249,7 +1379,7 @@ namespace ArtaleAI.UI.MapEditor
                 float dx = bestHit.ProjectionPoint.X - v.X;
                 float dy = bestHit.ProjectionPoint.Y - v.Y;
                 float distToVertex = (float)Math.Sqrt(dx * dx + dy * dy);
-                if (distToVertex <= MinVertexDistanceThreshold)
+                if (distToVertex <= HitRadius)
                 {
                     tooCloseToVertex = true;
                     return false;
@@ -1293,14 +1423,13 @@ namespace ArtaleAI.UI.MapEditor
         {
             ManualEdgeAnchor? bestManualEdge = null;
             float bestManualEdgeDist = float.MaxValue;
-            float manualEdgeThreshold = Math.Max(threshold, ManualEdgeDeleteHitSlop);
 
             if (_currentMapData.ManualEdgeAnchors != null)
             {
                 foreach (var anchor in _currentMapData.ManualEdgeAnchors)
                 {
                     float dist = GetDistanceToManualEdgeAnchor(clickPosition, anchor);
-                    if (dist < manualEdgeThreshold && dist < bestManualEdgeDist)
+                    if (dist < threshold && dist < bestManualEdgeDist)
                     {
                         bestManualEdgeDist = dist;
                         bestManualEdge = anchor;
@@ -1383,6 +1512,7 @@ namespace ArtaleAI.UI.MapEditor
                     null);
             }
 
+
             PolylinePlatformData? bestPlatform = null;
             PolylineHitResult? bestPlatformHit = null;
             float bestPlatformDist = float.MaxValue;
@@ -1459,6 +1589,7 @@ namespace ArtaleAI.UI.MapEditor
                     CommitTopologyChange();
                     break;
 
+
                 case DeleteTargetKind.Platform when target.Platform != null:
                     string platformId = target.Platform.Id;
                     _currentMapData.PolylinePlatforms?.Remove(target.Platform);
@@ -1471,12 +1602,11 @@ namespace ArtaleAI.UI.MapEditor
 
         private void HandleDeleteAction(PointF clickPosition)
         {
-            float threshold = SelectionRadius * 2.0f;
-            var target = ResolveDeleteTarget(clickPosition, threshold);
+            var target = ResolveDeleteTarget(clickPosition, HitRadius);
 
             if (target.Kind == DeleteTargetKind.None)
             {
-                Logger.Info("[編輯器] 未命中任何可刪除的標記（手動邊、跳點、繩索、平台）");
+                Logger.Info("[編輯器] 未命中任何可刪除的標記（手動邊、跳點、繩索、安全區、平台）");
                 return;
             }
 
@@ -1565,7 +1695,7 @@ namespace ArtaleAI.UI.MapEditor
 
         /// <summary>
         /// 更新目前滑鼠所在的 Hover 物件狀態。
-        /// Delete 模式命中順序：手動邊 → 跳點 → 繩索 → 平台（與 HandleDeleteAction 共用 ResolveDeleteTarget）。
+        /// Delete 模式命中順序：手動邊 → 跳點 → 繩索 → 安全區 → 平台（與 HandleDeleteAction 共用 ResolveDeleteTarget）。
         /// Select 模式：節點與幾何依距離競爭；Shift 時優先節點。
         /// </summary>
         public void UpdateHoveredNode(PointF screenPoint, bool preferRuntimeNode = false)
@@ -1594,7 +1724,7 @@ namespace ArtaleAI.UI.MapEditor
                     return;
                 }
 
-                var pickTarget = ResolveDeleteTarget(relativePoint, SelectionRadius * 2.0f);
+                var pickTarget = ResolveDeleteTarget(relativePoint, HitRadius);
                 switch (pickTarget.Kind)
                 {
                     case DeleteTargetKind.ManualEdge:
@@ -1634,7 +1764,7 @@ namespace ArtaleAI.UI.MapEditor
             }
             else if (_currentEditMode == EditMode.ManualEdge)
             {
-                var hit = FindNearestPlatformProjection(relativePoint, PolylineInsertSnapThreshold);
+                var hit = FindNearestPlatformProjection(relativePoint, HitRadius);
                 if (hit != null)
                 {
                     _hoveredPlatform = hit.Platform;
@@ -1648,7 +1778,7 @@ namespace ArtaleAI.UI.MapEditor
             }
         }
 
-        private int FindNearestRuntimeNodeIndex(PointF relativePoint, float hitRadius = RuntimeNodeHitSlop)
+        private int FindNearestRuntimeNodeIndex(PointF relativePoint, float hitRadius = HitRadius)
         {
             return FindNearestRuntimeNodeIndex(relativePoint, hitRadius, out _);
         }
@@ -1732,11 +1862,10 @@ namespace ArtaleAI.UI.MapEditor
 
         private void ApplySelectHover(PointF relativePoint, bool preferRuntimeNode)
         {
-            float geometryThreshold = SelectionRadius * 2.0f;
-            var geometryPick = ResolveDeleteTarget(relativePoint, geometryThreshold);
+            var geometryPick = ResolveDeleteTarget(relativePoint, HitRadius);
             float geometryDistance = GetDeleteTargetDistance(relativePoint, geometryPick);
 
-            int nodeIndex = FindNearestRuntimeNodeIndex(relativePoint, RuntimeNodeHitSlop, out float nodeDistance);
+            int nodeIndex = FindNearestRuntimeNodeIndex(relativePoint, HitRadius, out float nodeDistance);
             if (ShouldPreferRuntimeNode(nodeIndex, nodeDistance, geometryPick, geometryDistance, preferRuntimeNode))
             {
                 _hoveredNodeIndex = nodeIndex;
@@ -1767,8 +1896,7 @@ namespace ArtaleAI.UI.MapEditor
 
         private void HandleSelectClick(PointF relativePoint, bool preferRuntimeNode, bool cycleRuntimeNodes)
         {
-            float geometryThreshold = SelectionRadius * 2.0f;
-            var geometryPick = ResolveDeleteTarget(relativePoint, geometryThreshold);
+            var geometryPick = ResolveDeleteTarget(relativePoint, HitRadius);
             float geometryDistance = GetDeleteTargetDistance(relativePoint, geometryPick);
 
             int nodeIndex = -1;
@@ -1778,7 +1906,7 @@ namespace ArtaleAI.UI.MapEditor
             }
             else
             {
-                nodeIndex = FindNearestRuntimeNodeIndex(relativePoint, RuntimeNodeHitSlop, out _);
+                nodeIndex = FindNearestRuntimeNodeIndex(relativePoint, HitRadius, out _);
             }
 
             if (ShouldPreferRuntimeNode(
@@ -1812,7 +1940,7 @@ namespace ArtaleAI.UI.MapEditor
 
         private int PickCycledRuntimeNode(PointF relativePoint)
         {
-            var candidates = FindRuntimeNodesWithinRadius(relativePoint, RuntimeNodeHitSlop);
+            var candidates = FindRuntimeNodesWithinRadius(relativePoint, HitRadius);
             if (candidates.Count == 0)
             {
                 _nodeCycleCandidates.Clear();
@@ -1822,7 +1950,7 @@ namespace ArtaleAI.UI.MapEditor
 
             var candidateIndices = candidates.Select(c => c.Index).ToList();
             bool sameArea = _nodeCycleCandidates.Count > 0 &&
-                DistanceBetween(relativePoint, _lastNodeCyclePoint) < RuntimeNodeCycleAnchorSlop;
+                DistanceBetween(relativePoint, _lastNodeCyclePoint) < HitRadius;
             bool sameSet = sameArea &&
                 _nodeCycleCandidates.SequenceEqual(candidateIndices);
 

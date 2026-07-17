@@ -105,7 +105,7 @@ namespace ArtaleAI.UI.MapEditor
         {
             platform = null!;
             pointIndex = -1;
-            float bestDist = SelectionRadius * 2.0f;
+            float bestDist = HitRadius;
             PolylinePlatformData? bestPlatform = null;
             int bestIndex = -1;
 

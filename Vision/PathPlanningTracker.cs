@@ -23,6 +23,37 @@ namespace ArtaleAI.Vision
         /// <summary>來自 <see cref="MapData.Ropes"/>，供小地圖視窗畫垂直繩線（與節點 Type 是否為 Rope 無關）。</summary>
         private readonly List<(float X, float TopY, float BottomY)> _mapRopeSegmentsForVisualization = new();
 
+        /// <summary>安全區終點權重（1=等權）；壓低以免巡邏常停在中繼跳板。</summary>
+        private const float SafeZoneGoalWeight = 0.08f;
+
+        /// <summary>路徑中每經過一個安全區節點的額外懲罰（連通仍保留）。</summary>
+        private const float SafeZoneTransitWeightFactor = 0.7f;
+
+        /// <summary>
+        /// 純 Walk 相對含 Jump／Climb 路徑的偏好倍率。
+        /// 不可把 Walk 權重設成「距離本身」，否則同層來回永遠壓過跨層。
+        /// </summary>
+        private const float WalkOnlyPreferenceMultiplier = 2.5f;
+
+        /// <summary>終點與目前所在平台相同時的權重（鼓勵換層巡邏）。</summary>
+        private const float SamePlatformStayPenalty = 0.35f;
+
+        /// <summary>連續選到同一平台終點時，每多一次再乘一次（指數降權）。</summary>
+        private const float SamePlatformRepeatPenalty = 0.2f;
+
+        /// <summary>同平台連續巡邏達此次數後，若有其他平台可達則強制換層。</summary>
+        private const int MaxSamePlatformStreakBeforeForceSwitch = 2;
+
+        private string? _lastPatrolGoalPlatformId;
+        private int _samePlatformPatrolStreak;
+
+        /// <summary>
+        /// 強制目標（休息導航）：設定後巡邏選點只追求該節點，到達後停住等待清除。
+        /// 讀寫皆在 _randomLock 內，_forcedGoalArrived 另以 volatile 供 Pipeline 輪詢。
+        /// </summary>
+        private string? _forcedGoalNodeId;
+        private volatile bool _forcedGoalArrived;
+
         private readonly GameVisionCore _gameVision;
         private readonly Random _random = new Random();
         private readonly object _randomLock = new object();
@@ -59,6 +90,16 @@ namespace ArtaleAI.Vision
             {
                 lock (_flightLock)
                     return _activeFlight != null && !_waypointCompletionAcknowledged;
+            }
+        }
+
+        /// <summary>進行中飛行的 ActionType；無飛行時為 null。</summary>
+        public NavigationActionType? ActiveFlightActionType
+        {
+            get
+            {
+                lock (_flightLock)
+                    return _activeFlight?.ActionType;
             }
         }
 
@@ -608,7 +649,32 @@ namespace ArtaleAI.Vision
 
                         CurrentPathState.CurrentWaypointIndex++;
 
-                        if (CurrentPathState.CurrentWaypointIndex >= CurrentPathState.PlannedPath.Count)
+                        bool pathEnded = CurrentPathState.CurrentWaypointIndex >= CurrentPathState.PlannedPath.Count;
+
+                        if (_forcedGoalNodeId != null && !_forcedGoalArrived)
+                        {
+                            bool pathTargetsForcedGoal =
+                                CurrentPathState.PlannedPathNodes.Count > 0 &&
+                                string.Equals(CurrentPathState.PlannedPathNodes[^1], _forcedGoalNodeId, StringComparison.Ordinal);
+
+                            if (pathTargetsForcedGoal)
+                            {
+                                if (pathEnded)
+                                {
+                                    _forcedGoalArrived = true;
+                                    CurrentPathState.IsPathCompleted = true;
+                                    _lastMovementUtc = DateTime.UtcNow;
+                                    Logger.Info($"[路徑追蹤] 已到達強制目標 {_forcedGoalNodeId}（休息點），暫停巡邏。");
+                                }
+                            }
+                            else
+                            {
+                                // 設定強制目標時尚有在途飛行：邊完成後立即改道。
+                                Logger.Info($"[路徑追蹤] 在途邊完成，改道前往強制目標 {_forcedGoalNodeId}。");
+                                SelectRandomPhysicalTarget();
+                            }
+                        }
+                        else if (pathEnded)
                         {
                             Logger.Info("[路徑追蹤] 已完成整段路徑，觸發隨機巡邏規劃。");
                             SelectRandomPhysicalTarget();
@@ -661,6 +727,10 @@ namespace ArtaleAI.Vision
             _approachCutoffNodes.Clear();
             _approachFailNodeId = null;
             _approachFailCount = 0;
+            _lastPatrolGoalPlatformId = null;
+            _samePlatformPatrolStreak = 0;
+            _forcedGoalNodeId = null;
+            _forcedGoalArrived = false;
             var graph = _navGraph;
             Logger.Info($"[路徑追蹤] 已載入導航圖：{graph.NodeCount} 個節點，{graph.EdgeCount} 條邊");
 
@@ -710,6 +780,13 @@ namespace ArtaleAI.Vision
             }
             else
             {
+                // 強制目標已到達＝休息倒數中，靜止是預期行為，不可當卡點。
+                if (_forcedGoalArrived)
+                {
+                    _lastMovementUtc = DateTime.UtcNow;
+                    return;
+                }
+
                 var elapsedMs = (DateTime.UtcNow - _lastMovementUtc).TotalMilliseconds;
                 if (elapsedMs > AppConfig.Instance.Navigation.StuckDetectionMs)
                 {
@@ -766,6 +843,94 @@ namespace ArtaleAI.Vision
             OnPathStateChanged?.Invoke(state);
         }
 
+        /// <summary>是否有尚未清除的強制目標（休息導航中或倒數中）。</summary>
+        public bool HasForcedGoal
+        {
+            get { lock (_randomLock) return _forcedGoalNodeId != null; }
+        }
+
+        /// <summary>強制目標已通過 FSM 驗收到達；等待 Pipeline 切換 Resting。</summary>
+        public bool IsForcedGoalArrived => _forcedGoalArrived;
+
+        /// <summary>強制目標尚未到達但規劃已停擺（起點不可達或 A* 失敗）；Pipeline 應節流重試。</summary>
+        public bool IsForcedGoalPlanningParked
+        {
+            get
+            {
+                lock (_randomLock)
+                {
+                    return _forcedGoalNodeId != null
+                        && !_forcedGoalArrived
+                        && (CurrentPathState?.IsPathCompleted ?? true);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 注入強制目標：無在途飛行立即重規劃；有在途飛行則等該邊完成後，
+        /// 由 FSM 驗收處改道，避免中斷跳躍／爬繩造成墜落。
+        /// </summary>
+        public void SetForcedGoal(string nodeId)
+        {
+            lock (_randomLock)
+            {
+                _forcedGoalNodeId = nodeId;
+                _forcedGoalArrived = false;
+
+                var state = CurrentPathState;
+                if (state != null && !HasActiveNavigationFlight)
+                    ResetPathForReplanLocked(state);
+            }
+
+            Logger.Info($"[路徑追蹤] 已注入強制目標 {nodeId}（休息導航）");
+        }
+
+        /// <summary>清除強制目標並重置路徑，下一幀恢復隨機巡邏。</summary>
+        public void ClearForcedGoal()
+        {
+            lock (_randomLock)
+            {
+                if (_forcedGoalNodeId == null && !_forcedGoalArrived) return;
+
+                _forcedGoalNodeId = null;
+                _forcedGoalArrived = false;
+
+                var state = CurrentPathState;
+                if (state != null)
+                    ResetPathForReplanLocked(state);
+            }
+
+            // 休息靜止可能累積卡點計時／熔斷，恢復巡邏前先清乾淨。
+            _lastMovementUtc = DateTime.UtcNow;
+            ResetRescueCircuitBreaker();
+            Logger.Info("[路徑追蹤] 強制目標已清除，恢復隨機巡邏");
+        }
+
+        /// <summary>規劃停擺時重置路徑狀態，讓下一幀重跑強制目標 A*。</summary>
+        public void RetryForcedGoalPlanning()
+        {
+            lock (_randomLock)
+            {
+                if (_forcedGoalNodeId == null || _forcedGoalArrived) return;
+
+                var state = CurrentPathState;
+                if (state == null) return;
+
+                ResetPathForReplanLocked(state);
+            }
+
+            Logger.Info("[路徑追蹤] 強制目標規劃重試");
+        }
+
+        private static void ResetPathForReplanLocked(PathPlanningState state)
+        {
+            state.IsPathCompleted = false;
+            state.PlannedPath = new List<SdPointF>();
+            state.PlannedPathNodes = new List<string>();
+            state.CurrentWaypointIndex = 0;
+            state.TemporaryTarget = null;
+        }
+
         private void SelectRandomPhysicalTarget()
         {
             if (CurrentPathState == null || _navGraph == null) return;
@@ -779,9 +944,13 @@ namespace ArtaleAI.Vision
                 return;
             }
 
-            var candidateNodes = _navGraph.GetAllNodes()
-                .Where(n => n.Type == NavigationNodeType.Platform && n.Id != startNode.Id)
-                .ToList();
+            if (_forcedGoalNodeId != null)
+            {
+                SelectForcedGoalTarget(startNode);
+                return;
+            }
+
+            var candidateNodes = BuildPatrolGoalCandidates(startNode);
 
             if (candidateNodes.Count == 0)
             {
@@ -792,52 +961,243 @@ namespace ArtaleAI.Vision
             ApplyRandomSelectionAndPathfind(startNode, candidateNodes);
         }
 
+        /// <summary>強制目標規劃：候選只有一個節點，沿用巡邏規劃管線與到達語意。</summary>
+        private void SelectForcedGoalTarget(NavigationNode startNode)
+        {
+            var goal = _navGraph!.GetNode(_forcedGoalNodeId!);
+            if (goal == null)
+            {
+                Logger.Warning($"[路徑追蹤] 強制目標 {_forcedGoalNodeId} 不存在於導航圖，視為已到達以免死鎖");
+                _forcedGoalArrived = true;
+                CurrentPathState!.IsPathCompleted = true;
+                return;
+            }
+
+            if (goal.Id == startNode.Id)
+            {
+                _forcedGoalArrived = true;
+                CurrentPathState!.IsPathCompleted = true;
+                _lastMovementUtc = DateTime.UtcNow;
+                Logger.Info($"[路徑追蹤] 已位於強制目標 {goal.Id}，直接回報到達");
+                return;
+            }
+
+            ApplyRandomSelectionAndPathfind(startNode, new List<NavigationNode> { goal });
+        }
+
+        /// <summary>
+        /// 巡邏終點：排除繩索／跳點切口節點（垂直通道樞紐），避免一直走「切口→平台一端」的短段。
+        /// 拓撲仍保留這些節點供轉乘；只是不當巡邏目標。
+        /// </summary>
+        private List<NavigationNode> BuildPatrolGoalCandidates(NavigationNode startNode)
+        {
+            if (_navGraph == null)
+                return new List<NavigationNode>();
+
+            var allPlatform = _navGraph.GetAllNodes()
+                .Where(n => n.Type == NavigationNodeType.Platform && n.Id != startNode.Id)
+                .ToList();
+
+            var transitHubIds = CollectVerticalTransitHubIds();
+            var nonHub = allPlatform
+                .Where(n => !transitHubIds.Contains(n.Id))
+                .ToList();
+
+            // 安全區是通道，但有一般平台可當巡邏終點時優先排除。
+            var preferred = nonHub.Where(n => !n.IsSafeZone).ToList();
+            if (preferred.Count > 0)
+                return preferred;
+
+            if (nonHub.Count > 0)
+                return nonHub;
+
+            var nonSafeFallback = allPlatform.Where(n => !n.IsSafeZone).ToList();
+            if (nonSafeFallback.Count > 0)
+                return nonSafeFallback;
+
+            Logger.Debug("[路徑規劃] 無可排除垂直樞紐／安全區的巡邏終點，回退為全部平台節點");
+            return allPlatform;
+        }
+
+        private HashSet<string> CollectVerticalTransitHubIds()
+        {
+            var hubs = new HashSet<string>(StringComparer.Ordinal);
+            if (_navGraph == null)
+                return hubs;
+
+            foreach (var node in _navGraph.GetAllNodes())
+            {
+                foreach (var edge in _navGraph.GetOutgoingEdges(node.Id))
+                {
+                    if (!IsVerticalTransitAction(edge.ActionType))
+                        continue;
+
+                    hubs.Add(edge.FromNodeId);
+                    hubs.Add(edge.ToNodeId);
+                }
+            }
+
+            return hubs;
+        }
+
+        private static bool IsVerticalTransitAction(NavigationActionType action) =>
+            action is NavigationActionType.ClimbUp
+                or NavigationActionType.ClimbDown
+                or NavigationActionType.Jump
+                or NavigationActionType.SideJump
+                or NavigationActionType.JumpDown;
+
         private void ApplyRandomSelectionAndPathfind(NavigationNode startNode, List<NavigationNode> candidateNodes)
         {
             if (CurrentPathState == null || _navGraph == null || candidateNodes.Count == 0) return;
 
             lock (_randomLock)
             {
-                var reachablePaths = new List<(NavigationNode Node, NavigationPath Path)>();
+                var reachablePaths = new List<(NavigationNode Node, NavigationPath Path, float Weight)>();
 
                 foreach (var goalNode in candidateNodes)
                 {
                     var pathObj = _navGraph.FindPath(startNode.Id, goalNode.Id);
-                    if (pathObj != null && pathObj.Edges.Count > 0)
-                        reachablePaths.Add((goalNode, pathObj));
+                    if (pathObj == null || pathObj.Edges.Count == 0) continue;
+
+                    float weight = ScorePatrolCandidate(startNode, goalNode, pathObj);
+                    reachablePaths.Add((goalNode, pathObj, weight));
                 }
 
-                if (reachablePaths.Count > 0)
+                if (reachablePaths.Count == 0)
                 {
-                    int selectedIdx = _random.Next(reachablePaths.Count);
-                    var (goalNode, pathObj) = reachablePaths[selectedIdx];
-
-                    var newPlannedPath = new List<SdPointF> { new SdPointF(startNode.Position.X, startNode.Position.Y) };
-                    var newNodeIds = new List<string> { startNode.Id };
-
-                    foreach (var edge in pathObj.Edges)
-                    {
-                        var toNode = _navGraph.GetNode(edge.ToNodeId);
-                        if (toNode != null)
-                        {
-                            newPlannedPath.Add(new SdPointF(toNode.Position.X, toNode.Position.Y));
-                            newNodeIds.Add(toNode.Id);
-                        }
-                    }
-
-                    CurrentPathState.IsPathCompleted = false;
-                    CurrentPathState.PlannedPath = newPlannedPath;
-                    CurrentPathState.PlannedPathNodes = newNodeIds;
-                    CurrentPathState.CurrentWaypointIndex = 1;
-                    CurrentPathState.TemporaryTarget = null;
-                    ClearSideJumpApproachState();
-
-                    Logger.Info($"[路徑規劃] 找到路線！{startNode.Id} -> {goalNode.Id}，保留所有原始節點共 {CurrentPathState.PlannedPath.Count} 個");
+                    CurrentPathState.IsPathCompleted = true;
                     return;
                 }
 
-                CurrentPathState.IsPathCompleted = true;
+                // 同平台連續太多次：有其他平台可達就強制換層（通道仍保留，只改終點偏好）。
+                if (_samePlatformPatrolStreak >= MaxSamePlatformStreakBeforeForceSwitch &&
+                    !string.IsNullOrEmpty(_lastPatrolGoalPlatformId))
+                {
+                    var switchAway = reachablePaths
+                        .Where(c => !IsSamePlatform(c.Node.PlatformId, _lastPatrolGoalPlatformId))
+                        .ToList();
+                    if (switchAway.Count > 0)
+                    {
+                        Logger.Info(
+                            $"[路徑規劃] 同平台連續 {_samePlatformPatrolStreak} 次，強制換離 {_lastPatrolGoalPlatformId}");
+                        reachablePaths = switchAway;
+                    }
+                }
+
+                var (selectedGoal, selectedPath) = PickWeightedCandidate(reachablePaths);
+                RecordPatrolGoalPlatform(selectedGoal.PlatformId);
+
+                var newPlannedPath = new List<SdPointF> { new SdPointF(startNode.Position.X, startNode.Position.Y) };
+                var newNodeIds = new List<string> { startNode.Id };
+
+                foreach (var edge in selectedPath.Edges)
+                {
+                    var toNode = _navGraph.GetNode(edge.ToNodeId);
+                    if (toNode != null)
+                    {
+                        newPlannedPath.Add(new SdPointF(toNode.Position.X, toNode.Position.Y));
+                        newNodeIds.Add(toNode.Id);
+                    }
+                }
+
+                CurrentPathState.IsPathCompleted = false;
+                CurrentPathState.PlannedPath = newPlannedPath;
+                CurrentPathState.PlannedPathNodes = newNodeIds;
+                CurrentPathState.CurrentWaypointIndex = 1;
+                CurrentPathState.TemporaryTarget = null;
+                ClearSideJumpApproachState();
+
+                Logger.Info(
+                    $"[路徑規劃] 找到路線！{startNode.Id} -> {selectedGoal.Id}，" +
+                    $"成本={selectedPath.TotalCost:F1}，保留原始節點共 {CurrentPathState.PlannedPath.Count} 個");
             }
+        }
+
+        private void RecordPatrolGoalPlatform(string? platformId)
+        {
+            if (string.IsNullOrEmpty(platformId))
+            {
+                _lastPatrolGoalPlatformId = null;
+                _samePlatformPatrolStreak = 0;
+                return;
+            }
+
+            if (IsSamePlatform(platformId, _lastPatrolGoalPlatformId))
+                _samePlatformPatrolStreak++;
+            else
+            {
+                _lastPatrolGoalPlatformId = platformId;
+                _samePlatformPatrolStreak = 1;
+            }
+        }
+
+        private static bool IsSamePlatform(string? a, string? b) =>
+            !string.IsNullOrEmpty(a) &&
+            !string.IsNullOrEmpty(b) &&
+            string.Equals(a, b, StringComparison.Ordinal);
+
+        /// <summary>
+        /// 巡邏終點權重（同一尺度）：
+        /// - 基底：1/(成本+1)，Walk 與 Jump 路徑可比較
+        /// - 純 Walk 再乘偏好倍率（多走路線標記，但不獨占）
+        /// - 終點／途經安全區：降權（通道仍可走）
+        /// - 同平台連抽：指數降權，避免單一平台來回太多次
+        /// </summary>
+        private float ScorePatrolCandidate(NavigationNode start, NavigationNode goal, NavigationPath path)
+        {
+            // 統一用反成本，避免「同層長距離 Walk 權重 177、跨層 Jump 權重 0.02」導致永不上樓。
+            float weight = 1.0f / (path.TotalCost + 1.0f);
+
+            bool walkOnly = path.Edges.TrueForAll(e => e.ActionType == NavigationActionType.Walk);
+            if (walkOnly)
+                weight *= WalkOnlyPreferenceMultiplier;
+
+            int nonWalkHops = path.Edges.Count(e => e.ActionType != NavigationActionType.Walk);
+            if (nonWalkHops > 0)
+                weight /= (1.0f + 0.35f * nonWalkHops);
+
+            if (goal.IsSafeZone)
+                weight *= SafeZoneGoalWeight;
+
+            if (IsSamePlatform(goal.PlatformId, start.PlatformId))
+                weight *= SamePlatformStayPenalty;
+
+            if (IsSamePlatform(goal.PlatformId, _lastPatrolGoalPlatformId) && _samePlatformPatrolStreak > 0)
+                weight *= MathF.Pow(SamePlatformRepeatPenalty, _samePlatformPatrolStreak);
+
+            if (_navGraph != null)
+            {
+                int safeTransit = 0;
+                foreach (var edge in path.Edges)
+                {
+                    var to = _navGraph.GetNode(edge.ToNodeId);
+                    if (to != null && to.IsSafeZone)
+                        safeTransit++;
+                }
+
+                for (int i = 0; i < safeTransit; i++)
+                    weight *= SafeZoneTransitWeightFactor;
+            }
+
+            return Math.Max(weight, 0.0001f);
+        }
+
+        private (NavigationNode Node, NavigationPath Path) PickWeightedCandidate(
+            List<(NavigationNode Node, NavigationPath Path, float Weight)> candidates)
+        {
+            float total = candidates.Sum(c => c.Weight);
+            float roll = (float)_random.NextDouble() * total;
+            float acc = 0f;
+            foreach (var c in candidates)
+            {
+                acc += c.Weight;
+                if (roll <= acc)
+                    return (c.Node, c.Path);
+            }
+
+            var last = candidates[^1];
+            return (last.Node, last.Path);
         }
 
         public List<MinimapTrackingResult> GetTrackingHistory()

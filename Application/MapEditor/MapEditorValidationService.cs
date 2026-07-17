@@ -127,23 +127,17 @@ namespace ArtaleAI.Application.MapEditor
                 float ropeX = rope[0];
                 float topY = rope[1];
                 float bottomY = rope[2];
-                bool hasTop = mapData.Nodes.Any(n => Distance(n.X, n.Y, ropeX, topY) <= HeightTolerance);
-                bool hasBottom = mapData.Nodes.Any(n => Distance(n.X, n.Y, ropeX, bottomY) <= HeightTolerance);
-                bool hasClimb = mapData.Edges.Any(e =>
-                    e.ActionType is NavigationActionType.ClimbUp or NavigationActionType.ClimbDown &&
-                    EdgeTouchesVerticalChannel(e, mapData.Nodes, ropeX, topY, bottomY));
-
-                if (!hasTop || !hasBottom || !hasClimb)
-                {
-                    issues.Add(new MapEditorValidationIssue
-                    {
-                        Code = "V-Rope",
-                        Severity = MapEditorValidationSeverity.Error,
-                        Message = $"繩索 #{i}（X={ropeX:F1}）未能投影到上下平台或未建立 Climb 邊。",
-                        TargetKind = MapEditorValidationTargetKind.Rope,
-                        TargetRopeIndex = i
-                    });
-                }
+                ValidateChannelEndpoints(
+                    mapData, issues,
+                    channelLabel: $"繩索 #{i}",
+                    code: "V-Rope",
+                    targetKind: MapEditorValidationTargetKind.Rope,
+                    targetIndex: i,
+                    x: ropeX, topY: topY, bottomY: bottomY,
+                    edgeExists: mapData.Edges.Any(e =>
+                        e.ActionType is NavigationActionType.ClimbUp or NavigationActionType.ClimbDown &&
+                        EdgeTouchesVerticalChannel(e, mapData.Nodes, ropeX, topY, bottomY)),
+                    edgeName: "Climb");
             }
         }
 
@@ -168,23 +162,69 @@ namespace ArtaleAI.Application.MapEditor
                 float linkX = link[0];
                 float topY = link[1];
                 float bottomY = link[2];
-                bool hasTop = mapData.Nodes.Any(n => Distance(n.X, n.Y, linkX, topY) <= HeightTolerance);
-                bool hasBottom = mapData.Nodes.Any(n => Distance(n.X, n.Y, linkX, bottomY) <= HeightTolerance);
-                bool hasJump = mapData.Edges.Any(e =>
-                    e.ActionType is NavigationActionType.Jump or NavigationActionType.JumpDown &&
-                    EdgeTouchesVerticalChannel(e, mapData.Nodes, linkX, topY, bottomY));
+                ValidateChannelEndpoints(
+                    mapData, issues,
+                    channelLabel: $"跳點 #{i}",
+                    code: "V-JumpLink",
+                    targetKind: MapEditorValidationTargetKind.JumpLink,
+                    targetIndex: i,
+                    x: linkX, topY: topY, bottomY: bottomY,
+                    edgeExists: mapData.Edges.Any(e =>
+                        e.ActionType is NavigationActionType.Jump or NavigationActionType.JumpDown &&
+                        EdgeTouchesVerticalChannel(e, mapData.Nodes, linkX, topY, bottomY)),
+                    edgeName: "Jump");
+            }
+        }
 
-                if (!hasTop || !hasBottom || !hasJump)
-                {
-                    issues.Add(new MapEditorValidationIssue
-                    {
-                        Code = "V-JumpLink",
-                        Severity = MapEditorValidationSeverity.Error,
-                        Message = $"跳點 #{i}（X={linkX:F1}）未能投影到上下平台或未建立 Jump 邊。",
-                        TargetKind = MapEditorValidationTargetKind.JumpLink,
-                        TargetJumpLinkIndex = i
-                    });
-                }
+        /// <summary>
+        /// 拓撲層不再自動為浮空端點補節點（避免產生角色實際站不上去的空中節點），
+        /// 因此驗證層必須逐端點指出「哪一端浮空、該如何修正」，把修正責任交還給使用者。
+        /// </summary>
+        private static void ValidateChannelEndpoints(
+            MapData mapData,
+            List<MapEditorValidationIssue> issues,
+            string channelLabel,
+            string code,
+            MapEditorValidationTargetKind targetKind,
+            int targetIndex,
+            float x,
+            float topY,
+            float bottomY,
+            bool edgeExists,
+            string edgeName)
+        {
+            bool hasTop = mapData.Nodes.Any(n => Distance(n.X, n.Y, x, topY) <= HeightTolerance);
+            bool hasBottom = mapData.Nodes.Any(n => Distance(n.X, n.Y, x, bottomY) <= HeightTolerance);
+
+            void AddIssue(string message) => issues.Add(new MapEditorValidationIssue
+            {
+                Code = code,
+                Severity = MapEditorValidationSeverity.Error,
+                Message = message,
+                TargetKind = targetKind,
+                TargetRopeIndex = targetKind == MapEditorValidationTargetKind.Rope ? targetIndex : -1,
+                TargetJumpLinkIndex = targetKind == MapEditorValidationTargetKind.JumpLink ? targetIndex : -1
+            });
+
+            if (!hasTop)
+            {
+                AddIssue(
+                    $"{channelLabel} 上端點（{x:F1}, {topY:F1}）浮空：" +
+                    $"請重畫，讓端點貼齊平台線（容差 {HeightTolerance:F0}px），" +
+                    "或先在該高度補一段平台標記。");
+            }
+
+            if (!hasBottom)
+            {
+                AddIssue(
+                    $"{channelLabel} 下端點（{x:F1}, {bottomY:F1}）浮空：" +
+                    $"請重畫，讓端點貼齊平台線（容差 {HeightTolerance:F0}px），" +
+                    "或先在該高度補一段平台標記。");
+            }
+
+            if (hasTop && hasBottom && !edgeExists)
+            {
+                AddIssue($"{channelLabel}（X={x:F1}）端點都在平台上，但未建立 {edgeName} 邊，請檢查上下端點是否落在同一平台。");
             }
         }
 

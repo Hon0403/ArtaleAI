@@ -87,8 +87,8 @@ namespace ArtaleAI
                 ReshowDelay = 200,
                 ShowAlways = true
             };
-            tip.SetToolTip(txt_RestIntervalMinutes, "打怪多久後休息一次。填 0 代表不休息。");
-            tip.SetToolTip(txt_RestDurationSeconds, "每次休息要停多久（秒）。休息時不攻擊、不走路。");
+            tip.SetToolTip(txt_RestIntervalMinutes, "打怪多久後休息一次。填 0 代表不休息。時間到會先走到最近的安全區或繩索再開始休息。");
+            tip.SetToolTip(txt_RestDurationSeconds, "到達休息點後要停多久（秒）。休息倒數期間不攻擊、不走路。");
             tip.SetToolTip(txt_RestJitterPercent, "讓休息時間略有變化，比較不像固定腳本。0＝完全固定，建議 20。");
             tip.SetToolTip(groupBox8, "定期暫停打怪，降低長時間連續操作被判定異常的風險。");
         }
@@ -684,6 +684,7 @@ namespace ArtaleAI
                 GameFound = gameFound,
                 CaptureRunning = liveViewManager?.IsRunning == true,
                 IsResting = _gamePipeline?.IsResting == true,
+                IsSeekingRestSpot = _gamePipeline?.IsSeekingRestSpot == true,
                 IsAvoidingOtherPlayers = _gamePipeline?.IsAvoidingOtherPlayers == true,
                 FsmState = _fsm?.CurrentState ?? NavigationState.Idle,
                 HpRatio = hasVitals ? vitals!.HpRatio : null,

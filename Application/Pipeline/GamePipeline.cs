@@ -9,6 +9,7 @@ using ArtaleAI.Models.Config;
 using ArtaleAI.Vision;
 using ArtaleAI.Application.Navigation;
 using ArtaleAI.Application.Movement;
+using ArtaleAI.Domain.Navigation;
 using ArtaleAI.Models.Detection;
 using ArtaleAI.Models.Minimap;
 using ArtaleAI.Shared;
@@ -58,9 +59,21 @@ namespace ArtaleAI.Application.Pipeline
 
         private volatile bool _isAttacking = false;
         private bool _lastAutoAttackEnabled;
-        private volatile bool _isResting;
+
+        /// <summary>
+        /// 休息階段：None=正常巡邏；Seeking=前往休息點（導航開放、攻擊關閉）；
+        /// Resting=倒數中（導航與攻擊皆關閉）。volatile int 因 C# 不允許 volatile enum。
+        /// </summary>
+        private const int RestPhaseNone = 0;
+        private const int RestPhaseSeeking = 1;
+        private const int RestPhaseResting = 2;
+        private volatile int _restPhase = RestPhaseNone;
+
+        /// <summary>選點或強制目標規劃失敗時的重試節流，避免每幀重跑 A*。</summary>
+        private const int RestSeekRetrySeconds = 3;
         private DateTime _restEndsAtUtc = DateTime.MinValue;
         private DateTime _nextRestDueUtc = DateTime.MinValue;
+        private DateTime _nextRestSeekRetryUtc = DateTime.MinValue;
         private int _attackInputLease;
         private int _monsterDetectionInFlight;
         private int _monsterJobReplacementCount;
@@ -123,15 +136,21 @@ namespace ArtaleAI.Application.Pipeline
         /// <summary>攻擊中狀態（供外部查詢）</summary>
         public bool IsAttacking => _isAttacking;
 
-        /// <summary>防偵測休息中（暫停攻擊與導航輸入）。</summary>
-        public bool IsResting => _isResting;
+        /// <summary>防偵測休息流程中（前往休息點或倒數中，攻擊皆暫停）。</summary>
+        public bool IsResting => _restPhase != RestPhaseNone;
+
+        /// <summary>正在前往安全折點／繩索休息點（導航仍開放）。</summary>
+        public bool IsSeekingRestSpot => _restPhase == RestPhaseSeeking;
 
         /// <summary>小地圖遇人退避中。</summary>
         public bool IsAvoidingOtherPlayers => _otherPlayerAvoidance.IsAvoiding;
 
-        /// <summary>攻擊／小休／遇人退避／換頻／打怪清窗期間，導航 Walk 應讓出鍵盤。</summary>
+        /// <summary>
+        /// 攻擊／小休倒數／遇人退避／換頻／打怪清窗期間，導航 Walk 應讓出鍵盤。
+        /// SeekingRest 不在此列：前往休息點必須靠導航輸入。
+        /// </summary>
         public bool BlocksNavigationInput =>
-            _isResting
+            _restPhase == RestPhaseResting
             || _isAttacking
             || _otherPlayerAvoidance.IsAvoiding
             || _farmUiInterrupt.IsDismissing
@@ -238,7 +257,7 @@ namespace ArtaleAI.Application.Pipeline
                     ProcessAntiDetectRest(config, now);
 
                 bool attackTriggered = false;
-                if (AutoAttackEnabled && !_isResting && !_otherPlayerAvoidance.IsAvoiding)
+                if (AutoAttackEnabled && _restPhase == RestPhaseNone && !_otherPlayerAvoidance.IsAvoiding)
                     attackTriggered = ProcessAutoAttackDecision();
 
                 if (!attackTriggered)
@@ -342,37 +361,90 @@ namespace ArtaleAI.Application.Pipeline
 
         private bool ProcessAutoAttackDecision()
         {
+            if (!TryCollectAttackTargets(out SdRect playerAttackBox, out List<DetectionResult> targets))
+                return false;
+
+            _isAttacking = true;
+            _ = PerformAutoAttackAsync(playerAttackBox, targets);
+            return true;
+        }
+
+        /// <summary>
+        /// 導航優先於攻擊：飛行中／路徑未完成時不打斷走位。
+        /// 並過濾垂直差過大（不同層高）的怪物，避免螢幕框相交但打不到。
+        /// </summary>
+        private bool TryCollectAttackTargets(out SdRect attackBox, out List<DetectionResult> targets)
+        {
+            attackBox = default;
+            targets = new List<DetectionResult>();
+
+            if (ShouldDeferAttackForNavigation())
+                return false;
+
             List<SdRect> attackRanges = _currentAttackRangeBoxes.ToList();
             List<DetectionResult> monsters;
             lock (_monsterLock) monsters = _currentMonsters.ToList();
 
-            if (!attackRanges.Any() || !monsters.Any()) return false;
+            if (!attackRanges.Any() || !monsters.Any())
+                return false;
 
-            SdRect playerAttackBox = attackRanges.FirstOrDefault();
-            if (playerAttackBox.IsEmpty) return false;
+            attackBox = attackRanges.FirstOrDefault();
+            if (attackBox.IsEmpty)
+                return false;
 
-            var targets = new List<DetectionResult>();
+            int maxVerticalDelta = ResolveAttackMaxVerticalDeltaPx();
+            float boxCenterY = attackBox.Y + attackBox.Height / 2f;
+
             foreach (var m in monsters)
             {
-                if (playerAttackBox.IntersectsWith(m.BoundingBox))
-                    targets.Add(m);
+                if (!attackBox.IntersectsWith(m.BoundingBox))
+                    continue;
+
+                float monsterCenterY = m.BoundingBox.Y + m.BoundingBox.Height / 2f;
+                if (Math.Abs(monsterCenterY - boxCenterY) > maxVerticalDelta)
+                    continue;
+
+                targets.Add(m);
             }
 
-            if (targets.Any())
-            {
-                _isAttacking = true;
-                _ = PerformAutoAttackAsync(playerAttackBox, targets);
-                return true;
-            }
+            return targets.Count > 0;
+        }
 
-            return false;
+        /// <summary>
+        /// 僅在垂直移動／跳躍飛行中暫緩攻擊；Walk 巡邏允許同層攻擊。
+        /// （先前「路徑未走完就不打」會導致巡邏永遠不攻擊。）
+        /// </summary>
+        private bool ShouldDeferAttackForNavigation()
+        {
+            var farm = AppConfig.Instance?.AutoFarm;
+            if (farm != null && !farm.PreferNavigationOverAttack)
+                return false;
+
+            if (_pathPlanningManager == null || !_pathPlanningManager.IsRunning)
+                return false;
+
+            if (!_pathPlanningManager.HasActiveNavigationFlight)
+                return false;
+
+            return _pathPlanningManager.ActiveFlightActionType is
+                NavigationActionType.ClimbUp or
+                NavigationActionType.ClimbDown or
+                NavigationActionType.Jump or
+                NavigationActionType.SideJump or
+                NavigationActionType.JumpDown;
+        }
+
+        private static int ResolveAttackMaxVerticalDeltaPx()
+        {
+            int configured = AppConfig.Instance?.AutoFarm?.AttackMaxVerticalDeltaPx ?? 80;
+            return configured > 0 ? configured : 80;
         }
 
         private void ProcessAntiDetectRest(AppConfig config, DateTime now)
         {
             if (!AutoAttackEnabled)
             {
-                _isResting = false;
+                CancelRestFlow();
                 _nextRestDueUtc = DateTime.MinValue;
                 _lastAutoAttackEnabled = false;
                 return;
@@ -387,20 +459,27 @@ namespace ArtaleAI.Application.Pipeline
             int intervalMinutes = config.AutoFarm.RestIntervalMinutes;
             if (intervalMinutes <= 0)
             {
-                _isResting = false;
+                CancelRestFlow();
                 return;
             }
 
-            if (_isResting)
+            if (_restPhase == RestPhaseResting)
             {
                 if (now >= _restEndsAtUtc)
                 {
-                    _isResting = false;
+                    _restPhase = RestPhaseNone;
+                    RestNavigationTracker?.ClearForcedGoal();
                     _movementController?.StopMovement();
                     OnStatusMessage?.Invoke("小休結束，繼續自動打怪");
                     ScheduleNextRest(config, now);
                 }
 
+                return;
+            }
+
+            if (_restPhase == RestPhaseSeeking)
+            {
+                ProcessRestSeeking(config, now);
                 return;
             }
 
@@ -410,11 +489,91 @@ namespace ArtaleAI.Application.Pipeline
             if (now < _nextRestDueUtc)
                 return;
 
+            TryBeginRestSeek(config, now);
+        }
+
+        /// <summary>休息導航僅在路徑規劃運行中才有意義；否則退化為原地休息。</summary>
+        private PathPlanningTracker? RestNavigationTracker =>
+            _pathPlanningManager?.IsRunning == true ? _pathPlanningManager.Tracker : null;
+
+        private void CancelRestFlow()
+        {
+            if (_restPhase == RestPhaseNone) return;
+            _restPhase = RestPhaseNone;
+            RestNavigationTracker?.ClearForcedGoal();
+        }
+
+        /// <summary>
+        /// 休息到期：選最近可達的安全折點或繩索並注入強制目標。
+        /// 選不到可達點時不進入 Resting，節流後重試（持續尋路直到到達）。
+        /// </summary>
+        private void TryBeginRestSeek(AppConfig config, DateTime now)
+        {
+            if (now < _nextRestSeekRetryUtc)
+                return;
+
+            var tracker = RestNavigationTracker;
+            var graph = tracker?.NavGraph;
+            var playerPos = tracker?.CurrentPathState?.CurrentPlayerPosition;
+
+            if (tracker == null || graph == null || playerPos == null)
+            {
+                BeginRestCountdown(config, now, "無導航資料，原地小休");
+                return;
+            }
+
+            var selection = RestSpotSelector.Select(graph, playerPos.Value);
+            switch (selection.Outcome)
+            {
+                case RestSpotOutcome.NoCandidates:
+                    BeginRestCountdown(config, now, "地圖無安全區與繩索，原地小休");
+                    return;
+
+                case RestSpotOutcome.Unreachable:
+                    _nextRestSeekRetryUtc = now.AddSeconds(RestSeekRetrySeconds);
+                    OnStatusMessage?.Invoke("休息點暫時不可達，稍後重試…");
+                    return;
+            }
+
+            tracker.SetForcedGoal(selection.Node!.Id);
+            _restPhase = RestPhaseSeeking;
+            string spotKind = selection.Node.Type == NavigationNodeType.Rope ? "繩索" : "安全區";
+            OnStatusMessage?.Invoke($"休息時間到，前往{spotKind}休息點…");
+        }
+
+        /// <summary>SeekingRest：等待強制目標到達；規劃停擺時節流重試，直到到達才開始倒數。</summary>
+        private void ProcessRestSeeking(AppConfig config, DateTime now)
+        {
+            var tracker = RestNavigationTracker;
+            if (tracker == null || !tracker.HasForcedGoal)
+            {
+                BeginRestCountdown(config, now, "導航中斷，原地小休");
+                return;
+            }
+
+            if (tracker.IsForcedGoalArrived)
+            {
+                // ForcedGoal 保留至休息結束，避免倒數期間巡邏重啟。
+                BeginRestCountdown(config, now, reason: null);
+                return;
+            }
+
+            if (tracker.IsForcedGoalPlanningParked && now >= _nextRestSeekRetryUtc)
+            {
+                _nextRestSeekRetryUtc = now.AddSeconds(RestSeekRetrySeconds);
+                tracker.RetryForcedGoalPlanning();
+            }
+        }
+
+        private void BeginRestCountdown(AppConfig config, DateTime now, string? reason)
+        {
             int durationSeconds = ResolveRestDurationSeconds(config.AutoFarm);
-            _isResting = true;
+            _restPhase = RestPhaseResting;
             _restEndsAtUtc = now.AddSeconds(durationSeconds);
             _movementController?.StopMovement();
-            OnStatusMessage?.Invoke($"開始小休，暫停約 {durationSeconds} 秒…");
+            OnStatusMessage?.Invoke(reason == null
+                ? $"已到休息點，小休約 {durationSeconds} 秒…"
+                : $"{reason}，約 {durationSeconds} 秒…");
         }
 
         private void ProcessOtherPlayerAvoidance(
@@ -1132,29 +1291,10 @@ namespace ArtaleAI.Application.Pipeline
         private void CheckAutoAttackCondition()
         {
             if (!AutoAttackEnabled || _isAttacking) return;
+            if (!TryCollectAttackTargets(out _, out _))
+                return;
 
-            List<DetectionResult> monsters;
-            List<SdRect> attackRanges;
-
-            lock (_monsterLock) monsters = _currentMonsters.ToList();
-            attackRanges = _currentAttackRangeBoxes.ToList();
-
-            if (!monsters.Any() || !attackRanges.Any()) return;
-
-            foreach (var monster in monsters)
-            {
-                var monsterRect = new SdRect(
-                    monster.Position.X, monster.Position.Y,
-                    monster.Size.Width, monster.Size.Height);
-                foreach (var range in attackRanges)
-                {
-                    if (range.IntersectsWith(monsterRect))
-                    {
-                        _ = PerformAutoAttackSequenceAsync();
-                        return;
-                    }
-                }
-            }
+            _ = PerformAutoAttackSequenceAsync();
         }
 
         private sealed class MonsterDetectionWorkItem : IDisposable
