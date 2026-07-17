@@ -44,6 +44,11 @@ namespace ArtaleAI
         private volatile bool _consoleMinimapUiUpdatePending;
         private const int ConsoleMinimapOverlayIntervalMs = 33;
 
+        private DateTime _lastConsoleGameViewUpdate = DateTime.MinValue;
+        private volatile bool _consoleGameViewUiUpdatePending;
+        /// <summary>主控台遊戲監控更新間隔；低於即時顯示分頁以節省 CPU。</summary>
+        private const int ConsoleGameViewIntervalMs = 100;
+
         #region UI 事件處理
 
         private async void TabControl1_SelectedIndexChanged(object? sender, EventArgs e)
@@ -105,11 +110,25 @@ namespace ArtaleAI
                 var result = await LoadMinimapWithMat(MinimapUsage.PathEditing);
                 if (result?.MinimapImage != null)
                 {
+                    Bitmap nativeImage = result.MinimapImage;
+                    int fitScale = PathEditorMinimapDisplay.ResolveFitScale(
+                        nativeImage.Width,
+                        nativeImage.Height,
+                        pictureBoxMinimap.ClientSize.Width,
+                        pictureBoxMinimap.ClientSize.Height);
+
                     Action setImage = () =>
                     {
                         var oldImage = pictureBoxMinimap.Image;
-                        pictureBoxMinimap.Image = result.MinimapImage;
+                        pictureBoxMinimap.Image = nativeImage;
                         oldImage?.Dispose();
+                        if (_mapEditor != null)
+                        {
+                            _mapEditor.ZoomScale = fitScale;
+                            _mapEditor.PanOffsetX = 0f;
+                            _mapEditor.PanOffsetY = 0f;
+                        }
+                        SyncPathEditorMinimapBounds();
                     };
 
                     if (InvokeRequired)
@@ -117,12 +136,12 @@ namespace ArtaleAI
                     else
                         setImage();
 
-                    SyncPathEditorMinimapBounds();
-
                     if (result.MinimapScreenRect.HasValue)
                     {
                         _gamePipeline?.SetMinimapBoxes(new List<Rectangle> { result.MinimapScreenRect.Value });
-                        MsgLog.ShowStatus(textBox1, "路徑編輯模式已啟動");
+                        MsgLog.ShowStatus(
+                            textBox1,
+                            $"路徑編輯模式已啟動（整數縮放 {fitScale}×）");
                     }
                 }
                 else
@@ -266,6 +285,8 @@ namespace ArtaleAI
                             using var drawnBmp = _overlayRenderer.Render(bmp, resultSnapshot, config);
                             UpdateDisplay((Bitmap)drawnBmp.Clone());
                         }
+
+                        TryUpdateConsoleGameView(frameMat, config);
                     }
 
                     var now = DateTime.UtcNow;
@@ -341,6 +362,67 @@ namespace ArtaleAI
             finally
             {
                 _consoleMinimapUiUpdatePending = false;
+            }
+        }
+
+        /// <summary>
+        /// 主控台遊戲監控：節流顯示擷取幀。
+        /// 這裡刻意使用獨立 Mat 複本且不疊 overlay，避免 WinRT 擷取幀、
+        /// OpenCV ROI 背景辨識與 GDI+ 繪圖同時讀寫同一份原生記憶體。
+        /// </summary>
+        private void TryUpdateConsoleGameView(Mat frameMat, AppConfig config)
+        {
+            if (frameMat == null || frameMat.Empty()) return;
+            if (ckB_Start.Checked != true && liveViewManager?.IsRunning != true)
+                return;
+
+            var now = DateTime.UtcNow;
+            if ((now - _lastConsoleGameViewUpdate).TotalMilliseconds < ConsoleGameViewIntervalMs)
+                return;
+            if (_consoleGameViewUiUpdatePending)
+                return;
+
+            _lastConsoleGameViewUpdate = now;
+            _consoleGameViewUiUpdatePending = true;
+
+            try
+            {
+                using var frameCopy = frameMat.Clone();
+                using var bmp = BitmapConverter.ToBitmap(frameCopy);
+                SetConsoleGameViewImage((Bitmap)bmp.Clone());
+            }
+            catch (Exception ex)
+            {
+                _consoleGameViewUiUpdatePending = false;
+                Logger.Debug($"[遊戲監控] 更新失敗: {ex.Message}");
+            }
+        }
+
+        private void SetConsoleGameViewImage(Bitmap? newImage)
+        {
+            if (IsDisposed || Disposing)
+            {
+                newImage?.Dispose();
+                _consoleGameViewUiUpdatePending = false;
+                return;
+            }
+
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => SetConsoleGameViewImage(newImage)));
+                return;
+            }
+
+            try
+            {
+                var old = pictureBox_ConsoleGameView.Image;
+                pictureBox_ConsoleGameView.Image = newImage;
+                lbl_ConsoleGamePlaceholder.Visible = newImage == null;
+                old?.Dispose();
+            }
+            finally
+            {
+                _consoleGameViewUiUpdatePending = false;
             }
         }
 

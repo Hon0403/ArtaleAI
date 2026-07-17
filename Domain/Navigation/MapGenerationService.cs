@@ -16,6 +16,25 @@ namespace ArtaleAI.Domain.Navigation
         private const float HeightTolerance = 2.0f; // 判斷繩索點是否落在平台上的高度容許值
 
         /// <summary>
+        /// 垂直通道成本：以高度為底，再乘懲罰倍率，讓 A* 在有平台繞路時優先 Walk。
+        /// 唯一通道時仍可達（成本再高也會走）。
+        /// </summary>
+        private const float ClimbUpCostPerPx = 2.5f;
+        private const float ClimbDownCostPerPx = 1.5f;
+        private const float JumpUpCostPerPx = 3.0f;
+        private const float JumpDownCostPerPx = 1.2f;
+        private const float ClimbUpMinCost = 12.0f;
+        private const float ClimbDownMinCost = 8.0f;
+        private const float JumpUpMinCost = 16.0f;
+        private const float JumpDownMinCost = 6.0f;
+
+        /// <summary>
+        /// 安全區仍是可走通道（維持連通），但 Walk 成本加權，
+        /// 有一般平台替代時 A* 較少在安全區上徘徊。
+        /// </summary>
+        private const float SafeZoneWalkCostMultiplier = 2.5f;
+
+        /// <summary>
         /// 自動根據 PolylinePlatforms 與 Ropes 重建地圖導航拓撲。
         /// 本實作具備冪等性 (Idempotency)，多次重複呼叫產出的拓撲圖結構與順序將完全一致。
         /// </summary>
@@ -146,12 +165,12 @@ namespace ArtaleAI.Domain.Navigation
             return anchor.ActionType switch
             {
                 NavigationActionType.Walk => dist,
-                NavigationActionType.Jump => 8.0f,
-                NavigationActionType.SideJump => 8.0f,
-                NavigationActionType.JumpDown => 2.0f,
+                NavigationActionType.Jump => Math.Max(JumpUpMinCost, dist * JumpUpCostPerPx),
+                NavigationActionType.SideJump => Math.Max(JumpUpMinCost, dist * JumpUpCostPerPx),
+                NavigationActionType.JumpDown => Math.Max(JumpDownMinCost, dist * JumpDownCostPerPx),
                 NavigationActionType.Teleport => 1.0f,
-                NavigationActionType.ClimbUp => 5.0f,
-                NavigationActionType.ClimbDown => 3.0f,
+                NavigationActionType.ClimbUp => Math.Max(ClimbUpMinCost, dist * ClimbUpCostPerPx),
+                NavigationActionType.ClimbDown => Math.Max(ClimbDownMinCost, dist * ClimbDownCostPerPx),
                 _ => dist
             };
         }
@@ -180,11 +199,14 @@ namespace ArtaleAI.Domain.Navigation
                     segmentArcLengths[i + 1] = segmentArcLengths[i] + dist;
                 }
 
-                // 2. 初始化 cut points 集合（記錄 ArcLength 與實際座標）
-                var cutPoints = new List<(float ArcLength, PointF Position)>();
+                // 2. 初始化 cut points（弧長、座標、安全區旗標）
+                var cutPoints = new List<(float ArcLength, PointF Position, bool IsSafeZone)>();
                 for (int i = 0; i < N; i++)
                 {
-                    cutPoints.Add((segmentArcLengths[i], new PointF(plat.Points[i].X, plat.Points[i].Y)));
+                    cutPoints.Add((
+                        segmentArcLengths[i],
+                        new PointF(plat.Points[i].X, plat.Points[i].Y),
+                        plat.Points[i].IsSafeZone));
                 }
 
                 // 3. 投影垂直通道端點（繩索與跳點切分）
@@ -254,7 +276,10 @@ namespace ArtaleAI.Domain.Navigation
 
                         if (bestSegIdx != -1 && bestDist <= HeightTolerance)
                         {
-                            cutPoints.Add((bestArcLength, bestProj));
+                            cutPoints.Add((
+                                bestArcLength,
+                                bestProj,
+                                ResolveProjectedIsSafeZone(plat, bestSegIdx, bestProj)));
                         }
                     }
                 }
@@ -276,9 +301,9 @@ namespace ArtaleAI.Domain.Navigation
                     }
                 }
 
-                // 4. 排序並套用雙重條件去重融合
+                // 4. 排序並套用雙重條件去重融合（安全旗標採 OR，避免漏標）
                 var sortedCutPoints = cutPoints.OrderBy(c => c.ArcLength).ToList();
-                var mergedCutPoints = new List<(float ArcLength, PointF Position)>();
+                var mergedCutPoints = new List<(float ArcLength, PointF Position, bool IsSafeZone)>();
 
                 const float ArcTolerance = 0.5f;
                 const float PositionTolerance = 1.0f;
@@ -299,8 +324,8 @@ namespace ArtaleAI.Domain.Navigation
 
                         if (arcDiff <= ArcTolerance && posDiff <= PositionTolerance)
                         {
-                            // 同時滿足雙重條件，予以融合（保留前者）
-                            continue;
+                            mergedCutPoints[mergedCutPoints.Count - 1] =
+                                (last.ArcLength, last.Position, last.IsSafeZone || cp.IsSafeZone);
                         }
                         else
                         {
@@ -322,13 +347,14 @@ namespace ArtaleAI.Domain.Navigation
                         X = qX,
                         Y = qY,
                         Type = "Platform",
-                        PlatformId = plat.Id
+                        PlatformId = plat.Id,
+                        IsSafeZone = cp.IsSafeZone
                     };
                     platNodes.Add(node);
                     generatedNodes.Add(node);
                 }
 
-                // 6. 在排序相鄰的節點之間建立 Walk 雙向邊，Cost 採實際平面歐式距離
+                // 6. Walk 雙向邊；安全區節點加權（通道仍可走，但偏好一般平台）
                 for (int i = 0; i < platNodes.Count - 1; i++)
                 {
                     var fromNode = platNodes[i];
@@ -336,28 +362,34 @@ namespace ArtaleAI.Domain.Navigation
                     float dx = toNode.X - fromNode.X;
                     float dy = toNode.Y - fromNode.Y;
                     float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+                    float cost = dist;
+                    if (fromNode.IsSafeZone || toNode.IsSafeZone)
+                        cost *= SafeZoneWalkCostMultiplier;
 
                     generatedEdges.Add(new NavEdgeData
                     {
                         FromNodeId = fromNode.Id,
                         ToNodeId = toNode.Id,
                         ActionType = NavigationActionType.Walk,
-                        Cost = dist
+                        Cost = cost
                     });
                     generatedEdges.Add(new NavEdgeData
                     {
                         FromNodeId = toNode.Id,
                         ToNodeId = fromNode.Id,
                         ActionType = NavigationActionType.Walk,
-                        Cost = dist
+                        Cost = cost
                     });
                 }
             }
 
-            // 步驟 C：垂直繩索 → ClimbUp / ClimbDown
+            // 步驟 C：垂直繩索 → ClimbUp / ClimbDown（成本隨高度；有平台替代時較少爬繩）
+            // 設計決策：端點必須落在平台上（HeightTolerance 內）才建邊；
+            // 浮空端點不自動補節點，改由編輯器驗證提示使用者修正標記。
             foreach (var rope in mapData.Ropes)
             {
                 if (rope.Length < 3) continue;
+                float height = Math.Abs(rope[2] - rope[1]);
                 TryAddVerticalChannelEdges(
                     generatedNodes,
                     generatedEdges,
@@ -366,8 +398,8 @@ namespace ArtaleAI.Domain.Navigation
                     rope[2],
                     NavigationActionType.ClimbUp,
                     NavigationActionType.ClimbDown,
-                    5.0f,
-                    3.0f,
+                    Math.Max(ClimbUpMinCost, height * ClimbUpCostPerPx),
+                    Math.Max(ClimbDownMinCost, height * ClimbDownCostPerPx),
                     $"ropeX:{rope[0]:F1}");
             }
 
@@ -375,6 +407,7 @@ namespace ArtaleAI.Domain.Navigation
             foreach (var link in mapData.JumpLinks ?? new List<float[]>())
             {
                 if (link.Length < 3) continue;
+                float height = Math.Abs(link[2] - link[1]);
                 TryAddVerticalChannelEdges(
                     generatedNodes,
                     generatedEdges,
@@ -383,8 +416,8 @@ namespace ArtaleAI.Domain.Navigation
                     link[2],
                     NavigationActionType.Jump,
                     NavigationActionType.JumpDown,
-                    8.0f,
-                    2.0f,
+                    Math.Max(JumpUpMinCost, height * JumpUpCostPerPx),
+                    Math.Max(JumpDownMinCost, height * JumpDownCostPerPx),
                     $"jumpLinkX:{link[0]:F1}");
             }
 
@@ -397,7 +430,7 @@ namespace ArtaleAI.Domain.Navigation
         }
 
         private static void TryAddAnchorCutPoint(
-            List<(float ArcLength, PointF Position)> cutPoints,
+            List<(float ArcLength, PointF Position, bool IsSafeZone)> cutPoints,
             float[] segmentArcLengths,
             PolylinePlatformData plat,
             int vertexCount,
@@ -408,6 +441,7 @@ namespace ArtaleAI.Domain.Navigation
             float bestDist = float.MaxValue;
             float bestArcLength = 0f;
             PointF bestProj = PointF.Empty;
+            int bestSegIdx = -1;
 
             for (int i = 0; i < vertexCount - 1; i++)
             {
@@ -436,13 +470,42 @@ namespace ArtaleAI.Domain.Navigation
                     bestDist = dist;
                     bestArcLength = arcLen;
                     bestProj = proj;
+                    bestSegIdx = i;
                 }
             }
 
-            if (bestDist <= HeightTolerance)
+            if (bestSegIdx != -1 && bestDist <= HeightTolerance)
             {
-                cutPoints.Add((bestArcLength, bestProj));
+                cutPoints.Add((
+                    bestArcLength,
+                    bestProj,
+                    ResolveProjectedIsSafeZone(plat, bestSegIdx, bestProj)));
             }
+        }
+
+        /// <summary>
+        /// 投影切點的安全旗標：兩端皆安全，或距離任一安全折點 ≤ HeightTolerance。
+        /// </summary>
+        private static bool ResolveProjectedIsSafeZone(
+            PolylinePlatformData plat,
+            int segmentIndex,
+            PointF projected)
+        {
+            var a = plat.Points[segmentIndex];
+            var b = plat.Points[segmentIndex + 1];
+            if (a.IsSafeZone && b.IsSafeZone)
+                return true;
+
+            foreach (var p in plat.Points)
+            {
+                if (!p.IsSafeZone) continue;
+                float dx = p.X - projected.X;
+                float dy = p.Y - projected.Y;
+                if (Math.Sqrt(dx * dx + dy * dy) <= HeightTolerance)
+                    return true;
+            }
+
+            return false;
         }
 
         private static IEnumerable<(float X, float TopY, float BottomY)> EnumerateVerticalChannelEndpoints(MapData mapData)

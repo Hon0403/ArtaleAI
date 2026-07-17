@@ -71,8 +71,9 @@ namespace ArtaleAI
             if (pbWidth <= 0 || pbHeight <= 0 || imageWidth <= 0 || imageHeight <= 0)
                 return false;
 
-            float fitScale = Math.Min(pbWidth / imageWidth, pbHeight / imageHeight);
-            float scale = fitScale * _mapEditor.ZoomScale;
+            // ZoomScale = 每個邏輯像素對應幾個螢幕像素（整數）；避免分數倍率把像素風抹糊。
+            int scale = PathEditorMinimapDisplay.ClampPixelScale(
+                (int)Math.Round(_mapEditor.ZoomScale));
             float displayWidth = imageWidth * scale;
             float displayHeight = imageHeight * scale;
 
@@ -84,7 +85,7 @@ namespace ArtaleAI
                 ImageWidth = imageWidth,
                 ImageHeight = imageHeight
             };
-            return scale > 0f;
+            return scale > 0;
         }
 
         private void ClampMinimapPanOffset()
@@ -96,8 +97,8 @@ namespace ArtaleAI
             float pbHeight = pictureBoxMinimap.ClientSize.Height;
             float imageWidth = pictureBoxMinimap.Image.Width;
             float imageHeight = pictureBoxMinimap.Image.Height;
-            float fitScale = Math.Min(pbWidth / imageWidth, pbHeight / imageHeight);
-            float scale = fitScale * _mapEditor.ZoomScale;
+            int scale = PathEditorMinimapDisplay.ClampPixelScale(
+                (int)Math.Round(_mapEditor.ZoomScale));
             float displayWidth = imageWidth * scale;
             float displayHeight = imageHeight * scale;
 
@@ -115,7 +116,11 @@ namespace ArtaleAI
             if (pictureBoxMinimap.Image == null)
                 return;
 
-            minimapBounds = new Rectangle(0, 0, pictureBoxMinimap.Image.Width, pictureBoxMinimap.Image.Height);
+            minimapBounds = new Rectangle(
+                0,
+                0,
+                pictureBoxMinimap.Image.Width,
+                pictureBoxMinimap.Image.Height);
             _mapEditor?.SetMinimapBounds(minimapBounds);
         }
 
@@ -181,8 +186,10 @@ namespace ArtaleAI
                 return;
 
             e.Graphics.Clear(pictureBoxMinimap.BackColor);
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+
+            // 像素風底圖：Nearest + 整數倍率；向量疊加層另開 AntiAlias。
+            e.Graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
+            e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
 
             e.Graphics.DrawImage(
                 pictureBoxMinimap.Image,
@@ -190,6 +197,9 @@ namespace ArtaleAI
                 layout.OffsetY,
                 layout.ImageWidth * layout.Scale,
                 layout.ImageHeight * layout.Scale);
+
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
             PointF ConvertScreenToDisplay(PointF screenPoint)
             {
@@ -381,17 +391,18 @@ namespace ArtaleAI
         {
             if (Control.ModifierKeys != Keys.Control || _mapEditor == null) return;
 
-            float oldZoom = _mapEditor.ZoomScale;
-            if (e.Delta > 0)
-                _mapEditor.ZoomScale = Math.Min(10.0f, _mapEditor.ZoomScale + 0.1f);
-            else
-                _mapEditor.ZoomScale = Math.Max(0.5f, _mapEditor.ZoomScale - 0.1f);
+            int oldScale = PathEditorMinimapDisplay.ClampPixelScale(
+                (int)Math.Round(_mapEditor.ZoomScale));
+            int newScale = PathEditorMinimapDisplay.ClampPixelScale(
+                oldScale + (e.Delta > 0 ? 1 : -1));
 
-            if (Math.Abs(oldZoom - _mapEditor.ZoomScale) > 0.001f)
-            {
-                ClampMinimapPanOffset();
-                pictureBoxMinimap.Invalidate();
-            }
+            if (newScale == oldScale)
+                return;
+
+            _mapEditor.ZoomScale = newScale;
+            ClampMinimapPanOffset();
+            pictureBoxMinimap.Invalidate();
+            MsgLog.ShowStatus(textBox1, $"路徑編輯縮放：{newScale}×");
         }
 
         private void pictureBoxMinimap_MouseLeave(object sender, EventArgs e)

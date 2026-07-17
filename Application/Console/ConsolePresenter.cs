@@ -70,8 +70,11 @@ namespace ArtaleAI.Application.Console
             if (input.IsAvoidingOtherPlayers)
                 return "擷取：遇人退避中";
 
+            if (input.IsSeekingRestSpot)
+                return "擷取：前往休息點";
+
             if (input.IsResting)
-                return "擷取：小休中";
+                return "擷取：小休倒數中";
 
             return input.CaptureRunning ? "擷取：運行中" : "擷取：停止";
         }
@@ -106,8 +109,11 @@ namespace ArtaleAI.Application.Console
             if (input.IsAvoidingOtherPlayers)
                 return "導航：遇人退避";
 
+            if (input.IsSeekingRestSpot)
+                return "導航：前往休息點（安全區/繩索）";
+
             if (input.IsResting)
-                return "導航：小休中";
+                return "導航：小休倒數中";
 
             return $"導航：{FormatFsmState(input.FsmState)}";
         }

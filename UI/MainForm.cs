@@ -320,6 +320,7 @@ namespace ArtaleAI
             rdo_PathMarker.CheckedChanged += OnEditModeChanged;
             rdo_RopeMarker.CheckedChanged += OnEditModeChanged;
             rdo_JumpLinkMarker.CheckedChanged += OnEditModeChanged;
+            rdo_SafeZoneMarker.CheckedChanged += OnEditModeChanged;
             rdo_DeleteMarker.CheckedChanged += OnEditModeChanged;
 
             pictureBoxMinimap.BackColor = Color.FromArgb(45, 45, 48);

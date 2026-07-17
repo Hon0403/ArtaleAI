@@ -9,7 +9,6 @@ namespace ArtaleAI.Models.Config
         public string LastSelectedProcessName { get; set; } = "";
         public int LastSelectedProcessId { get; set; }
 
-        public int MinimapUpscaleFactor { get; set; } = 1;
         public int CrosshairSize { get; set; } = 15;
 
         /// <summary>擷取進行中時，持續檢查並校正遊戲客戶區尺寸。</summary>

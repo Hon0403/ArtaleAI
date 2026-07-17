@@ -1,15 +1,36 @@
 {
-  "Ropes": [],
-  "JumpLinks": [
+  "Ropes": [
     [
       150.4,
-      125.8,
-      130.9
+      105.5,
+      121.4
+    ]
+  ],
+  "JumpLinks": [
+    [
+      150.2,
+      126.2,
+      130.6
     ],
     [
-      150.9,
-      122.0,
-      125.5
+      150.8,
+      121.5,
+      125.9
+    ],
+    [
+      146.6,
+      96.9,
+      101.2
+    ],
+    [
+      146.8,
+      101.5,
+      105.6
+    ],
+    [
+      44.2,
+      101.7,
+      105.6
     ]
   ],
   "PolylinePlatforms": [
@@ -30,30 +51,106 @@
       "Id": "plat_1",
       "Points": [
         {
-          "X": 145.8,
-          "Y": 125.8
+          "X": 36.9,
+          "Y": 106.0
         },
         {
-          "X": 155.8,
-          "Y": 125.8
+          "X": 155.1,
+          "Y": 105.8
         }
       ]
     },
     {
-      "Id": "plat_2",
+      "Id": "plat_4",
       "Points": [
         {
-          "X": 147.9,
-          "Y": 122.2
+          "X": 141.6,
+          "Y": 101.2,
+          "IsSafeZone": true
         },
         {
-          "X": 153.3,
-          "Y": 122.2
+          "X": 152.0,
+          "Y": 101.2,
+          "IsSafeZone": true
+        }
+      ]
+    },
+    {
+      "Id": "plat_5",
+      "Points": [
+        {
+          "X": 143.7,
+          "Y": 97.3,
+          "IsSafeZone": true
+        },
+        {
+          "X": 148.5,
+          "Y": 97.1,
+          "IsSafeZone": true
+        }
+      ]
+    },
+    {
+      "Id": "plat_6",
+      "Points": [
+        {
+          "X": 41.9,
+          "Y": 101.4,
+          "IsSafeZone": true
+        },
+        {
+          "X": 46.2,
+          "Y": 101.2,
+          "IsSafeZone": true
+        }
+      ]
+    },
+    {
+      "Id": "plat_7",
+      "Points": [
+        {
+          "X": 133.3,
+          "Y": 117.4,
+          "IsSafeZone": true
+        },
+        {
+          "X": 143.7,
+          "Y": 117.6,
+          "IsSafeZone": true
+        }
+      ]
+    },
+    {
+      "Id": "plat_8",
+      "Points": [
+        {
+          "X": 148.8,
+          "Y": 121.7,
+          "IsSafeZone": true
+        },
+        {
+          "X": 152.9,
+          "Y": 121.8,
+          "IsSafeZone": true
+        }
+      ]
+    },
+    {
+      "Id": "plat_9",
+      "Points": [
+        {
+          "X": 145.5,
+          "Y": 126.0,
+          "IsSafeZone": true
+        },
+        {
+          "X": 155.5,
+          "Y": 126.1,
+          "IsSafeZone": true
         }
       ]
     }
   ],
   "ManualEdgeAnchors": [],
-  "SafeZones": [],
   "RestrictedZones": []
 }

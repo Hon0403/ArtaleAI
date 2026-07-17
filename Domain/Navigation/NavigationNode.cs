@@ -47,6 +47,11 @@ namespace ArtaleAI.Domain.Navigation
         public string? PlatformId { get; set; }
 
         /// <summary>
+        /// 策略旗標：來自平台折點 IsSafeZone，不影響連通性。
+        /// </summary>
+        public bool IsSafeZone { get; set; }
+
+        /// <summary>
         /// 導航觸發區域 (Hitbox)
         /// </summary>
         public BoundingBox? Hitbox { get; set; }

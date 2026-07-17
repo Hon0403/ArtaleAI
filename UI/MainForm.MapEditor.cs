@@ -102,6 +102,7 @@ namespace ArtaleAI
             _mapEditor.Layers.ShowPlatforms = chk_LayerPlatforms.Checked;
             _mapEditor.Layers.ShowRopes = chk_LayerRopes.Checked;
             _mapEditor.Layers.ShowJumpLinks = chk_LayerJumpLinks.Checked;
+            _mapEditor.Layers.ShowSafeZones = chk_LayerSafeZones.Checked;
             _mapEditor.Layers.ShowManualAnchors = chk_LayerManualAnchors.Checked;
             _mapEditor.Layers.ShowNodes = chk_LayerNodes.Checked;
             _mapEditor.Layers.ShowEdges = chk_LayerEdges.Checked;

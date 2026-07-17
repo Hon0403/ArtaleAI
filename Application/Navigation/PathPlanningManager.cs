@@ -2,6 +2,7 @@ using ArtaleAI.Models.Config;
 using ArtaleAI.Vision;
 using ArtaleAI.Models.Minimap;
 using ArtaleAI.Models.PathPlanning;
+using ArtaleAI.Domain.Navigation;
 using ArtaleAI.Infrastructure.Capture;
 using ArtaleAI.Shared;
 using System.Drawing;
@@ -32,6 +33,12 @@ namespace ArtaleAI.Application.Navigation
         public PathPlanningState? CurrentState => _tracker.CurrentPathState;
 
         public bool IsRunning => _isRunning;
+
+        /// <summary>是否有進行中的導航飛行（Walk／Climb／Jump 尚未完成）。</summary>
+        public bool HasActiveNavigationFlight => _tracker.HasActiveNavigationFlight;
+
+        /// <summary>進行中飛行的 ActionType；無飛行時為 null。</summary>
+        public NavigationActionType? ActiveFlightActionType => _tracker.ActiveFlightActionType;
 
         public PathPlanningManager(PathPlanningTracker tracker, AppConfig config)
         {
