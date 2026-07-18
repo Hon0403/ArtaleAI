@@ -239,12 +239,15 @@ namespace ArtaleAI.Application.Pipeline
                 // 確保本幀所有下游（攻擊決策、快照）只消費新鮮結果。
                 PruneStaleMonsterResults(now, config);
 
-                // 監測開啟即持續快取幀：換頻／隊伍重建狀態機都靠最新畫面辨識。
+                // 監測開啟即持續快取幀：換頻／隊伍重建／Esc 探針驗證都靠最新畫面。
                 if (AutoAttackEnabled
+                    || AutoHealEnabled
+                    || AutoBuffEnabled
                     || PartyRecoveryEnabled
                     || OtherPlayerAvoidanceEnabled
                     || Volatile.Read(ref _changeChannelInFlight) != 0
-                    || _partyRecovery.IsRecovering)
+                    || _partyRecovery.IsRecovering
+                    || _farmUiInterrupt.IsDismissing)
                     CacheFrameForUiAutomation(frameMat);
 
                 MinimapTrackingResult? trackingResult = null;
@@ -672,7 +675,9 @@ namespace ArtaleAI.Application.Pipeline
                 autoFarmActive,
                 uiSequenceBusy,
                 config.AutoFarm,
+                config.Vision,
                 _movementController,
+                CloneCachedUiAutomationFrame,
                 msg => OnStatusMessage?.Invoke(msg));
         }
 

@@ -138,6 +138,21 @@ namespace ArtaleAI.Models.Config
         public List<string> InterruptDismissTemplates { get; set; } = [];
 
         /// <summary>
+        /// Esc 觸發探針模板：僅用於偵測「可用 Esc 關閉的突發視窗」，不點擊。
+        /// 搜尋範圍為小地圖橙色 ROI（minimapSearchRoi）。
+        /// </summary>
+        public List<string> InterruptEscapeTriggerTemplates { get; set; } = [];
+
+        /// <summary>探針掃瞄間隔（毫秒）。突發視窗持續存在，無需每幀比對。</summary>
+        public int InterruptProbeIntervalMs { get; set; } = 250;
+
+        /// <summary>連續命中次數達標才觸發 Esc，降低短暫誤判。</summary>
+        public int InterruptProbeRequiredHits { get; set; } = 2;
+
+        /// <summary>探針匹配閾值（通常高於關閉鈕，避免誤觸）。</summary>
+        public double InterruptProbeThreshold { get; set; } = 0.82;
+
+        /// <summary>
         /// 隊伍血條缺失時的重建參數（無使用者開關：自動打怪開啟即持續監測）。
         /// 沒有隊伍血條就沒有攻擊框，重建是硬前置條件。
         /// </summary>

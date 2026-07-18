@@ -188,10 +188,10 @@ autoFarm:
   restIntervalMinutes: 1
   restDurationSeconds: 60
   restJitterPercent: 20
-  healHpEnabled: true
+  healHpEnabled: false
   healHpThresholdPercent: 40
   healHpHotkey: Shift
-  healMpEnabled: true
+  healMpEnabled: false
   healMpThresholdPercent: 30
   healMpHotkey: Insert
   healCooldownMs: 800
@@ -214,7 +214,7 @@ autoFarm:
   buffCastGapMs: 450
   attackPrimaryHotkey: Ctrl
   attackSkills:
-  - enabled: true
+  - enabled: false
     hotkey: Delete
     cooldownSeconds: 5
   - enabled: false
@@ -251,6 +251,11 @@ autoFarm:
   interruptEscapeCooldownMs: 2800
   interruptMatchThreshold: 0.72
   interruptDismissTemplates: []
+  interruptEscapeTriggerTemplates:
+  - templates/MainScreen/interrupt_book_anchor.png
+  interruptProbeIntervalMs: 250
+  interruptProbeRequiredHits: 2
+  interruptProbeThreshold: 0.82
   partyWindowHotkey: P
   partyCreateTemplate: templates/MainScreen/party_create_button.png
   partyHpBarLostMs: 4000
