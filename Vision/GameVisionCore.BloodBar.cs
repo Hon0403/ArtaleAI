@@ -1,96 +1,491 @@
 using ArtaleAI.Models.Config;
-using ArtaleAI.Models.Detection;
-using ArtaleAI.Models.Minimap;
 using ArtaleAI.Shared;
-using ArtaleAI.Infrastructure.Capture;
 using OpenCvSharp;
-using OpenCvSharp.Extensions;
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
-using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Windows.Graphics.Capture;
-using WinRT.Interop;
 
 namespace ArtaleAI.Vision
 {
+    /// <summary>
+    /// 血條搜尋請求：
+    /// <para>HasMinimapSelfMarker：小地圖自己黃點證明「人在場」（避免登入／選角畫面亂搜）。</para>
+    /// <para>MinimapExcludeRect：實際偵測到的小地圖框（青色），於遮罩階段挖空避免其他玩家紅點誤判。</para>
+    /// </summary>
+    internal readonly record struct BloodBarSearchRequest(
+        bool HasMinimapSelfMarker,
+        Rectangle? MinimapExcludeRect = null,
+        Rectangle? UiExcludeRect = null);
+
     /// <summary>整合的遊戲視覺核心。</summary>
     public partial class GameVisionCore
     {
         #region 血條檢測功能群組
 
+        private static DateTime _lastBloodBarDiagUtc = DateTime.MinValue;
+
+        /// <summary>上一幀血條外框（全畫面座標），供本幀鄰近加分。</summary>
+        private Rectangle? _prevBloodBarFrame;
+
+        private DateTime _prevBloodBarUtc = DateTime.MinValue;
+
         /// <summary>
-        /// 檢測隊友血條位置（主要入口方法）
-        /// 使用 HSV 色彩空間檢測紅色血條
+        /// 隊伍血條外框：可玩區（扣小地圖／下方 UI）內以 contour 幾何過濾定位；
+        /// 鎖定後縮小到上一幀鄰域追蹤（省 CPU、天然避開活動 ICON）。
         /// </summary>
-        /// <param name="frameMat">輸入畫面 Mat</param>
-        /// <param name="uiExcludeRect">UI 排除區域（可選）</param>
-        /// <param name="config">應用程式設定</param>
-        /// <param name="cameraOffsetY">相機垂直偏移量（輸出參數）</param>
-        /// <returns>血條矩形區域，未檢測到時返回 null</returns>
-        public Rectangle? DetectBloodBar(Mat frameMat, Rectangle? uiExcludeRect, AppConfig config, out int cameraOffsetY)
+        private Rectangle? DetectBloodBar(
+            Mat frameMat,
+            AppConfig config,
+            BloodBarSearchRequest request)
         {
-            Mat cameraArea;
-            if (uiExcludeRect.HasValue)
+            var vision = config.Vision;
+            if (!vision.UseBloodBarFixedFrame)
+                return null;
+
+            ExpirePrevBloodBarIfStale(vision);
+
+            // 未鎖定且畫面無自己黃點：多半在登入／選角，直接略過避免誤搜。
+            bool locked = _prevBloodBarFrame.HasValue;
+            if (!locked && vision.BloodBarRequireMinimapSelf && !request.HasMinimapSelfMarker)
+                return null;
+
+            var searchRect = ResolveBloodBarDetectSearchRect(
+                frameMat.Width,
+                frameMat.Height,
+                vision,
+                _prevBloodBarFrame,
+                request.UiExcludeRect);
+
+            int frameW = Math.Max(1, vision.BloodBarFrameWidth);
+            int frameH = Math.Max(1, vision.BloodBarFrameHeight);
+
+            if (searchRect.IsEmpty)
+                return null;
+
+            if (searchRect.Width < frameW || searchRect.Height < frameH)
             {
-                var cameraHeight = uiExcludeRect.Value.Y;
-                cameraOffsetY = 0;
-                cameraArea = frameMat[new OpenCvSharp.Rect(0, 0, frameMat.Width, cameraHeight)].Clone();
+                Logger.Warning(
+                    $"[血條] 搜尋區過小 {searchRect}（畫面 {frameMat.Width}x{frameMat.Height}）");
+                return null;
             }
-            else
+
+            using var searchMat = new Mat(
+                frameMat,
+                new OpenCvSharp.Rect(searchRect.X, searchRect.Y, searchRect.Width, searchRect.Height));
+
+            var minimapExclude = ResolveMinimapExclusion(
+                request.MinimapExcludeRect, frameMat.Width, frameMat.Height, vision);
+
+            using var redMask = BuildStrictHpRedMask(searchMat);
+            MaskOutMinimapRegion(redMask, searchRect, minimapExclude);
+
+            using var tipMask = BuildFrameTipMask(searchMat, vision);
+            MaskOutMinimapRegion(tipMask, searchRect, minimapExclude);
+
+            var prevLocal = ToSearchLocal(_prevBloodBarFrame, searchRect);
+            var (local, bestScore, fillCount) = FindFixedFrameFromRedFill(
+                redMask, tipMask, frameW, frameH, vision, prevLocal);
+            MaybeLogBloodBarDiag(
+                redMask, tipMask, local, bestScore, fillCount,
+                searchRect, frameMat.Width, frameMat.Height);
+
+            if (!local.HasValue)
             {
-                var totalHeight = frameMat.Height;
-                var uiHeight = config.Vision.UiHeightFromBottom;
-                var cameraHeight = Math.Max(totalHeight - uiHeight, totalHeight / 2);
-                cameraOffsetY = 0;
-                cameraArea = frameMat[new OpenCvSharp.Rect(0, 0, frameMat.Width, cameraHeight)].Clone();
+                _prevBloodBarFrame = null;
+                return null;
             }
 
-            using (cameraArea)
+            var full = OffsetToFrame(searchRect, local.Value);
+            _prevBloodBarFrame = full;
+            _prevBloodBarUtc = DateTime.UtcNow;
+            return full;
+        }
+
+        private void ExpirePrevBloodBarIfStale(VisionSettings vision)
+        {
+            if (!_prevBloodBarFrame.HasValue)
+                return;
+
+            int holdMs = Math.Max(200, vision.BloodBarTrackHoldMs);
+            if ((DateTime.UtcNow - _prevBloodBarUtc).TotalMilliseconds > holdMs)
             {
-                using var hsvImage = new Mat();
-                Cv2.CvtColor(cameraArea, hsvImage, ColorConversionCodes.BGR2HSV);
-
-                using var redMask = new Mat();
-                
-                var lower1 = new Scalar(config.Vision.LowerRedHsv[0], config.Vision.LowerRedHsv[1], config.Vision.LowerRedHsv[2]);
-                var upper1 = new Scalar(config.Vision.UpperRedHsv[0], config.Vision.UpperRedHsv[1], config.Vision.UpperRedHsv[2]);
-                using var mask1 = new Mat();
-                Cv2.InRange(hsvImage, lower1, upper1, mask1);
-
-                var lower2 = new Scalar(160, config.Vision.LowerRedHsv[1], config.Vision.LowerRedHsv[2]);
-                var upper2 = new Scalar(180, 255, 255);
-                using var mask2 = new Mat();
-                Cv2.InRange(hsvImage, lower2, upper2, mask2);
-
-                Cv2.BitwiseOr(mask1, mask2, redMask);
-
-                var bestBar = FindBestRedBar(redMask, config);
-
-                return bestBar.HasValue
-                    ? new Rectangle(bestBar.Value.X, bestBar.Value.Y + cameraOffsetY,
-                                   bestBar.Value.Width, bestBar.Value.Height)
-                    : null;
+                _prevBloodBarFrame = null;
             }
         }
 
+        private static Rectangle? ToSearchLocal(Rectangle? fullFrame, Rectangle searchRect)
+        {
+            if (!fullFrame.HasValue)
+                return null;
+
+            var f = fullFrame.Value;
+            var local = new Rectangle(
+                f.X - searchRect.X,
+                f.Y - searchRect.Y,
+                f.Width,
+                f.Height);
+            var clipped = Rectangle.Intersect(
+                local,
+                new Rectangle(0, 0, searchRect.Width, searchRect.Height));
+            return clipped.Width > 0 && clipped.Height > 0 ? clipped : null;
+        }
+
+        private static void MaybeLogBloodBarDiag(
+            Mat redMask,
+            Mat tipMask,
+            Rectangle? local,
+            double bestScore,
+            int fillCandidates,
+            Rectangle searchRect,
+            int frameWidth,
+            int frameHeight)
+        {
+            var now = DateTime.UtcNow;
+            if ((now - _lastBloodBarDiagUtc).TotalSeconds < 2)
+                return;
+
+            _lastBloodBarDiagUtc = now;
+            string hit = local.HasValue
+                ? $"hit={local.Value.Width}x{local.Value.Height}@{local.Value.X},{local.Value.Y}"
+                : "hit=none";
+            Logger.Info(
+                $"[血條外框] 畫面={frameWidth}x{frameHeight} ROI={searchRect.X},{searchRect.Y} " +
+                $"{searchRect.Width}x{searchRect.Height} " +
+                $"red={Cv2.CountNonZero(redMask)} tip={Cv2.CountNonZero(tipMask)} " +
+                $"fills={fillCandidates} score={bestScore:F3} {hit}");
+        }
+
         /// <summary>
-        /// 完整的血條檢測處理（一次性計算所有相關資訊）
-        /// 檢測血條並同時計算檢測框和攻擊範圍框
+        /// 嚴格 HP 紅（高 R、低 G/B）。排除泥土棕紅，大幅降低誤判。
         /// </summary>
-        /// <param name="frameMat">輸入畫面 Mat</param>
-        /// <param name="uiExcludeRect">UI 排除區域（可選）</param>
-        /// <returns>包含血條、檢測框列表和攻擊範圍框列表的元組</returns>
+        private static Mat BuildStrictHpRedMask(Mat bgrMat)
+        {
+            var mask = new Mat();
+            // BGR：B&G 低、R 高
+            Cv2.InRange(bgrMat, new Scalar(0, 0, 170), new Scalar(100, 100, 255), mask);
+            return mask;
+        }
+
+        /// <summary>端點近白遮罩（驗證外框左右括號用）。</summary>
+        private static Mat BuildFrameTipMask(Mat bgrMat, VisionSettings vision)
+        {
+            using var hsv = new Mat();
+            Cv2.CvtColor(bgrMat, hsv, ColorConversionCodes.BGR2HSV);
+
+            int vMin = Math.Clamp(vision.BloodBarFrameTipMinBgr, 0, 255);
+            var tip = new Mat();
+            Cv2.InRange(hsv, new Scalar(0, 0, vMin), new Scalar(180, 90, 255), tip);
+            return tip;
+        }
+
+        /// <summary>
+        /// 紅填充 blob → 對齊固定外框 → 驗證左右端點；靠近上一幀位置加分。
+        /// </summary>
+        private static (Rectangle? Rect, double BestScore, int FillCount) FindFixedFrameFromRedFill(
+            Mat redMask,
+            Mat tipMask,
+            int frameW,
+            int frameH,
+            VisionSettings vision,
+            Rectangle? prevLocal)
+        {
+            Cv2.FindContours(
+                redMask,
+                out OpenCvSharp.Point[][] contours,
+                out _,
+                RetrievalModes.External,
+                ContourApproximationModes.ApproxSimple);
+
+            using var tipIntegral = new Mat();
+            Cv2.Integral(tipMask, tipIntegral, MatType.CV_32SC1);
+            using var redIntegral = new Mat();
+            Cv2.Integral(redMask, redIntegral, MatType.CV_32SC1);
+
+            int tipStrip = Math.Clamp(frameW / 16, 2, 4);
+            double minTipSide = Math.Clamp(vision.BloodBarFrameTipMinSide, 0.05, 0.8);
+            double minInteriorRed = Math.Clamp(vision.BloodBarFrameMinInteriorRed, 0.05, 0.95);
+            double bandSide = tipStrip * frameH * 255.0;
+            double frameArea = frameW * frameH * 255.0;
+            double trackRadius = Math.Max(8, vision.BloodBarTrackRadiusPx);
+            double trackWeight = Math.Clamp(vision.BloodBarTrackWeight, 0, 1);
+            double minAcceptScore = Math.Clamp(vision.BloodBarFrameMinAcceptScore, 0.05, 2.0);
+            double maxInteriorTip = Math.Clamp(vision.BloodBarFrameMaxInteriorTip, 0.02, 0.8);
+            double minFillAspect = Math.Clamp(vision.BloodBarFrameMinFillAspect, 1.5, 20.0);
+
+            // 高度貼近固定外框，擋稱號／圖示那種偏高紅塊
+            int minFillH = Math.Max(2, frameH - 2);
+            int maxFillH = frameH + 1;
+            int minFillW = Math.Clamp(vision.BloodBarFrameMinFillWidth, 3, frameW);
+            int maxFillW = frameW + 2;
+
+            double bestScore = 0;
+            Rectangle? best = null;
+            int fillCount = 0;
+
+            // 先試上一幀位置（人物微移時低血仍黏住）；同樣走嚴格閘門
+            if (prevLocal.HasValue)
+            {
+                var sticky = ClampRectToBounds(
+                    new Rectangle(prevLocal.Value.X, prevLocal.Value.Y, frameW, frameH),
+                    redMask.Width,
+                    redMask.Height);
+                if (TryScoreFrameCandidate(
+                        sticky, tipIntegral, redIntegral, tipStrip, bandSide, frameArea,
+                        minTipSide, minInteriorRed, maxInteriorTip,
+                        prevLocal, trackRadius, trackWeight,
+                        out double stickyScore))
+                {
+                    bestScore = stickyScore + 0.05;
+                    best = sticky;
+                }
+            }
+
+            if (contours != null && contours.Length > 0)
+            {
+                foreach (var contour in contours)
+                {
+                    if (contour == null || contour.Length < 3)
+                        continue;
+
+                    var br = Cv2.BoundingRect(contour);
+                    if (br.Width < minFillW || br.Width > maxFillW ||
+                        br.Height < minFillH || br.Height > maxFillH)
+                        continue;
+
+                    // 活動 ICON 紅塊偏方；真血條填充必須是橫長條
+                    double aspect = br.Width / (double)Math.Max(1, br.Height);
+                    if (aspect < minFillAspect)
+                        continue;
+
+                    fillCount++;
+
+                    int frameX = Math.Max(0, br.X - 1);
+                    int frameY = br.Y + (br.Height - frameH) / 2;
+                    var frame = ClampRectToBounds(
+                        new Rectangle(frameX, frameY, frameW, frameH),
+                        redMask.Width,
+                        redMask.Height);
+                    if (frame.Width < frameW * 0.9 || frame.Height < frameH * 0.9)
+                        continue;
+
+                    if (!TryScoreFrameCandidate(
+                            frame, tipIntegral, redIntegral, tipStrip, bandSide, frameArea,
+                            minTipSide, minInteriorRed, maxInteriorTip,
+                            prevLocal, trackRadius, trackWeight,
+                            out double score))
+                        continue;
+
+                    if (score <= bestScore)
+                        continue;
+
+                    bestScore = score;
+                    best = frame;
+                }
+            }
+
+            // 不夠像就當沒有，避免垃圾候選仍回傳最高分
+            if (!best.HasValue || bestScore < minAcceptScore)
+                return (null, bestScore, fillCount);
+
+            return (best, bestScore, fillCount);
+        }
+
+        private static bool TryScoreFrameCandidate(
+            Rectangle frame,
+            Mat tipIntegral,
+            Mat redIntegral,
+            int tipStrip,
+            double bandSide,
+            double frameArea,
+            double minTipSide,
+            double minInteriorRed,
+            double maxInteriorTip,
+            Rectangle? prevLocal,
+            double trackRadius,
+            double trackWeight,
+            out double score)
+        {
+            score = 0;
+            double redIn = IntegralRectSum(
+                redIntegral, frame.X, frame.Y, frame.Width, frame.Height) / frameArea;
+            if (redIn < minInteriorRed)
+                return false;
+
+            double tipLeft = IntegralRectSum(
+                tipIntegral, frame.X, frame.Y, tipStrip, frame.Height) / bandSide;
+            double tipRight = IntegralRectSum(
+                tipIntegral, frame.X + frame.Width - tipStrip, frame.Y, tipStrip, frame.Height)
+                / bandSide;
+
+            // 真實外框左右括號都在；單側近白不足以過關
+            if (tipLeft < minTipSide || tipRight < minTipSide)
+                return false;
+
+            // 中段不該滿是亮邊（活動 ICON／圓徽常見）；真血條中段是紅或空槽
+            int innerW = Math.Max(1, frame.Width - 2 * tipStrip);
+            double interiorTip = IntegralRectSum(
+                tipIntegral, frame.X + tipStrip, frame.Y, innerW, frame.Height)
+                / (innerW * frame.Height * 255.0);
+            if (interiorTip > maxInteriorTip)
+                return false;
+
+            double tipScore = 0.5 * (tipLeft + tipRight);
+            score = 0.50 * Math.Min(1.0, redIn / 0.35) + 0.50 * tipScore;
+            score += ComputeTrackBonus(frame, prevLocal, trackRadius, trackWeight);
+            return true;
+        }
+
+        private static double ComputeTrackBonus(
+            Rectangle frame,
+            Rectangle? prevLocal,
+            double trackRadius,
+            double trackWeight)
+        {
+            if (!prevLocal.HasValue || trackWeight <= 0 || trackRadius <= 0)
+                return 0;
+
+            double cx = frame.X + frame.Width * 0.5;
+            double cy = frame.Y + frame.Height * 0.5;
+            double px = prevLocal.Value.X + prevLocal.Value.Width * 0.5;
+            double py = prevLocal.Value.Y + prevLocal.Value.Height * 0.5;
+            double dist = Math.Sqrt((cx - px) * (cx - px) + (cy - py) * (cy - py));
+            if (dist >= trackRadius)
+                return 0;
+
+            return trackWeight * (1.0 - dist / trackRadius);
+        }
+
+        private static int IntegralRectSum(Mat integral, int x, int y, int width, int height)
+        {
+            int x2 = x + width;
+            int y2 = y + height;
+            return integral.Get<int>(y2, x2)
+                - integral.Get<int>(y, x2)
+                - integral.Get<int>(y2, x)
+                + integral.Get<int>(y, x);
+        }
+
+        private static Rectangle ClampRectToBounds(Rectangle rect, int boundsW, int boundsH)
+        {
+            int x = Math.Clamp(rect.X, 0, Math.Max(0, boundsW - 1));
+            int y = Math.Clamp(rect.Y, 0, Math.Max(0, boundsH - 1));
+            int w = Math.Clamp(rect.Width, 1, boundsW - x);
+            int h = Math.Clamp(rect.Height, 1, boundsH - y);
+            return new Rectangle(x, y, w, h);
+        }
+
+        private static Rectangle OffsetToFrame(Rectangle searchRect, Rectangle local) =>
+            new(searchRect.X + local.X, searchRect.Y + local.Y, local.Width, local.Height);
+
+        /// <summary>
+        /// 血條搜尋要排除的左上角落：從畫面 (0,0) 延伸到小地圖右緣／下緣。
+        /// 用整塊角落而非只挖小地圖本體：洋紅框呈 L 形、且隨小地圖尺寸自動伸縮。
+        /// 優先用實際偵測框（青色）；未偵測到時退回百分比搜尋 ROI。停用則回傳空。
+        /// </summary>
+        internal static Rectangle ResolveMinimapExclusion(
+            Rectangle? detectedMinimap,
+            int frameWidth,
+            int frameHeight,
+            VisionSettings vision)
+        {
+            if (!vision.ExcludeMinimapRoiFromBloodBar)
+                return Rectangle.Empty;
+
+            Rectangle basis;
+            if (detectedMinimap is { Width: > 0, Height: > 0 } box)
+                basis = box;
+            else if (vision.UseMinimapSearchRoi)
+                basis = ResolveMinimapSearchRect(frameWidth, frameHeight, vision);
+            else
+                return Rectangle.Empty;
+
+            return Rectangle.FromLTRB(0, 0, basis.Right, basis.Bottom);
+        }
+
+        private static void MaskOutMinimapRegion(
+            Mat mask,
+            Rectangle searchRect,
+            Rectangle minimapExclude)
+        {
+            if (minimapExclude.Width <= 0 || minimapExclude.Height <= 0)
+                return;
+
+            var local = Rectangle.Intersect(minimapExclude, searchRect);
+            if (local.Width <= 0 || local.Height <= 0)
+                return;
+
+            Cv2.Rectangle(
+                mask,
+                new OpenCvSharp.Rect(
+                    local.X - searchRect.X,
+                    local.Y - searchRect.Y,
+                    local.Width,
+                    local.Height),
+                Scalar.All(0),
+                -1);
+        }
+
+        /// <summary>
+        /// 可玩區（全畫面扣除底部 UI）。底部排除以畫面高度百分比計算，跨解析度一致。
+        /// </summary>
+        internal static Rectangle ResolveBloodBarSearchRect(
+            int frameWidth,
+            int frameHeight,
+            VisionSettings settings,
+            Rectangle? uiExcludeRect = null)
+        {
+            if (frameWidth <= 0 || frameHeight <= 0)
+                return Rectangle.Empty;
+
+            double pct = Math.Clamp(settings.BloodBarBottomUiPercent, 0.0, 0.9);
+            int bottomUiTop = uiExcludeRect?.Y
+                ?? (frameHeight - (int)(frameHeight * pct));
+
+            return new Rectangle(0, 0, frameWidth, Math.Clamp(bottomUiTop, 1, frameHeight));
+        }
+
+        /// <summary>
+        /// 血條搜尋區。鎖定→上一幀鄰域（padding = max(外框寬, 追蹤半徑)）；冷啟→整個可玩區。
+        /// 小地圖不在此扣除（於遮罩階段挖空）；下方 UI 已由可玩區高度排除。
+        /// </summary>
+        internal static Rectangle ResolveBloodBarDetectSearchRect(
+            int frameWidth,
+            int frameHeight,
+            VisionSettings settings,
+            Rectangle? prevBloodBar,
+            Rectangle? uiExcludeRect = null)
+        {
+            var playfield = ResolveBloodBarSearchRect(
+                frameWidth, frameHeight, settings, uiExcludeRect);
+            if (playfield.IsEmpty)
+                return playfield;
+
+            if (prevBloodBar is { Width: > 0, Height: > 0 } prev)
+            {
+                int pad = Math.Max(settings.BloodBarFrameWidth, settings.BloodBarTrackRadiusPx);
+                var tracked = Rectangle.Inflate(prev, pad, pad);
+                var clipped = Rectangle.Intersect(tracked, playfield);
+                if (!clipped.IsEmpty)
+                    return clipped;
+            }
+
+            return playfield;
+        }
+
+        /// <summary>完整的血條檢測：外框 → 偵測框＋攻擊範圍。</summary>
         public (Rectangle? BloodBar, List<Rectangle> DetectionBoxes, List<Rectangle> AttackRangeBoxes)
-            ProcessBloodBarDetection(Mat frameMat, Rectangle? uiExcludeRect)
+            ProcessBloodBarDetection(
+                Mat frameMat,
+                Rectangle? uiExcludeRect,
+                bool hasMinimapSelfMarker = false,
+                Rectangle? minimapExcludeRect = null)
         {
             var config = AppConfig.Instance;
-            var bloodBar = DetectBloodBar(frameMat, uiExcludeRect, config, out _);
+            var bloodBar = DetectBloodBar(
+                frameMat,
+                config,
+                new BloodBarSearchRequest(
+                    HasMinimapSelfMarker: hasMinimapSelfMarker,
+                    MinimapExcludeRect: minimapExcludeRect,
+                    UiExcludeRect: uiExcludeRect));
 
             if (bloodBar.HasValue)
             {
@@ -103,15 +498,7 @@ namespace ArtaleAI.Vision
             return (null, new List<Rectangle>(), new List<Rectangle>());
         }
 
-
-        /// <summary>
-        /// 計算血條相關的所有框架（檢測框 + 攻擊範圍框）
-        /// 根據血條位置計算怪物檢測區域和角色攻擊範圍
-        /// </summary>
-        /// <param name="bloodBarRect">血條矩形區域</param>
-        /// <param name="config">應用程式設定</param>
-        /// <returns>包含檢測框列表和攻擊範圍框列表的元組</returns>
-        public (List<Rectangle> DetectionBoxes, List<Rectangle> AttackRangeBoxes)
+        private (List<Rectangle> DetectionBoxes, List<Rectangle> AttackRangeBoxes)
             CalculateBloodBarRelatedBoxes(Rectangle bloodBarRect, AppConfig config)
         {
             var dotCenterX = bloodBarRect.X + bloodBarRect.Width / 2;
@@ -138,77 +525,6 @@ namespace ArtaleAI.Vision
                 new List<Rectangle> { detectionBox },
                 new List<Rectangle> { attackRangeBox }
             );
-        }
-
-        #endregion
-        #region 私有輔助方法 - 血條相關
-
-        /// <summary>
-        /// 從紅色遮罩中找出最佳的血條候選
-        /// 使用輪廓檢測和多重條件篩選找出最符合血條特徵的矩形
-        /// </summary>
-        /// <param name="redMask">紅色二值化遮罩</param>
-        /// <param name="config">應用程式設定（包含血條尺寸限制）</param>
-        /// <returns>最佳血條矩形，未找到時返回 null</returns>
-        private Rectangle? FindBestRedBar(Mat redMask, AppConfig config)
-        {
-            Mat? hierarchy = null;
-            Mat[]? contours = null;
-
-            try
-            {
-                hierarchy = new Mat();
-                Cv2.FindContours(redMask, out contours, hierarchy,
-                    RetrievalModes.External, ContourApproximationModes.ApproxSimple);
-
-                var candidates = new List<(Rectangle rect, int area)>();
-
-                for (int i = 0; i < contours.Length; i++)
-                {
-                    var contour = contours[i];
-                    if (contour?.Empty() != false) continue;
-
-                    try
-                    {
-                        var boundingRect = Cv2.BoundingRect(contour);
-                        var rect = new Rectangle(boundingRect.X, boundingRect.Y,
-                            boundingRect.Width, boundingRect.Height);
-
-                        var width = rect.Width;
-                        var height = rect.Height;
-                        var area = width * height;
-
-                        if (width >= config.Vision.MinBarWidth &&
-                            width <= config.Vision.MaxBarWidth &&
-                            height >= config.Vision.MinBarHeight &&
-                            height <= config.Vision.MaxBarHeight &&
-                            area >= config.Vision.MinBarArea)
-                        {
-                            candidates.Add((rect, area));
-                        }
-                    }
-                    finally
-                    {
-                        contour?.Dispose();
-                    }
-                }
-
-                if (candidates.Count == 0) return null;
-
-                var bestCandidate = candidates.OrderByDescending(c => c.area).First();
-                return bestCandidate.rect;
-            }
-            finally
-            {
-                hierarchy?.Dispose();
-                if (contours != null)
-                {
-                    foreach (var contour in contours)
-                    {
-                        contour?.Dispose();
-                    }
-                }
-            }
         }
 
         #endregion

@@ -32,9 +32,6 @@ namespace ArtaleAI.Infrastructure.Persistence
         /// <summary>是否有已載入的地圖檔案</summary>
         public bool HasCurrentMap => !string.IsNullOrEmpty(_currentMapFilePath);
 
-        /// <summary>繩索資料提供者（儲存時合併自動偵測的繩索）</summary>
-        public Func<List<float[]>>? RopeDataProvider { get; set; }
-
         /// <summary>取得當前地圖檔案名稱（不含路徑）</summary>
         public string? CurrentMapFileName => HasCurrentMap ? Path.GetFileName(_currentMapFilePath) : null;
 
@@ -111,7 +108,6 @@ namespace ArtaleAI.Infrastructure.Persistence
                 if (HasCurrentMap)
                 {
                     var currentMapData = _mapEditor.GetCurrentMapData();
-                    MergeDetectedRopes(currentMapData);
                     if (!TryValidateMapIntegrity(currentMapData, out var validationErrors))
                     {
                         ErrorMessage?.Invoke(BuildValidationErrorMessage(validationErrors));
@@ -139,7 +135,6 @@ namespace ArtaleAI.Infrastructure.Persistence
             try
             {
                 var currentMapData = _mapEditor.GetCurrentMapData();
-                MergeDetectedRopes(currentMapData);
                 if (!TryValidateMapIntegrity(currentMapData, out var validationErrors))
                 {
                     ErrorMessage?.Invoke(BuildValidationErrorMessage(validationErrors));
@@ -174,24 +169,6 @@ namespace ArtaleAI.Infrastructure.Persistence
             catch (Exception ex)
             {
                 ErrorMessage?.Invoke($"建立新地圖時發生錯誤: {ex.Message}");
-            }
-        }
-
-        private void MergeDetectedRopes(ArtaleAI.Models.Map.MapData mapData)
-        {
-            if (RopeDataProvider == null) return;
-
-            var detectedRopes = RopeDataProvider();
-            if (detectedRopes == null || detectedRopes.Count == 0) return;
-
-            foreach (var rope in detectedRopes)
-            {
-                if (!mapData.Ropes.Any(existing =>
-                    Math.Abs(existing[0] - rope[0]) < 3 &&
-                    Math.Abs(existing[1] - rope[1]) < 3))
-                {
-                    mapData.Ropes.Add(rope);
-                }
             }
         }
 

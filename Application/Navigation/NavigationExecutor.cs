@@ -38,8 +38,6 @@ namespace ArtaleAI.Application.Navigation
         public enum ExecutionResult
         {
             Completed,
-            MovedToward,
-            Skipped,
             Failed,
             Error
         }

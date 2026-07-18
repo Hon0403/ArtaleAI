@@ -19,8 +19,6 @@ namespace ArtaleAI.Domain.Navigation
         private readonly Dictionary<string, NavigationNode> _nodes = new Dictionary<string, NavigationNode>();
         private readonly Dictionary<string, List<NavigationEdge>> _adjacencyList = new Dictionary<string, List<NavigationEdge>>();
 
-        public string MapId { get; set; } = string.Empty;
-        public string MapName { get; set; } = string.Empty;
         public PlatformGeometryIndex PlatformGeometry { get; private set; } = PlatformGeometryIndex.Empty;
 
         /// <summary>由 <see cref="MapData"/> 建圖並套用繩索 H 拓撲。</summary>

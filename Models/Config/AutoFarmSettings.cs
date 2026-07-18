@@ -137,6 +137,25 @@ namespace ArtaleAI.Models.Config
         /// </summary>
         public List<string> InterruptDismissTemplates { get; set; } = [];
 
+        /// <summary>
+        /// 隊伍血條缺失時的重建參數（無使用者開關：自動打怪開啟即持續監測）。
+        /// 沒有隊伍血條就沒有攻擊框，重建是硬前置條件。
+        /// </summary>
+        public string PartyWindowHotkey { get; set; } = "P";
+
+        /// <summary>隊伍視窗「新建」鈕模板（相對 ContentRoot）。</summary>
+        public string PartyCreateTemplate { get; set; } =
+            "templates/MainScreen/party_create_button.png";
+
+        /// <summary>血條連續消失超過此毫秒才視為未組隊（避免瞬間遮擋誤判）。</summary>
+        public int PartyHpBarLostMs { get; set; } = 4000;
+
+        /// <summary>兩次重建狀態機的最短間隔（毫秒）。</summary>
+        public int PartyRecoveryCooldownMs { get; set; } = 10000;
+
+        /// <summary>「新建」鈕模板匹配閾值。</summary>
+        public double PartyCreateMatchThreshold { get; set; } = 0.72;
+
         private static List<BuffSkillEntry> CreateDefaultBuffSkills() =>
         [
             new() { Enabled = false, Hotkey = "F1", IntervalSeconds = 180 },

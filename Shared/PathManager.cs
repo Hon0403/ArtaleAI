@@ -17,9 +17,6 @@ namespace ArtaleAI.Shared
         /// <summary>怪物模板根目錄（與 csproj <c>templates/monsters</c> 一致）。</summary>
         public static string MonstersDirectory => Path.Combine(ContentRoot, "templates", "monsters");
 
-        /// <summary>靜態模板根目錄（小地圖角點等）。</summary>
-        public static string TemplatesDirectory => Path.Combine(ContentRoot, "templates");
-
         /// <summary>YAML 組態檔完整路徑。</summary>
         public static string ConfigFilePath => Path.Combine(ContentRoot, "Data", "config.yaml");
 

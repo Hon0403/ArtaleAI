@@ -24,6 +24,9 @@ namespace ArtaleAI.Application.Console
         public string? AttackStatusHint { get; init; }
         /// <summary>遇人換頻／退避短提示；無則 null。</summary>
         public string? OtherPlayerAvoidanceHint { get; init; }
+        /// <summary>隊伍重建短提示；無則 null。</summary>
+        public string? PartyRecoveryHint { get; init; }
+        public bool IsRecoveringParty { get; init; }
         public bool PathRunning { get; init; }
         public int WaypointIndex { get; init; }
         public int WaypointTotal { get; init; }

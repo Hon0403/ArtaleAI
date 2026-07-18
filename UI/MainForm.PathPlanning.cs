@@ -294,12 +294,20 @@ namespace ArtaleAI
                 }
                 else
                 {
+                    // 熄火順序有意義：
+                    // 1) 先熄 Pipeline 決策旗標，阻止本幀後再發動攻擊／導航／休息。
+                    // 2) 中斷在途導航飛行（取消 CTS），讓 MoveToTarget 迴圈跳出、停止每幀搶焦點。
+                    // 3) 再鬆開任何按住的方向鍵，確保角色即刻定住。
+                    _gamePipeline?.StopAutoFarmImmediately();
+                    _fsm?.CancelNavigation("使用者關閉自動打怪");
+                    _movementController?.StopMovement();
+
                     if (_pathPlanningManager != null && _pathPlanningManager.IsRunning)
                     {
                         await _pathPlanningManager.StopAsync();
-                        MsgLog.ShowStatus(textBox1, "路徑規劃已停止");
                     }
 
+                    MsgLog.ShowStatus(textBox1, "自動打怪已停止");
                     SyncClientSizeGuardTimer();
                 }
 

@@ -42,11 +42,6 @@ namespace ArtaleAI.Application.Movement
         [DllImport("user32.dll", SetLastError = true)]
         private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
-        [DllImport("kernel32.dll")]
-        private static extern uint GetLastError();
-
-
-
         [DllImport("user32.dll")]
         private static extern IntPtr FindWindow(string? lpClassName, string lpWindowName);
 
@@ -144,7 +139,6 @@ namespace ArtaleAI.Application.Movement
 
         private const uint INPUT_KEYBOARD = 1;
         private const uint KEYEVENTF_KEYUP = 0x0002;
-        private const uint KEYEVENTF_SCANCODE = 0x0008;
 
         private const ushort VK_UP = 0x26;      
         private const ushort VK_DOWN = 0x28;    
@@ -692,23 +686,6 @@ namespace ArtaleAI.Application.Movement
                     }
                 }
             };
-
-        /// <summary>假設傳入已是客戶區座標（擷取尺寸＝客戶區）。</summary>
-        public bool ClickClientPoint(int clientX, int clientY)
-        {
-            if (string.IsNullOrEmpty(_gameWindowTitle))
-                return false;
-
-            IntPtr hwnd = FindWindow(null, _gameWindowTitle);
-            if (hwnd == IntPtr.Zero || !GetClientRect(hwnd, out RECT clientRect))
-                return false;
-
-            int clientWidth = Math.Max(1, clientRect.Right - clientRect.Left);
-            int clientHeight = Math.Max(1, clientRect.Bottom - clientRect.Top);
-            return ClickCapturePointAsync(clientX, clientY, clientWidth, clientHeight)
-                .GetAwaiter()
-                .GetResult();
-        }
 
         private const ushort VK_CONTROL = 0x11;
         private const ushort VK_MENU = 0x12;

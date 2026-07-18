@@ -13,8 +13,6 @@ namespace ArtaleAI.Vision.Detectors
     {
         private bool _disposed;
 
-        public string Name => "PlayerVitalsDetector";
-
         public static PlayerVitalsSnapshot ResolveLayout(
             int frameWidth,
             int frameHeight,
@@ -25,7 +23,6 @@ namespace ArtaleAI.Vision.Detectors
                 return PlayerVitalsSnapshot.Empty;
 
             var uiBand = ResolveUiBand(frameWidth, frameHeight, settings.UiBandTopPercent);
-            bool usesAuto = false;
             SdRect hpRect;
             SdRect mpRect;
 
@@ -36,7 +33,6 @@ namespace ArtaleAI.Vision.Detectors
             {
                 hpRect = ResolveBarRect(frameWidth, frameHeight, hpAnchor);
                 mpRect = ResolveBarRect(frameWidth, frameHeight, mpAnchor);
-                usesAuto = true;
             }
             else
             {
@@ -62,9 +58,7 @@ namespace ArtaleAI.Vision.Detectors
                 FrameWidth = frameWidth,
                 FrameHeight = frameHeight,
                 IsLayoutValid = layoutValid,
-                UsesAutoLayout = usesAuto,
-                HasFillReading = false,
-                Timestamp = DateTime.UtcNow
+                HasFillReading = false
             };
         }
 
@@ -90,8 +84,7 @@ namespace ArtaleAI.Vision.Detectors
                 {
                     HpRatio = ClampRatio(hpRatio),
                     MpRatio = ClampRatio(mpRatio),
-                    HasFillReading = true,
-                    Timestamp = DateTime.UtcNow
+                    HasFillReading = true
                 };
             }
             catch (Exception ex)

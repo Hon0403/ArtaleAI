@@ -271,9 +271,9 @@ namespace ArtaleAI
                         _gamePipeline.AutoAttackEnabled = _autoAttackEnabled;
                         _gamePipeline.AutoHealEnabled = ckB_Start.Checked;
                         _gamePipeline.AutoBuffEnabled = ckB_Start.Checked;
+                        _gamePipeline.PartyRecoveryEnabled = ckB_Start.Checked;
                         _gamePipeline.OtherPlayerAvoidanceEnabled =
                             ckB_Start.Checked && chk_ChangeChannelOnOtherPlayers.Checked;
-                        _gamePipeline.SelectedMonsterName = _monsterTemplates?.SelectedMonsterNamesDisplay ?? string.Empty;
 
                         _gamePipeline.ProcessFrame(frameMat, captureTime, config);
 
@@ -674,7 +674,6 @@ namespace ArtaleAI
                     pathData.WaypointPaths = platformNodes
                         .Select(n => new WaypointWithPriority(
                             new SdPointF(n.Position.X, n.Position.Y),
-                            0f,
                             false,
                             _pathPlanningManager?.Tracker?.CurrentTarget?.Position.X == n.Position.X && _pathPlanningManager?.Tracker?.CurrentTarget?.Position.Y == n.Position.Y))
                         .ToList();
@@ -683,7 +682,7 @@ namespace ArtaleAI
                     if (mapRopeSegs != null && mapRopeSegs.Count > 0)
                     {
                         pathData.Ropes = mapRopeSegs
-                            .Select(s => new RopeWithAccessibility(s.X, s.TopY, s.BottomY, 0f, false, false))
+                            .Select(s => new RopeWithAccessibility(s.X, s.TopY, s.BottomY, false))
                             .ToList();
                     }
                     else
@@ -693,8 +692,6 @@ namespace ArtaleAI
                                 n.Position.X,
                                 n.Position.Y - 50,
                                 n.Position.Y + 50,
-                                0f,
-                                false,
                                 false))
                             .ToList();
                     }
@@ -737,19 +734,7 @@ namespace ArtaleAI
 
                 var currentEdge = tracker?.CurrentNavigationEdge;
                 if (currentEdge != null)
-                {
                     pathData.CurrentAction = currentEdge.ActionType.ToString();
-                    bool isClimbEdge = currentEdge.ActionType is NavigationActionType.ClimbUp
-                        or NavigationActionType.ClimbDown;
-                    if (isClimbEdge)
-                    {
-                        if (NavigationRopeHelper.TryExtractRopeX(currentEdge, out float ropeX))
-                        {
-                            pathData.RopeAlignCenterX = ropeX;
-                            pathData.RopeAlignTolerance = 1.0f;
-                        }
-                    }
-                }
                 return pathData;
             }
             catch (Exception ex)

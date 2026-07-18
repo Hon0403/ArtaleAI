@@ -50,8 +50,9 @@ namespace ArtaleAI.Application.Pipeline
         private readonly OtherPlayerAvoidanceCoordinator _otherPlayerAvoidance = new();
         private readonly ChangeChannelSequence _changeChannelSequence = new();
         private readonly FarmUiInterruptCoordinator _farmUiInterrupt = new();
-        private readonly object _changeChannelFrameLock = new();
-        private Mat? _changeChannelFrameCache;
+        private readonly PartyHpBarRecoveryCoordinator _partyRecovery = new();
+        private readonly object _uiAutomationFrameLock = new();
+        private Mat? _uiAutomationFrameCache;
         private int _changeChannelInFlight;
         private DateTime _lastBloodBarDetection = DateTime.MinValue;
         private DateTime _lastPlayerVitalsDetection = DateTime.MinValue;
@@ -120,11 +121,14 @@ namespace ArtaleAI.Application.Pipeline
         /// <summary>遇人換頻／退避：勾選自動打怪且設定開啟時生效。</summary>
         public volatile bool OtherPlayerAvoidanceEnabled;
 
+        /// <summary>
+        /// 隊伍血條守門／重建：主控台勾選「開始」即持續監測。
+        /// 與 AutoAttackEnabled 解耦——血條是攻擊前置，不應被路徑／怪物選擇綁住。
+        /// </summary>
+        public volatile bool PartyRecoveryEnabled;
+
         /// <summary>執行期啟用的怪物模板 catalog（與 <see cref="MonsterTemplateStore.Catalog"/> 共用參考）。</summary>
         public MonsterDetectionCatalog MonsterCatalog { get; set; } = new();
-
-        /// <summary>已選擇的怪物名稱摘要（多選以頓號連接）。</summary>
-        public string SelectedMonsterName { get; set; } = string.Empty;
 
         /// <summary>幀驅動同步：視覺處理完成旗標</summary>
         public bool VisionDataReady
@@ -132,9 +136,6 @@ namespace ArtaleAI.Application.Pipeline
             get => _visionDataReady;
             set => _visionDataReady = value;
         }
-
-        /// <summary>攻擊中狀態（供外部查詢）</summary>
-        public bool IsAttacking => _isAttacking;
 
         /// <summary>防偵測休息流程中（前往休息點或倒數中，攻擊皆暫停）。</summary>
         public bool IsResting => _restPhase != RestPhaseNone;
@@ -145,6 +146,9 @@ namespace ArtaleAI.Application.Pipeline
         /// <summary>小地圖遇人退避中。</summary>
         public bool IsAvoidingOtherPlayers => _otherPlayerAvoidance.IsAvoiding;
 
+        /// <summary>隊伍血條重建序列進行中。</summary>
+        public bool IsRecoveringParty => _partyRecovery.IsRecovering;
+
         /// <summary>
         /// 攻擊／小休倒數／遇人退避／換頻／打怪清窗期間，導航 Walk 應讓出鍵盤。
         /// SeekingRest 不在此列：前往休息點必須靠導航輸入。
@@ -154,6 +158,7 @@ namespace ArtaleAI.Application.Pipeline
             || _isAttacking
             || _otherPlayerAvoidance.IsAvoiding
             || _farmUiInterrupt.IsDismissing
+            || _partyRecovery.IsRecovering
             || Volatile.Read(ref _attackInputLease) > 0
             || Volatile.Read(ref _changeChannelInFlight) != 0;
 
@@ -227,8 +232,13 @@ namespace ArtaleAI.Application.Pipeline
                 var now = DateTime.UtcNow;
                 double captureLagMs = (now - captureTime).TotalMilliseconds;
 
-                if (OtherPlayerAvoidanceEnabled || Volatile.Read(ref _changeChannelInFlight) != 0)
-                    CacheFrameForChangeChannel(frameMat);
+                // 監測開啟即持續快取幀：換頻／隊伍重建狀態機都靠最新畫面辨識。
+                if (AutoAttackEnabled
+                    || PartyRecoveryEnabled
+                    || OtherPlayerAvoidanceEnabled
+                    || Volatile.Read(ref _changeChannelInFlight) != 0
+                    || _partyRecovery.IsRecovering)
+                    CacheFrameForUiAutomation(frameMat);
 
                 MinimapTrackingResult? trackingResult = null;
                 List<SdRect> minimapBoxes;
@@ -257,7 +267,10 @@ namespace ArtaleAI.Application.Pipeline
                     ProcessAntiDetectRest(config, now);
 
                 bool attackTriggered = false;
-                if (AutoAttackEnabled && _restPhase == RestPhaseNone && !_otherPlayerAvoidance.IsAvoiding)
+                if (AutoAttackEnabled
+                    && _restPhase == RestPhaseNone
+                    && !_otherPlayerAvoidance.IsAvoiding
+                    && !_partyRecovery.IsRecovering)
                     attackTriggered = ProcessAutoAttackDecision();
 
                 if (!attackTriggered)
@@ -268,13 +281,17 @@ namespace ArtaleAI.Application.Pipeline
 
                 double msAfterPathAttack = sw.Elapsed.TotalMilliseconds;
 
-                ProcessBloodBarDetection(frameMat, config, now);
+                ProcessBloodBarDetection(frameMat, config, now, trackingResult);
                 ProcessPlayerVitalsDetection(frameMat, config, now);
+
+                // 隊伍血條是攻擊框前置：主控台開始即持續監測，不等路徑／怪物就緒。
+                if (PartyRecoveryEnabled)
+                    TryRecoverPartyHpBar(trackingResult, config, now);
 
                 if (AutoHealEnabled)
                     ProcessAutoHeal(config, now);
 
-                if (AutoBuffEnabled && !_otherPlayerAvoidance.IsAvoiding)
+                if (AutoBuffEnabled && !_otherPlayerAvoidance.IsAvoiding && !_partyRecovery.IsRecovering)
                     ProcessBuffSkills(config, now);
 
                 double msAfterBlood = sw.Elapsed.TotalMilliseconds;
@@ -504,6 +521,27 @@ namespace ArtaleAI.Application.Pipeline
         }
 
         /// <summary>
+        /// UI 關閉自動打怪的單一熄火入口：一次熄掉所有工作階段旗標、清休息狀態與 ForcedGoal，
+        /// 並鬆開方向鍵。避免鬆勾後角色仍靠殘留狀態續走／續打。
+        /// 導航飛行 (Walk/Jump/Climb) 的中斷由呼叫端的 FSM.CancelNavigation 負責。
+        /// </summary>
+        public void StopAutoFarmImmediately()
+        {
+            AutoAttackEnabled = false;
+            AutoHealEnabled = false;
+            AutoBuffEnabled = false;
+            OtherPlayerAvoidanceEnabled = false;
+            PartyRecoveryEnabled = false;
+
+            _lastAutoAttackEnabled = false;
+            _nextRestDueUtc = DateTime.MinValue;
+            _nextRestSeekRetryUtc = DateTime.MinValue;
+            CancelRestFlow();
+
+            _movementController?.StopMovement();
+        }
+
+        /// <summary>
         /// 休息到期：選最近可達的安全折點或繩索並注入強制目標。
         /// 選不到可達點時不進入 Resting，節流後重試（持續尋路直到到達）。
         /// </summary>
@@ -581,6 +619,10 @@ namespace ArtaleAI.Application.Pipeline
             AppConfig config,
             DateTime now)
         {
+            // 隊伍重建整段佔用鍵盤／畫面；換頻 Esc 會把建隊流程打掉。
+            if (_partyRecovery.IsRecovering)
+                return;
+
             int otherCount = trackingResult?.OtherPlayers?.Count ?? 0;
             bool justTriggered = _otherPlayerAvoidance.TryUpdate(
                 config.AutoFarm,
@@ -595,7 +637,7 @@ namespace ArtaleAI.Application.Pipeline
             TryStartChangeChannel(config.AutoFarm);
         }
 
-        /// <summary>自動打怪開啟即清突發窗（與遇人換頻開關無關；換頻進行中讓出）。</summary>
+        /// <summary>自動打怪開啟即清突發窗；換頻中／隊伍建隊危險階段讓出。</summary>
         private void TryProcessFarmUiInterrupt(
             Mat frameMat,
             MinimapTrackingResult? trackingResult,
@@ -603,12 +645,14 @@ namespace ArtaleAI.Application.Pipeline
         {
             // AutoAttack／Heal／Buff 皆由「自動打怪」勾選驅動。
             bool autoFarmActive = AutoAttackEnabled || AutoHealEnabled || AutoBuffEnabled;
-            bool changeChannelBusy = Volatile.Read(ref _changeChannelInFlight) != 0;
+            bool uiSequenceBusy =
+                Volatile.Read(ref _changeChannelInFlight) != 0
+                || _partyRecovery.BlocksInterruptDismiss;
             bool hasMinimap = trackingResult?.MinimapBounds != null;
 
             if (!hasMinimap
                 && autoFarmActive
-                && !changeChannelBusy
+                && !uiSequenceBusy
                 && config.AutoFarm.InterruptDismissEnabled
                 && config.AutoFarm.InterruptDismissDuringAutoFarm)
             {
@@ -619,7 +663,7 @@ namespace ArtaleAI.Application.Pipeline
                 frameMat,
                 hasMinimap,
                 autoFarmActive,
-                changeChannelBusy,
+                uiSequenceBusy,
                 config.AutoFarm,
                 _movementController,
                 msg => OnStatusMessage?.Invoke(msg));
@@ -643,7 +687,7 @@ namespace ArtaleAI.Application.Pipeline
                 {
                     bool ok = await _changeChannelSequence.ExecuteAsync(
                         settings,
-                        CloneCachedChangeChannelFrame,
+                        CloneCachedUiAutomationFrame,
                         movement.FocusGameWindow,
                         async (vk, token) =>
                         {
@@ -680,25 +724,54 @@ namespace ArtaleAI.Application.Pipeline
             });
         }
 
-        private void CacheFrameForChangeChannel(Mat frameMat)
+        private void CacheFrameForUiAutomation(Mat frameMat)
         {
             Mat clone = frameMat.Clone();
-            lock (_changeChannelFrameLock)
+            lock (_uiAutomationFrameLock)
             {
-                _changeChannelFrameCache?.Dispose();
-                _changeChannelFrameCache = clone;
+                _uiAutomationFrameCache?.Dispose();
+                _uiAutomationFrameCache = clone;
             }
         }
 
-        /// <summary>回傳快取幀的 Clone；呼叫端（ChangeChannelSequence）負責 Dispose。</summary>
-        private Mat? CloneCachedChangeChannelFrame()
+        /// <summary>回傳快取幀的 Clone；呼叫端（換頻／隊伍重建序列）負責 Dispose。</summary>
+        private Mat? CloneCachedUiAutomationFrame()
         {
-            lock (_changeChannelFrameLock)
+            lock (_uiAutomationFrameLock)
             {
-                if (_changeChannelFrameCache == null || _changeChannelFrameCache.Empty())
+                if (_uiAutomationFrameCache == null || _uiAutomationFrameCache.Empty())
                     return null;
-                return _changeChannelFrameCache.Clone();
+                return _uiAutomationFrameCache.Clone();
             }
+        }
+
+        /// <summary>
+        /// 隊伍血條守門：自動打怪期間每幀觀測；缺失時啟動狀態機（開窗→新建→關窗→等血條）。
+        /// 僅在遊戲畫面中（有小地圖）且無換頻／清窗／退避／小休時執行。
+        /// </summary>
+        private void TryRecoverPartyHpBar(MinimapTrackingResult? trackingResult, AppConfig config, DateTime now)
+        {
+            if (_movementController == null)
+                return;
+
+            if (Volatile.Read(ref _changeChannelInFlight) != 0
+                || _farmUiInterrupt.IsDismissing
+                || _otherPlayerAvoidance.IsAvoiding
+                || IsResting)
+                return;
+
+            if (trackingResult?.MinimapBounds == null)
+                return;
+
+            _partyRecovery.Observe(
+                config.AutoFarm,
+                _lastBloodBarDetection,
+                now,
+                CloneCachedUiAutomationFrame,
+                () => _lastBloodBarDetection,
+                frame => _gameVision.FindMinimapOnScreen(frame).HasValue,
+                _movementController,
+                msg => OnStatusMessage?.Invoke(msg));
         }
 
         /// <summary>自動打怪勾選、擷取運行中即可依血魔％按藥水快捷鍵；不依賴路徑／怪物就緒。</summary>
@@ -748,6 +821,9 @@ namespace ArtaleAI.Application.Pipeline
 
         public string? GetOtherPlayerAvoidanceStatusHint(DateTime? nowUtc = null)
             => _otherPlayerAvoidance.GetStatusHint(nowUtc ?? DateTime.UtcNow);
+
+        public string? GetPartyRecoveryStatusHint(DateTime? nowUtc = null)
+            => _partyRecovery.GetStatusHint(nowUtc ?? DateTime.UtcNow);
 
         public void ResetBuffSchedule() => _buffSkills.ResetSchedule();
 
@@ -923,7 +999,11 @@ namespace ArtaleAI.Application.Pipeline
             }
         }
 
-        private void ProcessBloodBarDetection(Mat frameMat, AppConfig config, DateTime now)
+        private void ProcessBloodBarDetection(
+            Mat frameMat,
+            AppConfig config,
+            DateTime now,
+            MinimapTrackingResult? trackingResult)
         {
             var elapsed = (now - _lastBloodBarDetection).TotalMilliseconds;
             int bloodBarCount;
@@ -934,22 +1014,29 @@ namespace ArtaleAI.Application.Pipeline
 
             try
             {
-                var bloodBarResult = _gameVision.ProcessBloodBarDetection(frameMat, null);
+                bool hasMinimapSelf = trackingResult?.PlayerPosition.HasValue == true;
+                SdRect? minimapBox;
+                lock (_minimapBoxLock)
+                    minimapBox = _currentMinimapBoxes.Count > 0 ? _currentMinimapBoxes[0] : null;
+
+                var bloodBarResult = _gameVision.ProcessBloodBarDetection(
+                    frameMat, null, hasMinimapSelf, minimapBox);
                 SdRect? bloodBar = bloodBarResult.Item1;
                 var detectionBoxes = bloodBarResult.Item2 ?? new List<SdRect>();
                 var attackRangeBoxes = bloodBarResult.Item3 ?? new List<SdRect>();
 
-                if (bloodBar.HasValue)
+                lock (_bloodBarLock)
                 {
-                    lock (_bloodBarLock)
-                    {
-                        _currentBloodBars.Clear();
+                    _currentBloodBars.Clear();
+                    if (bloodBar.HasValue)
                         _currentBloodBars.Add(bloodBar.Value);
-                    }
-                    _currentDetectionBoxes = detectionBoxes;
-                    _currentAttackRangeBoxes = attackRangeBoxes;
-                    _lastBloodBarDetection = now;
                 }
+
+                _currentDetectionBoxes = detectionBoxes;
+                _currentAttackRangeBoxes = attackRangeBoxes;
+
+                if (bloodBar.HasValue)
+                    _lastBloodBarDetection = now;
             }
             catch (Exception ex)
             {
@@ -987,8 +1074,7 @@ namespace ArtaleAI.Application.Pipeline
                         UiBandRect = layout.UiBandRect,
                         FrameWidth = layout.FrameWidth,
                         FrameHeight = layout.FrameHeight,
-                        IsLayoutValid = true,
-                        UsesAutoLayout = layout.UsesAutoLayout
+                        IsLayoutValid = true
                     };
                     return;
                 }

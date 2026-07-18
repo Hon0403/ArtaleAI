@@ -116,30 +116,12 @@ namespace ArtaleAI.Vision
         /// <summary>目前規劃中的路徑與索引。</summary>
         public PathPlanningState? CurrentPathState { get; private set; }
 
-        public event Action<MinimapTrackingResult>? OnTrackingUpdated;
-        public event Action<PathPlanningState>? OnPathStateChanged;
-        public event Action<SdPointF>? OnWaypointReached;
-
         public NavigationGraph? NavGraph => _navGraph;
 
         /// <summary>地圖檔 <c>Ropes</c> 陣列複本（小地圖相對座標），供可視化；導航拓撲仍由 <see cref="NavigationGraph"/> 決定。</summary>
         public IReadOnlyList<(float X, float TopY, float BottomY)> MapRopeSegmentsForVisualization => _mapRopeSegmentsForVisualization;
 
         public PlatformGeometryIndex PlatformGeometry => _platformGeometry;
-
-        /// <summary>診斷目前路徑點驗收狀態。</summary>
-        public ArrivalDiagnostic? DiagnoseCurrentTarget(PointF playerPos)
-        {
-            var target = ResolveExecutionTarget(edge: null, ExecutionTargetResolveMode.Live);
-            return target == null ? null : ArrivalValidator.Diagnose(playerPos, target, _platformGeometry);
-        }
-
-        public void LogCurrentArrivalDiagnostic(PointF playerPos, bool asWarning = false)
-        {
-            var diagnostic = DiagnoseCurrentTarget(playerPos);
-            if (diagnostic != null)
-                ArrivalValidator.LogDiagnostic(diagnostic, asWarning);
-        }
 
         public void LogFrozenFlightArrivalDiagnostic(PointF playerPos, bool asWarning = false)
         {
@@ -371,21 +353,6 @@ namespace ArtaleAI.Vision
             lock (_flightLock)
                 target = _frozenFlightTarget;
 
-            if (target == null || string.IsNullOrEmpty(target.PlatformId))
-                return null;
-
-            return new WalkPlatformContext
-            {
-                PlatformId = target.PlatformId,
-                Geometry = _platformGeometry,
-                NodeId = target.NodeId
-            };
-        }
-
-        /// <summary>供 Walk 移動層使用的平台幾何上下文。</summary>
-        public WalkPlatformContext? GetCurrentWalkPlatformContext()
-        {
-            var target = ResolveExecutionTarget(edge: null, ExecutionTargetResolveMode.Live);
             if (target == null || string.IsNullOrEmpty(target.PlatformId))
                 return null;
 
@@ -637,15 +604,10 @@ namespace ArtaleAI.Vision
                     {
                         ClearSideJumpApproachState();
                         Logger.Info("[路徑追蹤] 跳躍起跳點已對齊，下帧執行跳躍動作。");
-                        OnPathStateChanged?.Invoke(CurrentPathState);
                     }
                     else
                     {
                         Logger.Info($"[路徑追蹤] FSM 驗收成功，正式推進進度。");
-
-                        var reachedIndex = CurrentPathState.CurrentWaypointIndex;
-                        if (reachedIndex >= 0 && reachedIndex < CurrentPathState.PlannedPath.Count)
-                            OnWaypointReached?.Invoke(CurrentPathState.PlannedPath[reachedIndex]);
 
                         CurrentPathState.CurrentWaypointIndex++;
 
@@ -679,8 +641,6 @@ namespace ArtaleAI.Vision
                             Logger.Info("[路徑追蹤] 已完成整段路徑，觸發隨機巡邏規劃。");
                             SelectRandomPhysicalTarget();
                         }
-
-                        OnPathStateChanged?.Invoke(CurrentPathState);
                     }
                 }
 
@@ -753,7 +713,6 @@ namespace ArtaleAI.Vision
             if (result == null) return;
             UpdateTrackingHistory(result);
             UpdatePathState(result);
-            OnTrackingUpdated?.Invoke(result);
         }
 
         private void UpdateTrackingHistory(MinimapTrackingResult result)
@@ -831,16 +790,11 @@ namespace ArtaleAI.Vision
             {
                 SelectRandomPhysicalTarget();
                 if (state.PlannedPath.Count > 0)
-                {
                     RecalculateDistanceToNextWaypoint(state, playerPos.Value);
-                    OnPathStateChanged?.Invoke(state);
-                }
                 return;
             }
 
             RecalculateDistanceToNextWaypoint(state, playerPos.Value);
-
-            OnPathStateChanged?.Invoke(state);
         }
 
         /// <summary>是否有尚未清除的強制目標（休息導航中或倒數中）。</summary>
@@ -1200,11 +1154,6 @@ namespace ArtaleAI.Vision
             return (last.Node, last.Path);
         }
 
-        public List<MinimapTrackingResult> GetTrackingHistory()
-        {
-            return new List<MinimapTrackingResult>();
-        }
-
         public void Dispose()
         {
             if (_fsm != null)
@@ -1315,7 +1264,6 @@ namespace ArtaleAI.Vision
             }
 
             Logger.Info($"[導航救援] 重定位成功！新路徑包含 {CurrentPathState.PlannedPath.Count} 個節點，目標重新鎖定。");
-            OnPathStateChanged?.Invoke(CurrentPathState);
             return true;
         }
 

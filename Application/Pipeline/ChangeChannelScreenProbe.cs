@@ -96,11 +96,6 @@ namespace ArtaleAI.Application.Pipeline
             return (int)actual < (int)expected;
         }
 
-        public static bool IsAheadOrAtNext(ChangeChannelPhase actual, ChangeChannelPhase nextExpected) =>
-            (actual == ChangeChannelPhase.InGame && nextExpected == ChangeChannelPhase.InGame)
-            || (actual is not ChangeChannelPhase.Unknown and not ChangeChannelPhase.InGame
-                && (int)actual >= (int)nextExpected);
-
         private static bool TryScore(Mat frame, Mat? template, double threshold, out double score)
         {
             score = 0;

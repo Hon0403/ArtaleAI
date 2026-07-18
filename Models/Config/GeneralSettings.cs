@@ -7,9 +7,6 @@ namespace ArtaleAI.Models.Config
         public string GameWindowTitle { get; set; } = "";
         public string LastSelectedWindowName { get; set; } = "";
         public string LastSelectedProcessName { get; set; } = "";
-        public int LastSelectedProcessId { get; set; }
-
-        public int CrosshairSize { get; set; } = 15;
 
         /// <summary>擷取進行中時，持續檢查並校正遊戲客戶區尺寸。</summary>
         public bool ForceClientSizeWhileCapture { get; set; } = true;

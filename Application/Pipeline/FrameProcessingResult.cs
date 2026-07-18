@@ -17,6 +17,5 @@ namespace ArtaleAI.Application.Pipeline
         /// <summary>其他玩家在全畫面座標上的標記（相對小地圖偏移）。</summary>
         public List<SdRect> OtherPlayerMarkers { get; init; } = new();
         public PlayerVitalsSnapshot? PlayerVitals { get; init; }
-        public string? StatusMessage { get; set; }
     }
 }
