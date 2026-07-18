@@ -86,7 +86,10 @@ namespace ArtaleAI.Models.Map
         [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
         public List<float[]>? SafeZones { get; set; }
 
-        /// <summary>禁制區列表。格式 <c>[x1, y1, x2, y2]</c>。</summary>
+        /// <summary>
+        /// 禁制區列表。格式 <c>[x1, y1, x2, y2]</c>。
+        /// 目前執行期未消費；保留為地圖 JSON 資料契約，避免存檔時默默遺失。
+        /// </summary>
         public List<float[]> RestrictedZones { get; set; } = new();
     }
 

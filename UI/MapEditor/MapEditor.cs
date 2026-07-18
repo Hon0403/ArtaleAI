@@ -86,7 +86,6 @@ namespace ArtaleAI.UI.MapEditor
 
         private MapEditorSelection _selection = MapEditorSelection.Empty;
         private bool _isDirty;
-        private PointF _lastMousePosition = new(-1000, -1000);
         private PointF _lastNodeCyclePoint = PointF.Empty;
         private List<int> _nodeCycleCandidates = new();
         private int _nodeCycleIndex = -1;
@@ -567,7 +566,6 @@ namespace ArtaleAI.UI.MapEditor
             _previewPoint = new PointF(
                 screenPoint.X - minimapBounds.X,
                 screenPoint.Y - minimapBounds.Y);
-            _lastMousePosition = _previewPoint.Value;
         }
 
         public void CancelCurrentDrawing()

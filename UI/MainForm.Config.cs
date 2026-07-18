@@ -39,18 +39,7 @@ namespace ArtaleAI
 {
     public partial class MainForm
     {
-        #region IConfigEventHandler 實作
-
-        public void OnConfigLoaded(AppConfig config)
-        {
-            if (InvokeRequired)
-            {
-                Invoke(new Action<AppConfig>(OnConfigLoaded), config);
-                return;
-            }
-
-            MsgLog.ShowStatus(textBox1, "配置檔案載入完成");
-        }
+        #region 地圖檔案事件
 
         public void OnMapSaved(string fileName, bool isNewFile)
         {
@@ -75,22 +64,6 @@ namespace ArtaleAI
             string message = isNewFile ? "新地圖儲存成功！" : "儲存成功！";
             MessageBox.Show(message, "地圖檔案管理", MessageBoxButtons.OK, MessageBoxIcon.Information);
             MsgLog.ShowStatus(textBox1, $"地圖儲存: {fileName}");
-        }
-
-        public void OnConfigSaved(AppConfig config)
-        {
-            if (InvokeRequired)
-            {
-                Invoke(new Action<AppConfig>(OnConfigSaved), config);
-                return;
-            }
-
-            MsgLog.ShowStatus(textBox1, "設定已儲存");
-        }
-
-        public void OnConfigError(string errorMessage)
-        {
-            MsgLog.ShowError(textBox1, $"設定錯誤: {errorMessage}");
         }
 
         #endregion
@@ -147,15 +120,9 @@ namespace ArtaleAI
                 .FirstOrDefault(kvp => kvp.Value.DisplayName == selectedDisplayText).Key
                 ?? config.Vision.DefaultMode ?? "Normal";
 
-            var optimalOcclusion = "None";
-            if (config.Vision.DetectionModes?.TryGetValue(selectedMode, out var modeConfig) == true)
-            {
-                optimalOcclusion = modeConfig.Occlusion;
-            }
-
             config.Vision.DetectionMode = selectedMode;
 
-            MsgLog.ShowStatus(textBox1, $" 偵測模式: {selectedMode} | 遮擋: {optimalOcclusion}");
+            MsgLog.ShowStatus(textBox1, $" 偵測模式: {selectedMode}");
             UpdatePrerequisitesLabel();
         }
 

@@ -155,7 +155,7 @@ namespace ArtaleAI
                 InitializeMapEditorPropertyPanel();
 
                 var tracker = new PathPlanningTracker(gameVision);
-                _pathPlanningManager = new PathPlanningManager(tracker, Config);
+                _pathPlanningManager = new PathPlanningManager(tracker);
                 _movementController = new CharacterMovementController();
                 _movementController.SetGameWindowTitle(Config.General.GameWindowTitle);
 

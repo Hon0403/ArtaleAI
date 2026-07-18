@@ -1,25 +1,13 @@
 namespace ArtaleAI.Vision
 {
     /// <summary>
-    /// 怪物檢測模式
+    /// 怪物檢測模式。
+    /// ContourOnly／Grayscale 有獨立分支；Color 為預設彩色模板路徑。
     /// </summary>
     public enum MonsterDetectionMode
     {
-        Basic,
         ContourOnly,
         Grayscale,
-        Color,
-        TemplateFree
-    }
-
-    /// <summary>
-    /// 遮擋處理模式
-    /// </summary>
-    public enum OcclusionHandling
-    {
-        None,
-        MorphologyRepair,
-        DynamicThreshold,
-        MultiScale
+        Color
     }
 }

@@ -1,6 +1,5 @@
 using ArtaleAI.Models.Detection;
 using ArtaleAI.Models.Minimap;
-using ArtaleAI.Models.Visualization;
 
 namespace ArtaleAI.Models.Config
 {
@@ -12,7 +11,7 @@ namespace ArtaleAI.Models.Config
         public AttackRangeStyle AttackRange { get; set; } = new();
         public MinimapStyle Minimap { get; set; } = new();
         public MinimapPlayerStyle MinimapPlayer { get; set; } = new();
-        public MinimapViewerStyle MinimapViewer { get; set; } = new();
+        public MinimapOtherPlayerStyle MinimapOtherPlayer { get; set; } = new();
         public PlayerVitalsStyle PlayerVitals { get; set; } = new();
     }
 }

@@ -150,8 +150,6 @@ namespace ArtaleAI
                 if (selected.Count == 0)
                 {
                     _monsterTemplates.ReleaseSelection();
-                    if (_gamePipeline != null)
-                        _gamePipeline.SelectedMonsterName = string.Empty;
                     MsgLog.ShowStatus(textBox1, "尚未勾選要打的怪");
                     UpdateAutoAttackState();
                     return;
@@ -159,9 +157,6 @@ namespace ArtaleAI
 
                 MsgLog.ShowStatus(textBox1, $"載入怪物：{string.Join("、", selected)}");
                 await _monsterTemplates.LoadSelectionsAsync(selected, PathManager.MonstersDirectory);
-
-                if (_gamePipeline != null)
-                    _gamePipeline.SelectedMonsterName = _monsterTemplates.SelectedMonsterNamesDisplay;
 
                 MsgLog.ShowStatus(
                     textBox1,

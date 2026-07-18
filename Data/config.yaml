@@ -2,8 +2,6 @@ general:
   gameWindowTitle: MapleStory Worlds-Artale (繁體中文版)
   lastSelectedWindowName: MapleStory Worlds-Artale (繁體中文版)
   lastSelectedProcessName: msw
-  lastSelectedProcessId: 25336
-  crosshairSize: 2
   forceClientSizeWhileCapture: true
   forceClientWidth: 1280
   forceClientHeight: 720
@@ -12,20 +10,15 @@ general:
 vision:
   defaultThreshold: 0.75
   maxDetectionResults: 5
-  detectionMode: Basic
-  nmsIouThreshold: 0.45
+  detectionMode: Color
   contourDiffThreshold: 0.8
   monsterHpBarFilterEnabled: false
   monsterHpBarMaxGapPx: 36
   contourBlur: 5
-  playerThreshold: 0.7
-  playerMarker: templates/minimap/player_marker.png
-  otherPlayers: templates/minimap/other_players.png
-  minBarWidth: 1
+  minBarWidth: 10
   maxBarWidth: 60
   minBarHeight: 4
   maxBarHeight: 8
-  minFillRate: 0.1
   lowerRedHsv:
   - 0
   - 100
@@ -34,58 +27,56 @@ vision:
   - 10
   - 255
   - 255
-  smallBarWidthLimit: 50
-  mediumBarWidthLimit: 100
   minAspectRatio: 2
   maxAspectRatio: 15
   dotOffsetY: 50
   detectionBoxWidth: 550
   detectionBoxHeight: 300
-  uiHeightFromBottom: 200
+  bloodBarBottomUiPercent: 0.24
   minBarArea: 8
-  dynamicFillRateSmall: 0.8
-  dynamicFillRateMedium: 0.6
-  playerOffsetY: 20
   detectionModes:
-    Basic:
-      displayName: Basic - 基本匹配 (最快)
-      occlusion: None
     ContourOnly:
       displayName: ContourOnly - 輪廓匹配 (抗形變)
-      occlusion: None
     Grayscale:
       displayName: Grayscale - 灰階匹配 (抗色差)
-      occlusion: None
     Color:
       displayName: Color - 彩色匹配 (預設)
-      occlusion: None
-    TemplateFree:
-      displayName: TemplateFree - 自由尋找 (無需模板)
-      occlusion: MorphologyRepair
   defaultMode: Color
   displayOrder:
-  - Basic
   - ContourOnly
   - Grayscale
   - Color
-  - TemplateFree
   bloodBarDetectIntervalMs: 150
   monsterDetectIntervalMs: 100
   captureFrameRate: 30
-  cornerThreshold: 0.8
-  topLeft: tl.png
-  topRight: tr.png
-  bottomLeft: bl.png
-  bottomRight: br.png
   useFixedMinimapPosition: false
   fixedMinimapWidth: 250
   fixedMinimapHeight: 150
   minimapFrameColorBgr: 255,255,255
   minMinimapWidth: 100
   minMinimapHeight: 80
+  useMinimapSearchRoi: true
+  minimapSearchRoi:
+    leftPercent: 0
+    topPercent: 0
+    widthPercent: 0.3
+    heightPercent: 0.45
+  bloodBarRequireMinimapSelf: true
+  excludeMinimapRoiFromBloodBar: true
+  useBloodBarFixedFrame: true
+  bloodBarFrameWidth: 46
+  bloodBarFrameHeight: 6
+  bloodBarFrameTipMinBgr: 120
+  bloodBarFrameTipMinSide: 0.12
+  bloodBarFrameMinInteriorRed: 0.12
+  bloodBarFrameMinFillWidth: 5
+  bloodBarFrameMinAcceptScore: 0.5
+  bloodBarFrameMaxInteriorTip: 0.12
+  bloodBarFrameMinFillAspect: 2.5
+  bloodBarTrackRadiusPx: 80
+  bloodBarTrackWeight: 0.35
+  bloodBarTrackHoldMs: 2000
 navigation:
-  playerPositionThreshold: 0.7
-  otherPlayersThreshold: 0.7
   enableOtherPlayersDetection: true
   platformHitboxWidth: 3
   platformHitboxHeight: 3
@@ -100,34 +91,23 @@ navigation:
   ropeHitboxHeight: 15
   sideJumpAltHoldMs: 110
   stuckDetectionMs: 3000
-  enableAutoPathFinding: true
   enableAutoMovement: true
-editor:
-  deletionRadius: 10
-  waypointCircleRadius: 4
-  waypointColor: Cyan
 appearance:
   monster:
     frameColor: 255,255,0
     textColor: 255,0,0
     frameThickness: 2
-    textScale: 1.2
-    textThickness: 2
-    showConfidence: true
-    textFormat: '{0} ({1:F2})'
   partyRedBar:
     frameColor: 0,255,0
     textColor: 255,255,255
     frameThickness: 2
-    textScale: 1
-    textThickness: 2
-    redBarDisplayName: HP
+    redBarDisplayName: HP外框
+    showSearchRoi: true
+    searchRoiFrameColor: 255,0,255
   detectionBox:
     frameColor: 0,191,255
     textColor: 255,255,255
     frameThickness: 2
-    textScale: 1
-    textThickness: 2
     boxDisplayName: MOB DETECT
   attackRange:
     width: 400
@@ -137,37 +117,27 @@ appearance:
     frameColor: 255,0,0
     textColor: 255,255,255
     frameThickness: 2
-    textScale: 1
-    textThickness: 2
     rangeDisplayName: ATTACK RANGE
   minimap:
     frameColor: 0,255,255
     textColor: 255,255,255
     frameThickness: 2
-    textScale: 1.2
-    textThickness: 2
     minimapDisplayName: Minimap
+    showSearchRoi: true
+    searchRoiFrameColor: 255,165,0
   minimapPlayer:
     frameColor: 0,255,0
-    textColor: 255,255,255
     frameThickness: 2
-    textScale: 1
-    textThickness: 2
-    playerDisplayName: PLAYER
     playerColorBgr: 255,255,0
     colorTolerance: 30
     minPixelCount: 4
     offsetY: 3.5
-  minimapViewer:
-    enabled: true
-    zoomFactor: 10
-    offsetX: 0
+  minimapOtherPlayer:
+    otherPlayerColorBgr: 255,0,0
+    colorTolerance: 40
+    minPixelCount: 4
     offsetY: 0
-    width: 600
-    height: 400
-    baseSize: 20
-    showRuler: true
-    opacity: 100
+    maxDetectCount: 8
   playerVitals:
     hpFrameColor: 255,0,80
     mpFrameColor: 0,255,255
@@ -255,7 +225,7 @@ autoFarm:
     cooldownSeconds: 15
   preferNavigationOverAttack: true
   attackMaxVerticalDeltaPx: 80
-  changeChannelOnOtherPlayers: true
+  changeChannelOnOtherPlayers: false
   changeChannelMenuTemplate: templates/MainScreen/channel_menu_button.png
   changeChannelPickTemplate: templates/MainScreen/channel_pick_panel.png
   changeChannelConfirmTemplate: templates/MainScreen/channel_confirm_button.png
@@ -281,3 +251,8 @@ autoFarm:
   interruptEscapeCooldownMs: 2800
   interruptMatchThreshold: 0.72
   interruptDismissTemplates: []
+  partyWindowHotkey: P
+  partyCreateTemplate: templates/MainScreen/party_create_button.png
+  partyHpBarLostMs: 4000
+  partyRecoveryCooldownMs: 10000
+  partyCreateMatchThreshold: 0.72

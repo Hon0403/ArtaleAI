@@ -10,8 +10,5 @@ namespace ArtaleAI.Domain.Navigation
         public float? RopeX { get; init; }
         public ArrivalPolicy Policy { get; init; }
         public BoundingBox? PointHitbox { get; init; }
-
-        public string Describe() =>
-            $"node={NodeId} x={TargetX:F1} policy={Policy} platform={PlatformId ?? "-"} ropeX={RopeX?.ToString("F1") ?? "-"}";
     }
 }

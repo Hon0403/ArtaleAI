@@ -1,4 +1,3 @@
-using System;
 using System.Drawing;
 
 namespace ArtaleAI.Models.Detection
@@ -19,10 +18,6 @@ namespace ArtaleAI.Models.Detection
 
         /// <summary>HSV 填充率讀取成功（與 ROI 校準可獨立）。</summary>
         public bool HasFillReading { get; init; }
-
-        public DateTime Timestamp { get; init; } = DateTime.UtcNow;
-
-        public bool UsesAutoLayout { get; init; }
 
         public static PlayerVitalsSnapshot Empty { get; } = new();
     }

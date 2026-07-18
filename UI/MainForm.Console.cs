@@ -633,9 +633,6 @@ namespace ArtaleAI
         private void RefreshStatusBarPath(PathPlanningState? pathState = null)
             => RefreshConsoleUi(pathState);
 
-        private void RefreshVitalsPanel(PlayerVitalsSnapshot? vitals)
-            => RefreshConsoleUi(vitalsOverride: vitals);
-
         private void OnConsoleFrameProcessed(FrameProcessingResult result)
         {
             if (result == null) return;
@@ -686,6 +683,7 @@ namespace ArtaleAI
                 IsResting = _gamePipeline?.IsResting == true,
                 IsSeekingRestSpot = _gamePipeline?.IsSeekingRestSpot == true,
                 IsAvoidingOtherPlayers = _gamePipeline?.IsAvoidingOtherPlayers == true,
+                IsRecoveringParty = _gamePipeline?.IsRecoveringParty == true,
                 FsmState = _fsm?.CurrentState ?? NavigationState.Idle,
                 HpRatio = hasVitals ? vitals!.HpRatio : null,
                 MpRatio = hasVitals ? vitals!.MpRatio : null,
@@ -694,6 +692,7 @@ namespace ArtaleAI
                 BuffStatusHint = _gamePipeline?.GetBuffStatusHint(),
                 AttackStatusHint = _gamePipeline?.GetAttackStatusHint(),
                 OtherPlayerAvoidanceHint = _gamePipeline?.GetOtherPlayerAvoidanceStatusHint(),
+                PartyRecoveryHint = _gamePipeline?.GetPartyRecoveryStatusHint(),
                 PathRunning = pathRunning,
                 WaypointIndex = pathState?.CurrentWaypointIndex ?? 0,
                 WaypointTotal = pathState?.PlannedPath.Count ?? 0,

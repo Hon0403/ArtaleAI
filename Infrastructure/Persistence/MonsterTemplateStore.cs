@@ -21,9 +21,6 @@ namespace ArtaleAI.Infrastructure.Persistence
 
         public MonsterDetectionCatalog Catalog => _catalog;
 
-        public MonsterTemplateBundle? ActiveBundle =>
-            _catalog.Bundles.Count > 0 ? _catalog.Bundles[0] : null;
-
         public IReadOnlyList<string> SelectedMonsterNames => _selectedMonsterNames;
 
         /// <summary>日誌／狀態列用白話摘要。</summary>

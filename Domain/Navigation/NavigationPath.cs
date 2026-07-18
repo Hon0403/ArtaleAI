@@ -19,28 +19,11 @@ namespace ArtaleAI.Domain.Navigation
         /// </summary>
         public float TotalCost => Edges.Sum(e => e.Cost);
 
-        /// <summary>
-        /// 起始節點 ID
-        /// </summary>
-        public string? StartNodeId => Edges.FirstOrDefault()?.FromNodeId;
-
-        /// <summary>
-        /// 終點節點 ID
-        /// </summary>
-        public string? EndNodeId => Edges.LastOrDefault()?.ToNodeId;
-
-        public bool IsEmpty => Edges.Count == 0;
-
         public NavigationPath() { }
 
         public NavigationPath(IEnumerable<NavigationEdge> edges)
         {
             Edges.AddRange(edges);
-        }
-
-        public void AddStep(NavigationEdge edge)
-        {
-            Edges.Add(edge);
         }
     }
 }

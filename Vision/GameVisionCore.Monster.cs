@@ -87,15 +87,6 @@ namespace ArtaleAI.Vision
         /// <param name="monsterName">怪物名稱（用於結果標記）</param>
         /// <param name="templateMasks">模板遮罩列表（可選，與 templateMats 一一對應）</param>
         /// <returns>檢測結果列表</returns>
-        public List<DetectionResult> FindMonsters(
-            Mat sourceMat,
-            MonsterTemplateBundle bundle,
-            MonsterDetectionMode detectionMode,
-            double threshold = 0.7)
-        {
-            return FindMonstersWithStats(sourceMat, bundle, detectionMode, threshold).Results;
-        }
-
         public (List<DetectionResult> Results, MonsterTemplateMatchStats Stats) FindMonstersWithStats(
             Mat sourceMat,
             MonsterTemplateBundle bundle,
@@ -114,24 +105,6 @@ namespace ArtaleAI.Vision
                 mode,
                 threshold,
                 bundle.MonsterName);
-        }
-
-        /// <summary>
-        /// 使用模板匹配尋找怪物（舊版清單 API；無預計算 mask 時才 fallback）。
-        /// </summary>
-        [Obsolete("請改用 MonsterTemplateBundle 以使用預計算 mask。")]
-        public List<DetectionResult> FindMonsters(
-            Mat sourceMat,
-            List<Mat> templateMats,
-            MonsterDetectionMode mode,
-            double threshold = 0.7,
-            string monsterName = "",
-            List<Mat>? templateMasks = null)
-        {
-            if (templateMats == null || templateMats.Count == 0) return new List<DetectionResult>();
-
-            return MatchLegacyTemplates(
-                sourceMat, templateMats, mode, threshold, monsterName, templateMasks);
         }
 
         private const int CoarseTopK = 3;
@@ -553,78 +526,6 @@ namespace ArtaleAI.Vision
             }
 
             return false;
-        }
-
-        private static List<DetectionResult> MatchLegacyTemplates(
-            Mat sourceMat,
-            List<Mat> templateMats,
-            MonsterDetectionMode mode,
-            double threshold,
-            string monsterName,
-            List<Mat>? templateMasks)
-        {
-            var allResults = new List<DetectionResult>();
-
-            for (int i = 0; i < templateMats.Count; i++)
-            {
-                var templateMat = templateMats[i];
-                if (templateMat?.Empty() != false) continue;
-
-                Mat? mask = null;
-                bool disposeMask = false;
-
-                if (templateMasks != null && i < templateMasks.Count && templateMasks[i]?.Empty() == false)
-                    mask = templateMasks[i];
-                else
-                {
-                    mask = CreateGreenMask(templateMat);
-                    disposeMask = true;
-                }
-
-                try
-                {
-                    using var result = new Mat();
-
-                    if (mode == MonsterDetectionMode.ContourOnly)
-                    {
-                        using var sourceContour = BuildBlackContourMask(sourceMat, ResolveContourBlur());
-                        using var templateContour = BuildBlackContourMask(templateMat, ResolveContourBlur());
-                        if (Cv2.CountNonZero(templateContour) < MonsterTemplateEntry.MinContourPixels)
-                            continue;
-
-                        Cv2.MatchTemplate(
-                            sourceContour, templateContour, result, TemplateMatchModes.SqDiffNormed);
-                        CollectSqDiffByMaxDiff(result, templateMat, threshold, monsterName, allResults);
-                    }
-                    else if (mode == MonsterDetectionMode.Grayscale)
-                    {
-                        using var sourceGray = ConvertToGrayscale(sourceMat);
-                        using var templateGray = ConvertToGrayscale(templateMat);
-                        Cv2.MatchTemplate(sourceGray, templateGray, result, TemplateMatchModes.CCoeffNormed);
-                        CollectCCoeffMatches(result, templateMat, threshold, monsterName, allResults);
-                    }
-                    else if (mask != null && !mask.Empty())
-                    {
-                        Cv2.MatchTemplate(sourceMat, templateMat, result, TemplateMatchModes.SqDiffNormed, mask);
-                        CollectSqDiffByMinConfidence(result, templateMat, threshold, monsterName, allResults);
-                    }
-                    else
-                    {
-                        Cv2.MatchTemplate(sourceMat, templateMat, result, TemplateMatchModes.SqDiffNormed);
-                        CollectSqDiffByMinConfidence(result, templateMat, threshold, monsterName, allResults);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error($"[怪物偵測] 模板匹配錯誤: {ex.Message}");
-                }
-                finally
-                {
-                    if (disposeMask) mask?.Dispose();
-                }
-            }
-
-            return allResults;
         }
 
         /// <summary>KenYu ContourOnly：接受 <c>minVal &lt;= maxAllowedDiff</c>。</summary>

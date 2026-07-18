@@ -7,7 +7,7 @@ namespace ArtaleAI.Application.Pipeline
 {
     /// <summary>
     /// 自動打怪開啟時處理突發視窗（與「遇人換頻」無關）。
-    /// 小地圖連續消失 → Esc → 暗色 X；換頻進行中不插手。
+    /// 小地圖連續消失 → Esc → 暗色 X；換頻進行中／隊伍建隊危險階段不插手。
     /// </summary>
     public sealed class FarmUiInterruptCoordinator : IDisposable
     {
@@ -22,7 +22,7 @@ namespace ArtaleAI.Application.Pipeline
             Mat frameMat,
             bool hasMinimap,
             bool autoFarmActive,
-            bool changeChannelBusy,
+            bool uiSequenceBusy,
             AutoFarmSettings settings,
             CharacterMovementController? movement,
             Action<string>? status)
@@ -30,8 +30,9 @@ namespace ArtaleAI.Application.Pipeline
             ArgumentNullException.ThrowIfNull(frameMat);
             ArgumentNullException.ThrowIfNull(settings);
 
+            // uiSequenceBusy：換頻中，或隊伍重建「開窗／點新建」危險階段。
             if (!autoFarmActive
-                || changeChannelBusy
+                || uiSequenceBusy
                 || movement == null
                 || !settings.InterruptDismissEnabled
                 || !settings.InterruptDismissDuringAutoFarm)

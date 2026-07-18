@@ -114,8 +114,127 @@ namespace ArtaleAI.UI
             }
 
             DrawPlayerVitalsOverlay(graphics, result.PlayerVitals, config);
+            DrawMinimapSearchRoiOverlay(graphics, bitmap.Width, bitmap.Height, config);
+            DrawBloodBarSearchRoiOverlay(graphics, bitmap.Width, bitmap.Height, result, config);
 
             return (Bitmap)bitmap.Clone();
+        }
+
+        /// <summary>血條搜尋區：虛線框，與 DetectBloodBar 搜尋範圍一致（鎖定→鄰域；冷啟→可玩區）。</summary>
+        private static void DrawBloodBarSearchRoiOverlay(
+            Graphics graphics,
+            int frameWidth,
+            int frameHeight,
+            FrameProcessingResult result,
+            AppConfig config)
+        {
+            var vision = config.Vision;
+            var style = config.Appearance.PartyRedBar;
+            if (!style.ShowSearchRoi)
+                return;
+
+            SdRect? prevBar = result.BloodBars.Count > 0 ? result.BloodBars[0] : null;
+            var searchRect = GameVisionCore.ResolveBloodBarDetectSearchRect(
+                frameWidth, frameHeight, vision, prevBar);
+            if (searchRect.Width <= 0 || searchRect.Height <= 0)
+                return;
+
+            // 顯示須與實際搜尋一致：遮罩階段挖空的是「實際小地圖框（青色）」，輪廓也扣同一塊。
+            SdRect? detectedMinimap = result.MinimapBoxes.Count > 0 ? result.MinimapBoxes[0] : null;
+            var minimapExclude = GameVisionCore.ResolveMinimapExclusion(
+                detectedMinimap, frameWidth, frameHeight, vision);
+            var exclusion = SdRect.Intersect(minimapExclude, searchRect);
+
+            var color = GameVisionCore.ParseColor(style.SearchRoiFrameColor);
+            float thickness = Math.Max(1f, style.FrameThickness);
+            var labelPos = DrawDashedRectExcluding(graphics, searchRect, exclusion, color, thickness);
+
+            string mode = prevBar.HasValue ? "追蹤" : "掃描";
+            string label =
+                $"HP搜尋 {searchRect.Width}x{searchRect.Height} ({mode})";
+            DrawLabel(
+                graphics,
+                label,
+                labelPos.X,
+                labelPos.Y,
+                GameVisionCore.ParseColor(style.TextColor));
+        }
+
+        /// <summary>
+        /// 虛線繪製「搜尋區 − 左上角落排除區」的 L 形輪廓。
+        /// 排除區由 ResolveMinimapExclusion 保證錨定於 (0,0)：右緣往上、下緣往左延伸即成 L 形，
+        /// 小地圖尺寸改變時輪廓自動跟著伸縮。回傳不落在排除區內的標籤位置。
+        /// </summary>
+        private static PointF DrawDashedRectExcluding(
+            Graphics graphics,
+            SdRect searchRect,
+            SdRect exclusion,
+            Color color,
+            float thickness)
+        {
+            var defaultLabel = new PointF(searchRect.X + 4, searchRect.Y + 4);
+            bool cutsTopLeft =
+                exclusion.Width > 0 && exclusion.Height > 0 &&
+                exclusion.X <= searchRect.X && exclusion.Y <= searchRect.Y &&
+                exclusion.Right > searchRect.Left && exclusion.Right < searchRect.Right &&
+                exclusion.Bottom > searchRect.Top && exclusion.Bottom < searchRect.Bottom;
+
+            if (!cutsTopLeft)
+            {
+                DrawDashedRect(graphics, searchRect, color, thickness);
+                return defaultLabel;
+            }
+
+            var points = new[]
+            {
+                new Point(exclusion.Right, searchRect.Top),
+                new Point(searchRect.Right, searchRect.Top),
+                new Point(searchRect.Right, searchRect.Bottom),
+                new Point(searchRect.Left, searchRect.Bottom),
+                new Point(searchRect.Left, exclusion.Bottom),
+                new Point(exclusion.Right, exclusion.Bottom),
+            };
+
+            using var pen = new Pen(color, thickness) { DashStyle = DashStyle.Dash };
+            graphics.DrawPolygon(pen, points);
+            using var innerPen = new Pen(Color.FromArgb(160, color), 1f);
+            graphics.DrawPolygon(innerPen, points);
+
+            return new PointF(exclusion.Right + 4, searchRect.Y + 4);
+        }
+
+        /// <summary>左上角百分比搜尋區：虛線框，與實際 FindMinimap 搜尋範圍一致。</summary>
+        private static void DrawMinimapSearchRoiOverlay(
+            Graphics graphics,
+            int frameWidth,
+            int frameHeight,
+            AppConfig config)
+        {
+            var vision = config.Vision;
+            var style = config.Appearance.Minimap;
+            if (!vision.UseMinimapSearchRoi || !style.ShowSearchRoi)
+                return;
+
+            if (vision.UseFixedMinimapPosition)
+                return;
+
+            var searchRect = GameVisionCore.ResolveMinimapSearchRect(frameWidth, frameHeight, vision);
+            if (searchRect.Width <= 0 || searchRect.Height <= 0)
+                return;
+
+            var roi = vision.MinimapSearchRoi ?? new MinimapSearchRoiPercent();
+            var color = GameVisionCore.ParseColor(style.SearchRoiFrameColor);
+            DrawDashedRect(graphics, searchRect, color, Math.Max(1f, style.FrameThickness));
+
+            string label =
+                $"Minimap ROI L{roi.LeftPercent:P0} T{roi.TopPercent:P0} " +
+                $"W{roi.WidthPercent:P0} H{roi.HeightPercent:P0}";
+            DrawLabel(
+                graphics,
+                label,
+                searchRect.X + 4,
+                searchRect.Y + 4,
+                GameVisionCore.ParseColor(style.TextColor));
         }
 
         private static void DrawPlayerVitalsOverlay(

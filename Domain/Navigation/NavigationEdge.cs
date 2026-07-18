@@ -8,7 +8,6 @@ namespace ArtaleAI.Domain.Navigation
     /// </summary>
     public enum NavigationActionType
     {
-        None = 0,
         Walk = 1,
         Jump = 2,           // 手標跳躍；執行層依 ΔY 自動選原地/上跳或下跳
         SideJump = 3,       // 側跳 (自動判定左右)
@@ -41,11 +40,6 @@ namespace ArtaleAI.Domain.Navigation
         /// 執行此移動所需的按鍵序列
         /// </summary>
         public List<string> InputSequence { get; set; } = new List<string>();
-
-        /// <summary>
-        /// 移動前置條件
-        /// </summary>
-        public Dictionary<string, object> Conditions { get; set; } = new Dictionary<string, object>();
 
         public NavigationEdge(string fromId, string toId, NavigationActionType action, float cost = 1.0f)
         {

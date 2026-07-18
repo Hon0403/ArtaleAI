@@ -42,6 +42,7 @@ namespace ArtaleAI.Application.Console
                     && string.IsNullOrEmpty(input.BuffStatusHint)
                     && string.IsNullOrEmpty(input.AttackStatusHint)
                     && string.IsNullOrEmpty(input.OtherPlayerAvoidanceHint)
+                    && string.IsNullOrEmpty(input.PartyRecoveryHint)
                     ? ConsoleStatusTone.Neutral
                     : ConsoleStatusTone.Accent,
 
@@ -69,6 +70,9 @@ namespace ArtaleAI.Application.Console
         {
             if (input.IsAvoidingOtherPlayers)
                 return "擷取：遇人退避中";
+
+            if (input.IsRecoveringParty)
+                return "擷取：隊伍重建中";
 
             if (input.IsSeekingRestSpot)
                 return "擷取：前往休息點";
@@ -98,6 +102,8 @@ namespace ArtaleAI.Application.Console
                 hints.Add(input.AttackStatusHint!);
             if (!string.IsNullOrEmpty(input.OtherPlayerAvoidanceHint))
                 hints.Add(input.OtherPlayerAvoidanceHint!);
+            if (!string.IsNullOrEmpty(input.PartyRecoveryHint))
+                hints.Add(input.PartyRecoveryHint!);
 
             return hints.Count == 0
                 ? core
@@ -108,6 +114,9 @@ namespace ArtaleAI.Application.Console
         {
             if (input.IsAvoidingOtherPlayers)
                 return "導航：遇人退避";
+
+            if (input.IsRecoveringParty)
+                return "導航：隊伍重建";
 
             if (input.IsSeekingRestSpot)
                 return "導航：前往休息點（安全區/繩索）";
@@ -120,7 +129,7 @@ namespace ArtaleAI.Application.Console
 
         private static ConsoleStatusTone ResolveFsmTone(ConsoleStatusInput input)
         {
-            if (input.IsAvoidingOtherPlayers || input.IsResting)
+            if (input.IsAvoidingOtherPlayers || input.IsRecoveringParty || input.IsResting)
                 return ConsoleStatusTone.Accent;
 
             return input.FsmState == NavigationState.Error

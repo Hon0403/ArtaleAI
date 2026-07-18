@@ -23,7 +23,6 @@ namespace ArtaleAI.Vision
     public partial class GameVisionCore : IDisposable
     {
         #region 私有字段
-        private readonly Dictionary<string, Mat> _mapTemplates = new();
         private readonly Dictionary<string, MonsterTemplateBundle> _monsterBundleCache = new();
         private bool _disposed = false;
         private int _lastPixelCount = 0; 
@@ -36,11 +35,7 @@ namespace ArtaleAI.Vision
 
         #region 公開屬性
 
-        /// <summary>
-        /// 最後一次追蹤的小地圖 Mat（供 MinimapViewer 使用）
-        /// 線程安全，每次 GetMinimapTracking 時更新
-        /// 注意：直接存取此屬性可能導致線程問題，請使用 GetLastMinimapMatClone()
-        /// </summary>
+        /// <summary>最後一次追蹤的小地圖 Mat（線程安全請用 GetLastMinimapMatClone）</summary>
         public Mat? LastMinimapMat { get; private set; }
 
         /// <summary>
@@ -68,23 +63,9 @@ namespace ArtaleAI.Vision
 
         #endregion
 
-        #region 建構函式
-
-        /// <summary>
-        /// 初始化遊戲視覺核心
-        /// 自動載入小地圖角點模板
-        /// </summary>
-        public GameVisionCore()
-        {
-            LoadMapTemplates();
-        }
-        #endregion
         /// <summary>
         /// 將 RGB 圖像轉換為灰階
         /// </summary>
-        /// <param name="rgbMat">RGB 格式的 Mat</param>
-        /// <returns>灰階 Mat</returns>
-        /// <exception cref="ArgumentException">輸入 Mat 為 null 或空時拋出</exception>
         public static Mat ConvertToGrayscale(Mat rgbMat)
         {
             if (rgbMat == null || rgbMat.Empty())
@@ -93,55 +74,6 @@ namespace ArtaleAI.Vision
             var grayMat = new Mat();
             Cv2.CvtColor(rgbMat, grayMat, ColorConversionCodes.RGB2GRAY);
             return grayMat;
-        }
-
-        /// <summary>
-        /// 將 HSV 值轉換為 OpenCV Scalar 格式
-        /// </summary>
-        /// <param name="h">色相 (Hue) 0-179</param>
-        /// <param name="s">飽和度 (Saturation) 0-255</param>
-        /// <param name="v">明度 (Value) 0-255</param>
-        /// <returns>OpenCV Scalar 物件</returns>
-        public static Scalar ToOpenCvHsv(int h, int s, int v)
-        {
-            return new Scalar(h, s, v);
-        }
-
-        /// <summary>
-        /// 執行模板匹配
-        /// 支援彩色和灰階兩種模式
-        /// </summary>
-        /// <param name="inputMat">輸入影像</param>
-        /// <param name="templateMat">模板影像</param>
-        /// <param name="threshold">匹配閾值（0.0-1.0）</param>
-        /// <param name="useGrayscale">是否使用灰階模式</param>
-        /// <returns>匹配位置和最大值，未達閾值時返回 null</returns>
-        public static (System.Drawing.Point Location, double MaxValue)? MatchTemplate(Mat inputMat, Mat templateMat, double threshold, bool useGrayscale = false)
-        {
-            if (inputMat?.Empty() != false || templateMat?.Empty() != false)
-                return null;
-
-            try
-            {
-                using var result = new Mat();
-                if (useGrayscale)
-                {
-                    using var inputGray = ConvertToGrayscale(inputMat);
-                    using var templateGray = ConvertToGrayscale(templateMat);
-                    OpenCvSharp.Cv2.MatchTemplate(inputGray, templateGray, result, OpenCvSharp.TemplateMatchModes.CCoeffNormed);
-                }
-                else
-                {
-                    OpenCvSharp.Cv2.MatchTemplate(inputMat, templateMat, result, OpenCvSharp.TemplateMatchModes.CCoeffNormed);
-                }
-                OpenCvSharp.Cv2.MinMaxLoc(result, out _, out var maxValue, out _, out var maxLoc);
-                if (maxValue >= threshold) return (new System.Drawing.Point(maxLoc.X, maxLoc.Y), maxValue);
-                return null;
-            }
-            catch
-            {
-                return null;
-            }
         }
 
         /// <summary>回傳最佳匹配分數（即使低於閾值），供換頻診斷／等待選單用。</summary>
@@ -205,34 +137,6 @@ namespace ArtaleAI.Vision
             }
 
             return Color.White;
-        }
-
-        /// <summary>
-        /// 將小地圖相對座標轉換為螢幕絕對座標
-        /// </summary>
-        /// <param name="minimapPoint">小地圖上的相對座標</param>
-        /// <param name="minimapBounds">小地圖在螢幕上的邊界區域</param>
-        /// <returns>螢幕絕對座標</returns>
-        public static PointF MinimapToScreenF(PointF minimapPoint, Rectangle minimapBounds)
-        {
-            return new PointF(
-                minimapBounds.X + minimapPoint.X,
-                minimapBounds.Y + minimapPoint.Y
-            );
-        }
-
-        /// <summary>
-        /// 將螢幕絕對座標轉換為小地圖相對座標
-        /// </summary>
-        /// <param name="screenPoint">螢幕絕對座標</param>
-        /// <param name="minimapBounds">小地圖在螢幕上的邊界區域</param>
-        /// <returns>小地圖相對座標</returns>
-        public static PointF ScreenToMinimapF(PointF screenPoint, Rectangle minimapBounds)
-        {
-            return new PointF(
-                screenPoint.X - minimapBounds.X,
-                screenPoint.Y - minimapBounds.Y
-            );
         }
 
         /// <summary>
@@ -306,10 +210,6 @@ namespace ArtaleAI.Vision
         {
             if (!_disposed)
             {
-                foreach (var template in _mapTemplates.Values)
-                    template?.Dispose();
-                _mapTemplates.Clear();
-
                 foreach (var bundle in _monsterBundleCache.Values)
                     bundle.Dispose();
                 _monsterBundleCache.Clear();
@@ -319,7 +219,6 @@ namespace ArtaleAI.Vision
                     LastMinimapMat?.Dispose();
                     LastMinimapMat = null;
                 }
-                ;
 
                 _disposed = true;
             }

@@ -104,11 +104,9 @@ namespace ArtaleAI.Vision
         }
 
         /// <summary>
-        /// 使用顏色特徵偵測小地圖位置（白框連通分量法）
-        /// 參考自 MapleStoryAutoLevelUp 專案的 get_minimap_loc_size 函數
+        /// 使用顏色特徵偵測小地圖位置（白框連通分量法）。
+        /// 可選左上角百分比 ROI，縮小搜尋範圍並回傳全畫面座標。
         /// </summary>
-        /// <param name="fullFrameMat">完整畫面 Mat</param>
-        /// <returns>小地圖矩形區域，未找到時返回 null</returns>
         private Rectangle? FindMinimapByColor(Mat fullFrameMat)
         {
             if (fullFrameMat?.Empty() != false) return null;
@@ -116,88 +114,30 @@ namespace ArtaleAI.Vision
             try
             {
                 var config = AppConfig.Instance;
+                var searchRect = ResolveMinimapSearchRect(
+                    fullFrameMat.Width, fullFrameMat.Height, config.Vision);
 
-                var colorParts = config.Vision.MinimapFrameColorBgr.Split(',');
-                byte b = byte.Parse(colorParts[0].Trim());
-                byte g = byte.Parse(colorParts[1].Trim());
-                byte r = byte.Parse(colorParts[2].Trim());
-                var frameColor = new Scalar(b, g, r);
-
-                using var maskWhite = new Mat();
-                Cv2.InRange(fullFrameMat, frameColor, frameColor, maskWhite);
-
-                using var labels = new Mat();
-                using var stats = new Mat();
-                using var centroids = new Mat();
-                int numLabels = Cv2.ConnectedComponentsWithStats(maskWhite, labels, stats, centroids, PixelConnectivity.Connectivity8);
-
-                for (int i = 1; i < numLabels; i++)
+                if (searchRect.Width < config.Vision.MinMinimapWidth
+                    || searchRect.Height < config.Vision.MinMinimapHeight)
                 {
-                    int x0 = stats.At<int>(i, (int)ConnectedComponentsTypes.Left);
-                    int y0 = stats.At<int>(i, (int)ConnectedComponentsTypes.Top);
-                    int rw = stats.At<int>(i, (int)ConnectedComponentsTypes.Width);
-                    int rh = stats.At<int>(i, (int)ConnectedComponentsTypes.Height);
-
-                    if (rw < config.Vision.MinMinimapWidth || rh < config.Vision.MinMinimapHeight)
-                        continue;
-
-                    int x1 = x0 + rw - 1;
-                    int y1 = y0 + rh - 1;
-
-                    bool validFrame = true;
-
-                    for (int x = x0; x <= x1 && validFrame; x++)
-                    {
-                        var pixel = fullFrameMat.At<Vec3b>(y0, x);
-                        if (pixel.Item0 != b || pixel.Item1 != g || pixel.Item2 != r)
-                            validFrame = false;
-                    }
-
-                    for (int x = x0; x <= x1 && validFrame; x++)
-                    {
-                        var pixel = fullFrameMat.At<Vec3b>(y1, x);
-                        if (pixel.Item0 != b || pixel.Item1 != g || pixel.Item2 != r)
-                            validFrame = false;
-                    }
-
-                    for (int y = y0; y <= y1 && validFrame; y++)
-                    {
-                        var pixel = fullFrameMat.At<Vec3b>(y, x0);
-                        if (pixel.Item0 != b || pixel.Item1 != g || pixel.Item2 != r)
-                            validFrame = false;
-                    }
-
-                    for (int y = y0; y <= y1 && validFrame; y++)
-                    {
-                        var pixel = fullFrameMat.At<Vec3b>(y, x1);
-                        if (pixel.Item0 != b || pixel.Item1 != g || pixel.Item2 != r)
-                            validFrame = false;
-                    }
-
-                    if (!validFrame)
-                        continue;
-
-                    using var roiMat = fullFrameMat[new OpenCvSharp.Rect(x0, y0, rw, rh)];
-                    using var maskNonWhite = new Mat();
-                    Cv2.InRange(roiMat, frameColor, frameColor, maskNonWhite);
-                    Cv2.BitwiseNot(maskNonWhite, maskNonWhite);
-
-                    using var nonZeroMat = new Mat();
-                    Cv2.FindNonZero(maskNonWhite, nonZeroMat);
-                    if (nonZeroMat.Empty())
-                        continue;
-
-                    var innerRect = Cv2.BoundingRect(nonZeroMat);
-
-                    int minimapX = x0 + innerRect.X;
-                    int minimapY = y0 + innerRect.Y;
-                    int minimapW = innerRect.Width;
-                    int minimapH = innerRect.Height;
-
-                    return new Rectangle(minimapX, minimapY, minimapW, minimapH);
+                    Logger.Warning(
+                        $"[小地圖] 搜尋 ROI 過小 {searchRect}（畫面 {fullFrameMat.Width}x{fullFrameMat.Height}），請調整 minimapSearchRoi");
+                    return null;
                 }
 
-                return null;
+                using var searchMat = new Mat(
+                    fullFrameMat,
+                    new OpenCvSharp.Rect(searchRect.X, searchRect.Y, searchRect.Width, searchRect.Height));
+
+                var local = FindMinimapByColorInMat(searchMat, config);
+                if (!local.HasValue)
+                    return null;
+
+                return new Rectangle(
+                    searchRect.X + local.Value.X,
+                    searchRect.Y + local.Value.Y,
+                    local.Value.Width,
+                    local.Value.Height);
             }
             catch (Exception ex)
             {
@@ -206,19 +146,129 @@ namespace ArtaleAI.Vision
             }
         }
 
-        /// <summary>
-        /// 完整的小地圖追蹤處理（無時間戳版本，用於 UI 顯示等非關鍵路徑）
-        /// </summary>
-        /// <param name="fullFrameMat">完整畫面 Mat</param>
-        /// <returns>小地圖追蹤結果，失敗時返回 null</returns>
-        public MinimapTrackingResult? GetMinimapTracking(Mat fullFrameMat)
+        /// <summary>將百分比 ROI 轉成像素矩形；關閉 ROI 時回傳全畫面。</summary>
+        internal static Rectangle ResolveMinimapSearchRect(
+            int frameWidth,
+            int frameHeight,
+            VisionSettings settings)
         {
-            return GetMinimapTracking(fullFrameMat, DateTime.UtcNow);
+            if (frameWidth <= 0 || frameHeight <= 0)
+                return Rectangle.Empty;
+
+            if (!settings.UseMinimapSearchRoi)
+                return new Rectangle(0, 0, frameWidth, frameHeight);
+
+            var roi = settings.MinimapSearchRoi ?? new MinimapSearchRoiPercent();
+            int left = PercentToPixels(roi.LeftPercent, frameWidth, minPixels: 0);
+            int top = PercentToPixels(roi.TopPercent, frameHeight, minPixels: 0);
+            int width = PercentToPixels(roi.WidthPercent, frameWidth);
+            int height = PercentToPixels(roi.HeightPercent, frameHeight);
+
+            left = Math.Clamp(left, 0, Math.Max(0, frameWidth - 1));
+            top = Math.Clamp(top, 0, Math.Max(0, frameHeight - 1));
+            width = Math.Clamp(width, 1, frameWidth - left);
+            height = Math.Clamp(height, 1, frameHeight - top);
+
+            return new Rectangle(left, top, width, height);
+        }
+
+        private static int PercentToPixels(double percent, int frameSize, int minPixels = 1)
+        {
+            if (frameSize <= 0)
+                return minPixels;
+
+            double clamped = Math.Clamp(percent, 0, 1);
+            return Math.Max(minPixels, (int)Math.Round(frameSize * clamped));
+        }
+
+        /// <summary>在既定 Mat（可能是搜尋 ROI 裁切）內找白框小地圖，座標相對該 Mat。</summary>
+        private static Rectangle? FindMinimapByColorInMat(Mat regionMat, AppConfig config)
+        {
+            var colorParts = config.Vision.MinimapFrameColorBgr.Split(',');
+            byte b = byte.Parse(colorParts[0].Trim());
+            byte g = byte.Parse(colorParts[1].Trim());
+            byte r = byte.Parse(colorParts[2].Trim());
+            var frameColor = new Scalar(b, g, r);
+
+            using var maskWhite = new Mat();
+            Cv2.InRange(regionMat, frameColor, frameColor, maskWhite);
+
+            using var labels = new Mat();
+            using var stats = new Mat();
+            using var centroids = new Mat();
+            int numLabels = Cv2.ConnectedComponentsWithStats(
+                maskWhite, labels, stats, centroids, PixelConnectivity.Connectivity8);
+
+            for (int i = 1; i < numLabels; i++)
+            {
+                int x0 = stats.At<int>(i, (int)ConnectedComponentsTypes.Left);
+                int y0 = stats.At<int>(i, (int)ConnectedComponentsTypes.Top);
+                int rw = stats.At<int>(i, (int)ConnectedComponentsTypes.Width);
+                int rh = stats.At<int>(i, (int)ConnectedComponentsTypes.Height);
+
+                if (rw < config.Vision.MinMinimapWidth || rh < config.Vision.MinMinimapHeight)
+                    continue;
+
+                int x1 = x0 + rw - 1;
+                int y1 = y0 + rh - 1;
+
+                bool validFrame = true;
+
+                for (int x = x0; x <= x1 && validFrame; x++)
+                {
+                    var pixel = regionMat.At<Vec3b>(y0, x);
+                    if (pixel.Item0 != b || pixel.Item1 != g || pixel.Item2 != r)
+                        validFrame = false;
+                }
+
+                for (int x = x0; x <= x1 && validFrame; x++)
+                {
+                    var pixel = regionMat.At<Vec3b>(y1, x);
+                    if (pixel.Item0 != b || pixel.Item1 != g || pixel.Item2 != r)
+                        validFrame = false;
+                }
+
+                for (int y = y0; y <= y1 && validFrame; y++)
+                {
+                    var pixel = regionMat.At<Vec3b>(y, x0);
+                    if (pixel.Item0 != b || pixel.Item1 != g || pixel.Item2 != r)
+                        validFrame = false;
+                }
+
+                for (int y = y0; y <= y1 && validFrame; y++)
+                {
+                    var pixel = regionMat.At<Vec3b>(y, x1);
+                    if (pixel.Item0 != b || pixel.Item1 != g || pixel.Item2 != r)
+                        validFrame = false;
+                }
+
+                if (!validFrame)
+                    continue;
+
+                using var roiMat = regionMat[new OpenCvSharp.Rect(x0, y0, rw, rh)];
+                using var maskNonWhite = new Mat();
+                Cv2.InRange(roiMat, frameColor, frameColor, maskNonWhite);
+                Cv2.BitwiseNot(maskNonWhite, maskNonWhite);
+
+                using var nonZeroMat = new Mat();
+                Cv2.FindNonZero(maskNonWhite, nonZeroMat);
+                if (nonZeroMat.Empty())
+                    continue;
+
+                var innerRect = Cv2.BoundingRect(nonZeroMat);
+
+                return new Rectangle(
+                    x0 + innerRect.X,
+                    y0 + innerRect.Y,
+                    innerRect.Width,
+                    innerRect.Height);
+            }
+
+            return null;
         }
 
         /// <summary>
-        /// 完整的小地圖追蹤處理
-        /// 檢測小地圖位置、玩家位置和其他玩家位置
+        /// 完整的小地圖追蹤處理：檢測小地圖位置、玩家與其他玩家位置。
         /// </summary>
         /// <param name="fullFrameMat">完整畫面 Mat</param>
         /// <param name="captureTime">該幀擷取時間（寫入追蹤結果以利同步）。</param>
@@ -250,69 +300,48 @@ namespace ArtaleAI.Vision
                 try
                 {
                     var playerStyle = AppConfig.Instance.Appearance.MinimapPlayer;
-
-                    var colorParts = playerStyle.PlayerColorBgr.Split(',');
-                    int r = int.Parse(colorParts[0].Trim());
-                    int g = int.Parse(colorParts[1].Trim());
-                    int b = int.Parse(colorParts[2].Trim());
-                    int tolerance = playerStyle.ColorTolerance;
-                    int minPixels = playerStyle.MinPixelCount;
-
-                    var lowerBound = new Scalar(
-                        Math.Max(0, b - tolerance),
-                        Math.Max(0, g - tolerance),
-                        Math.Max(0, r - tolerance)
-                    );
-                    var upperBound = new Scalar(
-                        Math.Min(255, b + tolerance),
-                        Math.Min(255, g + tolerance),
-                        Math.Min(255, r + tolerance)
-                    );
-
-                    using var mask = new Mat();
-                    Cv2.InRange(minimapMat, lowerBound, upperBound, mask);
-
-                    var moments = Cv2.Moments(mask, true);
-                    if (moments.M00 >= minPixels)
+                    if (TryFindColorCentroid(
+                            minimapMat,
+                            playerStyle.PlayerColorBgr,
+                            playerStyle.ColorTolerance,
+                            playerStyle.MinPixelCount,
+                            playerStyle.OffsetY,
+                            out var foundPlayer,
+                            out int pixelCount))
                     {
-                        float avgX = (float)(moments.M10 / moments.M00);
-                        float avgY = (float)(moments.M01 / moments.M00);
-
-                        playerPos = new System.Drawing.PointF(avgX, avgY + playerStyle.OffsetY);
-
-                        if (Math.Abs(moments.M00 - _lastPixelCount) > 5)
-                        {
-                            _lastPixelCount = (int)moments.M00;
-                        }
+                        playerPos = foundPlayer;
+                        if (Math.Abs(pixelCount - _lastPixelCount) > 5)
+                            _lastPixelCount = pixelCount;
                     }
                     else
                     {
-                        Debug.WriteLine($"[顏色匹配] 像素數不足: {moments.M00:F0} < {minPixels}");
+                        Debug.WriteLine($"[顏色匹配] 自己玩家像素數不足（min={playerStyle.MinPixelCount}）");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error($"[小地圖] 顏色匹配偵測錯誤: {ex.Message}");
+                    Logger.Error($"[小地圖] 自己玩家顏色偵測錯誤: {ex.Message}");
                 }
 
                 var otherPlayers = new List<System.Drawing.PointF>();
-                if (AppConfig.Instance.Navigation.EnableOtherPlayersDetection == true)
+                if (AppConfig.Instance.Navigation.EnableOtherPlayersDetection)
                 {
                     try
                     {
-                        // 遇人換頻只需「有沒有別人」；單次 MaxLoc 足夠且較省。
-                        double threshold = AppConfig.Instance.Navigation.OtherPlayersThreshold;
-                        var result = MatchTemplateInternal(minimapMat, "OtherPlayers", threshold);
-                        if (result.HasValue)
-                        {
-                            otherPlayers.Add(new System.Drawing.PointF(
-                                result.Value.Location.X,
-                                result.Value.Location.Y));
-                        }
+                        var otherStyle = AppConfig.Instance.Appearance.MinimapOtherPlayer;
+                        otherPlayers = FindColorBlobCentroids(
+                            minimapMat,
+                            otherStyle.OtherPlayerColorBgr,
+                            otherStyle.ColorTolerance,
+                            otherStyle.MinPixelCount,
+                            otherStyle.OffsetY,
+                            otherStyle.MaxDetectCount,
+                            excludeNear: playerPos,
+                            excludeRadiusPx: 4f);
                     }
                     catch (Exception ex)
                     {
-                        Logger.Error($"[小地圖] 其他玩家檢測錯誤: {ex.Message}");
+                        Logger.Error($"[小地圖] 其他玩家顏色偵測錯誤: {ex.Message}");
                     }
                 }
 
@@ -337,79 +366,126 @@ namespace ArtaleAI.Vision
         #region 私有輔助方法 - 小地圖相關
 
         /// <summary>
-        /// 內部模板匹配方法
-        /// 從快取中取得模板並執行匹配
+        /// 解析「R,G,B」字串並轉成 OpenCV BGR 上下界。
+        /// 與既有 <c>PlayerColorBgr</c> 慣例相同：字串是 RGB，Scalar 才是 BGR。
         /// </summary>
-        /// <param name="inputMat">輸入影像</param>
-        /// <param name="templateName">模板名稱</param>
-        /// <param name="threshold">匹配閾值</param>
-        /// <param name="useGrayscale">是否使用灰階模式</param>
-        /// <returns>匹配位置和最大值，未找到時返回 null</returns>
-        private (System.Drawing.Point Location, double MaxValue)? MatchTemplateInternal(Mat inputMat, string templateName, double threshold, bool useGrayscale = false)
+        private static bool TryBuildBgrRange(
+            string colorRgbCsv,
+            int tolerance,
+            out Scalar lowerBgr,
+            out Scalar upperBgr)
         {
-            if (inputMat?.Empty() != false)
-                return null;
+            lowerBgr = default;
+            upperBgr = default;
 
-            if (!_mapTemplates.TryGetValue(templateName, out var template) || template?.Empty() != false)
-                return null;
+            var parts = colorRgbCsv.Split(',');
+            if (parts.Length < 3)
+                return false;
+            if (!int.TryParse(parts[0].Trim(), out int r) ||
+                !int.TryParse(parts[1].Trim(), out int g) ||
+                !int.TryParse(parts[2].Trim(), out int b))
+                return false;
 
-            return MatchTemplate(inputMat, template, threshold, useGrayscale);
+            int tol = Math.Max(0, tolerance);
+            lowerBgr = new Scalar(
+                Math.Max(0, b - tol),
+                Math.Max(0, g - tol),
+                Math.Max(0, r - tol));
+            upperBgr = new Scalar(
+                Math.Min(255, b + tol),
+                Math.Min(255, g + tol),
+                Math.Min(255, r + tol));
+            return true;
+        }
+
+        /// <summary>單色塊質心（自己玩家：通常只有一個標記）。</summary>
+        private static bool TryFindColorCentroid(
+            Mat sourceBgr,
+            string colorRgbCsv,
+            int tolerance,
+            int minPixels,
+            float offsetY,
+            out System.Drawing.PointF centroid,
+            out int pixelCount)
+        {
+            centroid = default;
+            pixelCount = 0;
+
+            if (!TryBuildBgrRange(colorRgbCsv, tolerance, out var lower, out var upper))
+                return false;
+
+            using var mask = new Mat();
+            Cv2.InRange(sourceBgr, lower, upper, mask);
+            var moments = Cv2.Moments(mask, true);
+            pixelCount = (int)moments.M00;
+            if (pixelCount < Math.Max(1, minPixels))
+                return false;
+
+            centroid = new System.Drawing.PointF(
+                (float)(moments.M10 / moments.M00),
+                (float)(moments.M01 / moments.M00) + offsetY);
+            return true;
         }
 
         /// <summary>
-        /// 載入所有小地圖相關模板
-        /// 包括玩家標記、其他玩家標記和四個角點模板
+        /// 多色塊質心（其他玩家：可能多人）。
+        /// 以連通元件分開各標記；可排除靠近自己玩家的 blob，降低誤判。
         /// </summary>
-        private void LoadMapTemplates()
+        private static List<System.Drawing.PointF> FindColorBlobCentroids(
+            Mat sourceBgr,
+            string colorRgbCsv,
+            int tolerance,
+            int minPixels,
+            float offsetY,
+            int maxDetectCount,
+            System.Drawing.PointF? excludeNear,
+            float excludeRadiusPx)
         {
-            var config = AppConfig.Instance;
-            var templatePaths = new Dictionary<string, string>
+            var results = new List<System.Drawing.PointF>();
+            if (!TryBuildBgrRange(colorRgbCsv, tolerance, out var lower, out var upper))
+                return results;
+
+            using var mask = new Mat();
+            Cv2.InRange(sourceBgr, lower, upper, mask);
+
+            using var labels = new Mat();
+            using var stats = new Mat();
+            using var centroids = new Mat();
+            int numLabels = Cv2.ConnectedComponentsWithStats(
+                mask, labels, stats, centroids, PixelConnectivity.Connectivity8);
+
+            int minArea = Math.Max(1, minPixels);
+            int cap = Math.Max(1, maxDetectCount);
+            float excludeR2 = excludeRadiusPx * excludeRadiusPx;
+
+            var candidates = new List<(float Area, System.Drawing.PointF Pos)>(numLabels);
+            for (int i = 1; i < numLabels; i++)
             {
-                ["PlayerMarker"] = config.Vision.PlayerMarker,
-                ["OtherPlayers"] = config.Vision.OtherPlayers,
-                ["TopLeft"] = config.Vision.TopLeft,
-                ["TopRight"] = config.Vision.TopRight,
-                ["BottomLeft"] = config.Vision.BottomLeft,
-                ["BottomRight"] = config.Vision.BottomRight
-            };
-
-            foreach (var kvp in templatePaths)
-            {
-                if (string.IsNullOrEmpty(kvp.Value)) continue;
-
-                var templatePath = kvp.Value;
-                if (!Path.IsPathRooted(templatePath))
-                    templatePath = Path.Combine(PathManager.ContentRoot, templatePath);
-
-                if (!File.Exists(templatePath))
-                {
-                    Debug.WriteLine($"模板檔案不存在: {kvp.Key} -> {templatePath}");
+                int area = stats.At<int>(i, (int)ConnectedComponentsTypes.Area);
+                if (area < minArea)
                     continue;
-                }
 
-                try
+                double cx = centroids.At<double>(i, 0);
+                double cy = centroids.At<double>(i, 1);
+                var pos = new System.Drawing.PointF((float)cx, (float)cy + offsetY);
+
+                if (excludeNear.HasValue)
                 {
-                    using var originalTemplate = Cv2.ImRead(templatePath, ImreadModes.Color);
-                    if (originalTemplate.Empty())
-                    {
-                        Logger.Warning($"[模板] 無法載入模板: {kvp.Key}");
+                    float dx = pos.X - excludeNear.Value.X;
+                    float dy = pos.Y - excludeNear.Value.Y;
+                    if (dx * dx + dy * dy <= excludeR2)
                         continue;
-                    }
-
-                    Mat finalTemplate = originalTemplate.Clone();
-
-
-
-                    _mapTemplates[kvp.Key] = finalTemplate;
-                    Logger.Debug($"[模板] 成功載入模板: {kvp.Key}");
                 }
-                catch (Exception ex)
-                {
-                    Logger.Error($"[模板] 載入模板失敗: {kvp.Key} - {ex.Message}");
-                }
+
+                candidates.Add((area, pos));
             }
-        }
 
+            // 面積大的優先，較像真實玩家點而非單像素噪點。
+            foreach (var c in candidates.OrderByDescending(x => x.Area).Take(cap))
+                results.Add(c.Pos);
+
+            return results;
+        }
 
         #endregion
         /// <summary>
@@ -537,7 +613,6 @@ namespace ArtaleAI.Vision
                     if (process != null && AppConfig.Instance != null)
                     {
                         AppConfig.Instance.General.LastSelectedProcessName = process.ProcessName;
-                        AppConfig.Instance.General.LastSelectedProcessId = process.Id;
                         progressReporter?.Invoke($"已記錄程序資訊: {process.ProcessName}");
                     }
                 }

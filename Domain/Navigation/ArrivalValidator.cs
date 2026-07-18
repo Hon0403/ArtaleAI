@@ -51,11 +51,6 @@ namespace ArtaleAI.Domain.Navigation
                 Logger.Debug(line);
         }
 
-        public static void LogRejection(PointF playerPos, ExecutionTarget target, PlatformGeometryIndex? geometry)
-        {
-            LogDiagnostic(Diagnose(playerPos, target, geometry), asWarning: true);
-        }
-
         private static ArrivalDiagnostic DiagnosePointHitbox(PointF playerPos, ExecutionTarget target)
         {
             bool inside = target.PointHitbox?.Contains(playerPos.X, playerPos.Y) ?? false;
