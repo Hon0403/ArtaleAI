@@ -39,6 +39,9 @@ namespace ArtaleAI.Application.Pipeline
         private List<SdRect> _currentDetectionBoxes = new();
         private List<SdRect> _currentAttackRangeBoxes = new();
         private List<DetectionResult> _currentMonsters = new();
+
+        /// <summary>怪物結果的「來源幀擷取時間」（非偵測完成時間），供過期修剪判斷。</summary>
+        private DateTime _monsterResultCaptureUtc = DateTime.MinValue;
         private List<SdRect> _currentMinimapBoxes = new();
         private List<SdRect> _currentMinimapMarkers = new();
         private List<SdRect> _currentOtherPlayerMarkers = new();
@@ -232,6 +235,10 @@ namespace ArtaleAI.Application.Pipeline
                 var now = DateTime.UtcNow;
                 double captureLagMs = (now - captureTime).TotalMilliseconds;
 
+                // 時間線對齊：怪物結果來自非同步背景偵測，先修剪過期資料，
+                // 確保本幀所有下游（攻擊決策、快照）只消費新鮮結果。
+                PruneStaleMonsterResults(now, config);
+
                 // 監測開啟即持續快取幀：換頻／隊伍重建狀態機都靠最新畫面辨識。
                 if (AutoAttackEnabled
                     || PartyRecoveryEnabled
@@ -296,7 +303,7 @@ namespace ArtaleAI.Application.Pipeline
 
                 double msAfterBlood = sw.Elapsed.TotalMilliseconds;
 
-                ScheduleMonsterDetection(frameMat, config, now);
+                ScheduleMonsterDetection(frameMat, captureTime, config, now);
 
                 double msAfterMonster = sw.Elapsed.TotalMilliseconds;
 
@@ -1135,8 +1142,32 @@ namespace ArtaleAI.Application.Pipeline
             return alpha * raw + (1 - alpha) * previous;
         }
 
+        /// <summary>
+        /// 怪物結果最大存活時間：來源幀年齡超過即整批清空釋放。
+        /// 取 3 個偵測週期（下限 250ms）容忍背景偵測的正常延遲，同時擋住卡頓後的殭屍資料。
+        /// </summary>
+        private static int ResolveMonsterResultMaxAgeMs(AppConfig config) =>
+            Math.Max(250, config.Vision.MonsterDetectIntervalMs * 3);
+
+        /// <summary>來源幀過期的怪物結果整批清空，讓下游 fail-closed（無資料＝不攻擊）。</summary>
+        private void PruneStaleMonsterResults(DateTime now, AppConfig config)
+        {
+            int maxAgeMs = ResolveMonsterResultMaxAgeMs(config);
+            lock (_monsterLock)
+            {
+                if (_currentMonsters.Count == 0)
+                    return;
+                if ((now - _monsterResultCaptureUtc).TotalMilliseconds <= maxAgeMs)
+                    return;
+
+                _currentMonsters = new List<DetectionResult>();
+            }
+
+            Logger.Debug($"[GamePipeline] 怪物結果過期（>{maxAgeMs}ms）已清空，等待新偵測");
+        }
+
         /// <summary>節流並非同步排程怪物辨識；進行中則以 Latest-Frame-Wins 覆蓋待處理 ROI。</summary>
-        private void ScheduleMonsterDetection(Mat frameMat, AppConfig config, DateTime now)
+        private void ScheduleMonsterDetection(Mat frameMat, DateTime captureTime, AppConfig config, DateTime now)
         {
             var elapsed = (now - _lastMonsterDetection).TotalMilliseconds;
             int monsterCount;
@@ -1147,7 +1178,7 @@ namespace ArtaleAI.Application.Pipeline
             if (!_currentDetectionBoxes.Any()) return;
             if (MonsterCatalog.IsEmpty) return;
 
-            var workItem = TryBuildMonsterWorkItem(frameMat, config);
+            var workItem = TryBuildMonsterWorkItem(frameMat, captureTime, config);
             if (workItem == null) return;
 
             if (Interlocked.CompareExchange(ref _monsterDetectionInFlight, 1, 0) != 0)
@@ -1166,7 +1197,7 @@ namespace ArtaleAI.Application.Pipeline
             Task.Run(() => RunMonsterDetectionWorker(workItem));
         }
 
-        private MonsterDetectionWorkItem? TryBuildMonsterWorkItem(Mat frameMat, AppConfig config)
+        private MonsterDetectionWorkItem? TryBuildMonsterWorkItem(Mat frameMat, DateTime captureTime, AppConfig config)
         {
             var detectionBoxes = _currentDetectionBoxes.ToList();
             var frameBounds = new Rect(0, 0, frameMat.Width, frameMat.Height);
@@ -1201,6 +1232,7 @@ namespace ArtaleAI.Application.Pipeline
 
             return new MonsterDetectionWorkItem(
                 crops,
+                captureTime,
                 MonsterCatalog,
                 detectionMode,
                 detectionThreshold,
@@ -1217,7 +1249,7 @@ namespace ArtaleAI.Application.Pipeline
                     try
                     {
                         RunMonsterDetection(
-                            job.Crops, job.Catalog, job.DetectionMode,
+                            job.Crops, job.CaptureTime, job.Catalog, job.DetectionMode,
                             job.DetectionThreshold, job.MaxResults);
                     }
                     catch (Exception ex)
@@ -1259,6 +1291,7 @@ namespace ArtaleAI.Application.Pipeline
 
         private void RunMonsterDetection(
             List<(Rect CropRect, Mat Image)> crops,
+            DateTime captureTime,
             MonsterDetectionCatalog catalog,
             MonsterDetectionMode detectionMode,
             double detectionThreshold,
@@ -1353,7 +1386,15 @@ namespace ArtaleAI.Application.Pipeline
             if (finalResults.Count > 0)
                 OnStatusMessage?.Invoke($"檢測到 {finalResults.Count} 個怪物 (原始: {allResults.Count})");
 
-            lock (_monsterLock) { _currentMonsters = finalResults; }
+            lock (_monsterLock)
+            {
+                // 只允許時間軸前進：晚到的舊幀結果不得覆蓋較新結果。
+                if (captureTime >= _monsterResultCaptureUtc)
+                {
+                    _currentMonsters = finalResults;
+                    _monsterResultCaptureUtc = captureTime;
+                }
+            }
             _lastMonsterDetection = DateTime.UtcNow;
 
             CheckAutoAttackCondition();
@@ -1387,12 +1428,14 @@ namespace ArtaleAI.Application.Pipeline
         {
             public MonsterDetectionWorkItem(
                 List<(Rect CropRect, Mat Image)> crops,
+                DateTime captureTime,
                 MonsterDetectionCatalog catalog,
                 MonsterDetectionMode detectionMode,
                 double detectionThreshold,
                 int maxResults)
             {
                 Crops = crops;
+                CaptureTime = captureTime;
                 Catalog = catalog;
                 DetectionMode = detectionMode;
                 DetectionThreshold = detectionThreshold;
@@ -1400,6 +1443,10 @@ namespace ArtaleAI.Application.Pipeline
             }
 
             public List<(Rect CropRect, Mat Image)> Crops { get; }
+
+            /// <summary>來源幀擷取時間：結果的時間戳基準，供過期判斷。</summary>
+            public DateTime CaptureTime { get; }
+
             public MonsterDetectionCatalog Catalog { get; }
             public MonsterDetectionMode DetectionMode { get; }
             public double DetectionThreshold { get; }

@@ -140,16 +140,19 @@ namespace ArtaleAI.UI
 
             try
             {
-                using var frameMat = _capturer.TryGetNextMat();
-                if (frameMat != null && !frameMat.Empty())
-                {
-                    var captureTime = DateTime.UtcNow;
+                // TryGetNextMat 每次回傳全新 Mat，無人共用；
+                // 直接轉移所有權入佇列，省下每秒 30 次的全幅 Clone。
+                var frameMat = _capturer.TryGetNextMat();
+                if (frameMat == null)
+                    return;
 
-                    if (frameQueue.Count < MaxFrameQueueSize)
-                    {
-                        frameQueue.Enqueue(new TimestampedFrame(frameMat.Clone(), captureTime));
-                    }
+                if (frameMat.Empty() || frameQueue.Count >= MaxFrameQueueSize)
+                {
+                    frameMat.Dispose();
+                    return;
                 }
+
+                frameQueue.Enqueue(new TimestampedFrame(frameMat, DateTime.UtcNow));
             }
             catch (Exception ex)
             {

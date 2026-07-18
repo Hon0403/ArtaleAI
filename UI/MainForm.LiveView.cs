@@ -304,12 +304,13 @@ namespace ArtaleAI
                         }
                     }
 
-                    using var consoleMinimapClone = gameVision?.GetLastMinimapMatClone();
-                    if (consoleMinimapClone != null && !consoleMinimapClone.Empty())
+                    // 先過節流再 Clone：未達更新間隔的 tick 連小地圖複製都不做。
+                    var overlayNow = DateTime.UtcNow;
+                    if ((overlayNow - _lastConsoleMinimapOverlayUpdate).TotalMilliseconds >= ConsoleMinimapOverlayIntervalMs &&
+                        !_consoleMinimapUiUpdatePending)
                     {
-                        var overlayNow = DateTime.UtcNow;
-                        if ((overlayNow - _lastConsoleMinimapOverlayUpdate).TotalMilliseconds >= ConsoleMinimapOverlayIntervalMs &&
-                            !_consoleMinimapUiUpdatePending)
+                        using var consoleMinimapClone = gameVision?.GetLastMinimapMatClone();
+                        if (consoleMinimapClone != null && !consoleMinimapClone.Empty())
                         {
                             _lastConsoleMinimapOverlayUpdate = overlayNow;
 
@@ -367,8 +368,8 @@ namespace ArtaleAI
 
         /// <summary>
         /// 主控台遊戲監控：節流顯示擷取幀。
-        /// 這裡刻意使用獨立 Mat 複本且不疊 overlay，避免 WinRT 擷取幀、
-        /// OpenCV ROI 背景辨識與 GDI+ 繪圖同時讀寫同一份原生記憶體。
+        /// ToBitmap 產出的 Bitmap 擁有獨立像素記憶體；本方法在幀擁有者執行緒同步執行，
+        /// 背景怪物辨識僅碰 ROI 複本，故不需額外 Mat/Bitmap 防禦性複製。
         /// </summary>
         private void TryUpdateConsoleGameView(Mat frameMat, AppConfig config)
         {
@@ -387,9 +388,7 @@ namespace ArtaleAI
 
             try
             {
-                using var frameCopy = frameMat.Clone();
-                using var bmp = BitmapConverter.ToBitmap(frameCopy);
-                SetConsoleGameViewImage((Bitmap)bmp.Clone());
+                SetConsoleGameViewImage(BitmapConverter.ToBitmap(frameMat));
             }
             catch (Exception ex)
             {

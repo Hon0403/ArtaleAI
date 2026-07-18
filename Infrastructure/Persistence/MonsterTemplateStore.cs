@@ -8,7 +8,7 @@ namespace ArtaleAI.Infrastructure.Persistence
     public sealed class MonsterTemplateStore : IDisposable
     {
         /// <summary>UI 建議上限：再多效能與誤打風險上升。</summary>
-        public const int SoftSelectLimit = 3;
+        public const int SoftSelectLimit = 5;
 
         private readonly GameVisionCore _gameVision;
         private readonly MonsterDetectionCatalog _catalog = new();
