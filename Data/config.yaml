@@ -9,8 +9,8 @@ general:
   forceClientSizeCooldownMs: 2500
 vision:
   defaultThreshold: 0.75
-  maxDetectionResults: 5
-  detectionMode: Color
+  maxDetectionResults: 3
+  detectionMode: Grayscale
   contourDiffThreshold: 0.8
   monsterHpBarFilterEnabled: false
   monsterHpBarMaxGapPx: 36
@@ -46,9 +46,9 @@ vision:
   - ContourOnly
   - Grayscale
   - Color
-  bloodBarDetectIntervalMs: 150
-  monsterDetectIntervalMs: 100
-  captureFrameRate: 30
+  bloodBarDetectIntervalMs: 250
+  monsterDetectIntervalMs: 200
+  captureFrameRate: 15
   useFixedMinimapPosition: false
   fixedMinimapWidth: 250
   fixedMinimapHeight: 150
@@ -148,7 +148,7 @@ appearance:
 playerVitals:
   enabled: true
   showRoiOverlay: true
-  detectIntervalMs: 100
+  detectIntervalMs: 250
   uiBandTopPercent: 0.93
   hpBar:
     leftPercent: 0.2679575265459088
@@ -225,7 +225,7 @@ autoFarm:
     cooldownSeconds: 15
   preferNavigationOverAttack: true
   attackMaxVerticalDeltaPx: 80
-  changeChannelOnOtherPlayers: false
+  changeChannelOnOtherPlayers: true
   changeChannelMenuTemplate: templates/MainScreen/channel_menu_button.png
   changeChannelPickTemplate: templates/MainScreen/channel_pick_panel.png
   changeChannelConfirmTemplate: templates/MainScreen/channel_confirm_button.png
