@@ -44,16 +44,12 @@ namespace ArtaleAI
         private volatile bool _consoleMinimapUiUpdatePending;
         private const int ConsoleMinimapOverlayIntervalMs = 33;
 
-        private DateTime _lastConsoleGameViewUpdate = DateTime.MinValue;
-        private volatile bool _consoleGameViewUiUpdatePending;
-        /// <summary>主控台遊戲監控更新間隔；低於即時顯示分頁以節省 CPU。</summary>
-        private const int ConsoleGameViewIntervalMs = 100;
-
         #region UI 事件處理
 
         private async void TabControl1_SelectedIndexChanged(object? sender, EventArgs e)
         {
             _isLiveViewTabActive = ReferenceEquals(tabControl1.SelectedTab, tabPage3);
+            _isConsoleTabActive = ReferenceEquals(tabControl1.SelectedTab, tabPage1);
             _isPathEditingTabActive = ReferenceEquals(tabControl1.SelectedTab, tabPage2);
 
             bool isLiveViewRunning = liveViewManager?.IsRunning == true;
@@ -285,8 +281,6 @@ namespace ArtaleAI
                             using var drawnBmp = _overlayRenderer.Render(bmp, resultSnapshot, config);
                             UpdateDisplay((Bitmap)drawnBmp.Clone());
                         }
-
-                        TryUpdateConsoleGameView(frameMat, config);
                     }
 
                     var now = DateTime.UtcNow;
@@ -304,15 +298,15 @@ namespace ArtaleAI
                         }
                     }
 
-                    // 先過節流再 Clone：未達更新間隔的 tick 連小地圖複製都不做。
-                    var overlayNow = DateTime.UtcNow;
-                    if ((overlayNow - _lastConsoleMinimapOverlayUpdate).TotalMilliseconds >= ConsoleMinimapOverlayIntervalMs &&
-                        !_consoleMinimapUiUpdatePending)
+                    // 僅主控台可見時才渲染；切走分頁停止產圖，辨識／導航不受影響。
+                    if (_isConsoleTabActive
+                        && (now - _lastConsoleMinimapOverlayUpdate).TotalMilliseconds >= ConsoleMinimapOverlayIntervalMs
+                        && !_consoleMinimapUiUpdatePending)
                     {
                         using var consoleMinimapClone = gameVision?.GetLastMinimapMatClone();
                         if (consoleMinimapClone != null && !consoleMinimapClone.Empty())
                         {
-                            _lastConsoleMinimapOverlayUpdate = overlayNow;
+                            _lastConsoleMinimapOverlayUpdate = now;
 
                             // Console minimap：先把 A* 狀態疊到小地圖 Bitmap，再交給 UI 顯示
                             var consoleBmp = BitmapConverter.ToBitmap(consoleMinimapClone);
@@ -363,65 +357,6 @@ namespace ArtaleAI
             finally
             {
                 _consoleMinimapUiUpdatePending = false;
-            }
-        }
-
-        /// <summary>
-        /// 主控台遊戲監控：節流顯示擷取幀。
-        /// ToBitmap 產出的 Bitmap 擁有獨立像素記憶體；本方法在幀擁有者執行緒同步執行，
-        /// 背景怪物辨識僅碰 ROI 複本，故不需額外 Mat/Bitmap 防禦性複製。
-        /// </summary>
-        private void TryUpdateConsoleGameView(Mat frameMat, AppConfig config)
-        {
-            if (frameMat == null || frameMat.Empty()) return;
-            if (ckB_Start.Checked != true && liveViewManager?.IsRunning != true)
-                return;
-
-            var now = DateTime.UtcNow;
-            if ((now - _lastConsoleGameViewUpdate).TotalMilliseconds < ConsoleGameViewIntervalMs)
-                return;
-            if (_consoleGameViewUiUpdatePending)
-                return;
-
-            _lastConsoleGameViewUpdate = now;
-            _consoleGameViewUiUpdatePending = true;
-
-            try
-            {
-                SetConsoleGameViewImage(BitmapConverter.ToBitmap(frameMat));
-            }
-            catch (Exception ex)
-            {
-                _consoleGameViewUiUpdatePending = false;
-                Logger.Debug($"[遊戲監控] 更新失敗: {ex.Message}");
-            }
-        }
-
-        private void SetConsoleGameViewImage(Bitmap? newImage)
-        {
-            if (IsDisposed || Disposing)
-            {
-                newImage?.Dispose();
-                _consoleGameViewUiUpdatePending = false;
-                return;
-            }
-
-            if (InvokeRequired)
-            {
-                BeginInvoke(new Action(() => SetConsoleGameViewImage(newImage)));
-                return;
-            }
-
-            try
-            {
-                var old = pictureBox_ConsoleGameView.Image;
-                pictureBox_ConsoleGameView.Image = newImage;
-                lbl_ConsoleGamePlaceholder.Visible = newImage == null;
-                old?.Dispose();
-            }
-            finally
-            {
-                _consoleGameViewUiUpdatePending = false;
             }
         }
 

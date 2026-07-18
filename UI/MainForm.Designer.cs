@@ -95,17 +95,11 @@ namespace ArtaleAI
             lbl_AttackPrimary = new Label();
             panel2 = new Panel();
             splitConsoleMonitor = new SplitContainer();
-            splitConsoleViews = new SplitContainer();
             groupBox_ConsoleMinimap = new GroupBox();
             pictureBox_ConsoleMinimap = new PictureBox();
             lbl_ConsoleMinimapPlaceholder = new Label();
             panel_ConsoleMinimapHeader = new Panel();
             lbl_ConsoleMinimapHint = new Label();
-            groupBox_ConsoleGameView = new GroupBox();
-            pictureBox_ConsoleGameView = new PictureBox();
-            lbl_ConsoleGamePlaceholder = new Label();
-            panel_ConsoleGameHeader = new Panel();
-            lbl_ConsoleGameHint = new Label();
             groupBox_Log = new GroupBox();
             textBox1 = new TextBox();
             panel_StatusBar = new Panel();
@@ -174,18 +168,10 @@ namespace ArtaleAI
             splitConsoleMonitor.Panel1.SuspendLayout();
             splitConsoleMonitor.Panel2.SuspendLayout();
             splitConsoleMonitor.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)splitConsoleViews).BeginInit();
-            splitConsoleViews.Panel1.SuspendLayout();
-            splitConsoleViews.Panel2.SuspendLayout();
-            splitConsoleViews.SuspendLayout();
             groupBox_ConsoleMinimap.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)pictureBox_ConsoleMinimap).BeginInit();
             pictureBox_ConsoleMinimap.SuspendLayout();
             panel_ConsoleMinimapHeader.SuspendLayout();
-            groupBox_ConsoleGameView.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)pictureBox_ConsoleGameView).BeginInit();
-            pictureBox_ConsoleGameView.SuspendLayout();
-            panel_ConsoleGameHeader.SuspendLayout();
             groupBox_Log.SuspendLayout();
             panel_StatusBar.SuspendLayout();
             tableLayoutPanel_Status.SuspendLayout();
@@ -415,10 +401,10 @@ namespace ArtaleAI
             groupBox7.Controls.Add(lbl_HealHpThreshold);
             groupBox7.Controls.Add(chk_AutoHealHp);
             groupBox7.Dock = DockStyle.Fill;
-            groupBox7.Location = new Point(499, 5);
+            groupBox7.Location = new Point(437, 5);
             groupBox7.Name = "groupBox7";
             groupBox7.Padding = new Padding(4);
-            groupBox7.Size = new Size(488, 154);
+            groupBox7.Size = new Size(426, 154);
             groupBox7.TabIndex = 5;
             groupBox7.TabStop = false;
             groupBox7.Text = "自動喝水";
@@ -429,7 +415,7 @@ namespace ArtaleAI
             lbl_HealHint.ForeColor = SystemColors.GrayText;
             lbl_HealHint.Location = new Point(6, 116);
             lbl_HealHint.Name = "lbl_HealHint";
-            lbl_HealHint.Size = new Size(468, 20);
+            lbl_HealHint.Size = new Size(406, 20);
             lbl_HealHint.TabIndex = 10;
             lbl_HealHint.Text = "點「鍵」錄製任一鍵盤鍵；Esc 取消";
             // 
@@ -442,7 +428,7 @@ namespace ArtaleAI
             txt_HealMpHotkey.Name = "txt_HealMpHotkey";
             txt_HealMpHotkey.ReadOnly = true;
             txt_HealMpHotkey.ShortcutsEnabled = false;
-            txt_HealMpHotkey.Size = new Size(370, 23);
+            txt_HealMpHotkey.Size = new Size(308, 23);
             txt_HealMpHotkey.TabIndex = 9;
             txt_HealMpHotkey.Text = "Delete";
             // 
@@ -493,7 +479,7 @@ namespace ArtaleAI
             txt_HealHpHotkey.Name = "txt_HealHpHotkey";
             txt_HealHpHotkey.ReadOnly = true;
             txt_HealHpHotkey.ShortcutsEnabled = false;
-            txt_HealHpHotkey.Size = new Size(370, 23);
+            txt_HealHpHotkey.Size = new Size(308, 23);
             txt_HealHpHotkey.TabIndex = 4;
             txt_HealHpHotkey.Text = "Insert";
             // 
@@ -548,7 +534,7 @@ namespace ArtaleAI
             groupBox8.Location = new Point(5, 5);
             groupBox8.Name = "groupBox8";
             groupBox8.Padding = new Padding(4);
-            groupBox8.Size = new Size(488, 154);
+            groupBox8.Size = new Size(426, 154);
             groupBox8.TabIndex = 4;
             groupBox8.TabStop = false;
             groupBox8.Text = "定時休息";
@@ -559,7 +545,7 @@ namespace ArtaleAI
             lbl_RestHint.ForeColor = SystemColors.GrayText;
             lbl_RestHint.Location = new Point(6, 104);
             lbl_RestHint.Name = "lbl_RestHint";
-            lbl_RestHint.Size = new Size(470, 32);
+            lbl_RestHint.Size = new Size(408, 32);
             lbl_RestHint.TabIndex = 6;
             lbl_RestHint.Text = "0＝不休息　建議 30／60／20";
             // 
@@ -659,7 +645,7 @@ namespace ArtaleAI
             groupBox9.Location = new Point(5, 165);
             groupBox9.Name = "groupBox9";
             groupBox9.Padding = new Padding(4);
-            groupBox9.Size = new Size(982, 144);
+            groupBox9.Size = new Size(858, 144);
             groupBox9.TabIndex = 6;
             groupBox9.TabStop = false;
             groupBox9.Text = "補助技能";
@@ -670,7 +656,7 @@ namespace ArtaleAI
             lbl_BuffHint.ForeColor = SystemColors.GrayText;
             lbl_BuffHint.Location = new Point(8, 84);
             lbl_BuffHint.Name = "lbl_BuffHint";
-            lbl_BuffHint.Size = new Size(954, 20);
+            lbl_BuffHint.Size = new Size(830, 20);
             lbl_BuffHint.TabIndex = 25;
             lbl_BuffHint.Text = "最多 5 個；點「鍵」錄製。重按間隔會自動加減約 10%（降低固定節奏）。";
             // 
@@ -949,7 +935,7 @@ namespace ArtaleAI
             groupBox_Attack.Location = new Point(5, 315);
             groupBox_Attack.Name = "groupBox_Attack";
             groupBox_Attack.Padding = new Padding(4);
-            groupBox_Attack.Size = new Size(982, 114);
+            groupBox_Attack.Size = new Size(858, 114);
             groupBox_Attack.TabIndex = 7;
             groupBox_Attack.TabStop = false;
             groupBox_Attack.Text = "攻擊輪轉";
@@ -960,7 +946,7 @@ namespace ArtaleAI
             lbl_AttackHint.ForeColor = SystemColors.GrayText;
             lbl_AttackHint.Location = new Point(8, 56);
             lbl_AttackHint.Name = "lbl_AttackHint";
-            lbl_AttackHint.Size = new Size(954, 32);
+            lbl_AttackHint.Size = new Size(830, 32);
             lbl_AttackHint.TabIndex = 17;
             lbl_AttackHint.Text = "鎖定怪時：冷卻就緒的技優先，否則按主攻鍵。冷卻會自動 ±10%。預設主攻 Ctrl。";
             // 
@@ -1142,7 +1128,7 @@ namespace ArtaleAI
             panel2.Dock = DockStyle.Fill;
             panel2.Location = new Point(283, 3);
             panel2.Name = "panel2";
-            panel2.Size = new Size(730, 646);
+            panel2.Size = new Size(606, 646);
             panel2.TabIndex = 3;
             // 
             // splitConsoleMonitor
@@ -1154,33 +1140,15 @@ namespace ArtaleAI
             // 
             // splitConsoleMonitor.Panel1
             // 
-            splitConsoleMonitor.Panel1.Controls.Add(splitConsoleViews);
+            splitConsoleMonitor.Panel1.Controls.Add(groupBox_ConsoleMinimap);
             // 
             // splitConsoleMonitor.Panel2
             // 
             splitConsoleMonitor.Panel2.Controls.Add(groupBox_Log);
-            splitConsoleMonitor.Size = new Size(730, 590);
+            splitConsoleMonitor.Size = new Size(606, 590);
             splitConsoleMonitor.SplitterDistance = 372;
             splitConsoleMonitor.SplitterWidth = 6;
             splitConsoleMonitor.TabIndex = 2;
-            // 
-            // splitConsoleViews
-            // 
-            splitConsoleViews.Dock = DockStyle.Fill;
-            splitConsoleViews.Location = new Point(0, 0);
-            splitConsoleViews.Name = "splitConsoleViews";
-            // 
-            // splitConsoleViews.Panel1
-            // 
-            splitConsoleViews.Panel1.Controls.Add(groupBox_ConsoleMinimap);
-            // 
-            // splitConsoleViews.Panel2
-            // 
-            splitConsoleViews.Panel2.Controls.Add(groupBox_ConsoleGameView);
-            splitConsoleViews.Size = new Size(730, 372);
-            splitConsoleViews.SplitterDistance = 360;
-            splitConsoleViews.SplitterWidth = 6;
-            splitConsoleViews.TabIndex = 0;
             // 
             // groupBox_ConsoleMinimap
             // 
@@ -1190,7 +1158,7 @@ namespace ArtaleAI
             groupBox_ConsoleMinimap.Location = new Point(0, 0);
             groupBox_ConsoleMinimap.Name = "groupBox_ConsoleMinimap";
             groupBox_ConsoleMinimap.Padding = new Padding(4);
-            groupBox_ConsoleMinimap.Size = new Size(360, 372);
+            groupBox_ConsoleMinimap.Size = new Size(606, 372);
             groupBox_ConsoleMinimap.TabIndex = 0;
             groupBox_ConsoleMinimap.TabStop = false;
             groupBox_ConsoleMinimap.Text = "運行小地圖";
@@ -1203,7 +1171,7 @@ namespace ArtaleAI
             pictureBox_ConsoleMinimap.Dock = DockStyle.Fill;
             pictureBox_ConsoleMinimap.Location = new Point(4, 48);
             pictureBox_ConsoleMinimap.Name = "pictureBox_ConsoleMinimap";
-            pictureBox_ConsoleMinimap.Size = new Size(352, 320);
+            pictureBox_ConsoleMinimap.Size = new Size(598, 320);
             pictureBox_ConsoleMinimap.SizeMode = PictureBoxSizeMode.Zoom;
             pictureBox_ConsoleMinimap.TabIndex = 1;
             pictureBox_ConsoleMinimap.TabStop = false;
@@ -1214,7 +1182,7 @@ namespace ArtaleAI
             lbl_ConsoleMinimapPlaceholder.ForeColor = Color.FromArgb(160, 168, 176);
             lbl_ConsoleMinimapPlaceholder.Location = new Point(0, 0);
             lbl_ConsoleMinimapPlaceholder.Name = "lbl_ConsoleMinimapPlaceholder";
-            lbl_ConsoleMinimapPlaceholder.Size = new Size(350, 318);
+            lbl_ConsoleMinimapPlaceholder.Size = new Size(596, 318);
             lbl_ConsoleMinimapPlaceholder.TabIndex = 0;
             lbl_ConsoleMinimapPlaceholder.Text = "小地圖預覽區\r\n（啟動自動打怪後將顯示路徑／玩家）";
             lbl_ConsoleMinimapPlaceholder.TextAlign = ContentAlignment.MiddleCenter;
@@ -1225,7 +1193,7 @@ namespace ArtaleAI
             panel_ConsoleMinimapHeader.Dock = DockStyle.Top;
             panel_ConsoleMinimapHeader.Location = new Point(4, 20);
             panel_ConsoleMinimapHeader.Name = "panel_ConsoleMinimapHeader";
-            panel_ConsoleMinimapHeader.Size = new Size(352, 28);
+            panel_ConsoleMinimapHeader.Size = new Size(598, 28);
             panel_ConsoleMinimapHeader.TabIndex = 0;
             // 
             // lbl_ConsoleMinimapHint
@@ -1234,65 +1202,9 @@ namespace ArtaleAI
             lbl_ConsoleMinimapHint.ForeColor = Color.Gray;
             lbl_ConsoleMinimapHint.Location = new Point(4, 6);
             lbl_ConsoleMinimapHint.Name = "lbl_ConsoleMinimapHint";
-            lbl_ConsoleMinimapHint.Size = new Size(175, 15);
+            lbl_ConsoleMinimapHint.Size = new Size(223, 15);
             lbl_ConsoleMinimapHint.TabIndex = 1;
-            lbl_ConsoleMinimapHint.Text = "路徑／玩家疊加（運行時更新）";
-            // 
-            // groupBox_ConsoleGameView
-            // 
-            groupBox_ConsoleGameView.Controls.Add(pictureBox_ConsoleGameView);
-            groupBox_ConsoleGameView.Controls.Add(panel_ConsoleGameHeader);
-            groupBox_ConsoleGameView.Dock = DockStyle.Fill;
-            groupBox_ConsoleGameView.Location = new Point(0, 0);
-            groupBox_ConsoleGameView.Name = "groupBox_ConsoleGameView";
-            groupBox_ConsoleGameView.Padding = new Padding(4);
-            groupBox_ConsoleGameView.Size = new Size(364, 372);
-            groupBox_ConsoleGameView.TabIndex = 1;
-            groupBox_ConsoleGameView.TabStop = false;
-            groupBox_ConsoleGameView.Text = "遊戲監控";
-            // 
-            // pictureBox_ConsoleGameView
-            // 
-            pictureBox_ConsoleGameView.BackColor = Color.FromArgb(32, 36, 40);
-            pictureBox_ConsoleGameView.BorderStyle = BorderStyle.FixedSingle;
-            pictureBox_ConsoleGameView.Controls.Add(lbl_ConsoleGamePlaceholder);
-            pictureBox_ConsoleGameView.Dock = DockStyle.Fill;
-            pictureBox_ConsoleGameView.Location = new Point(4, 48);
-            pictureBox_ConsoleGameView.Name = "pictureBox_ConsoleGameView";
-            pictureBox_ConsoleGameView.Size = new Size(356, 320);
-            pictureBox_ConsoleGameView.SizeMode = PictureBoxSizeMode.Zoom;
-            pictureBox_ConsoleGameView.TabIndex = 1;
-            pictureBox_ConsoleGameView.TabStop = false;
-            // 
-            // lbl_ConsoleGamePlaceholder
-            // 
-            lbl_ConsoleGamePlaceholder.Dock = DockStyle.Fill;
-            lbl_ConsoleGamePlaceholder.ForeColor = Color.FromArgb(160, 168, 176);
-            lbl_ConsoleGamePlaceholder.Location = new Point(0, 0);
-            lbl_ConsoleGamePlaceholder.Name = "lbl_ConsoleGamePlaceholder";
-            lbl_ConsoleGamePlaceholder.Size = new Size(354, 318);
-            lbl_ConsoleGamePlaceholder.TabIndex = 0;
-            lbl_ConsoleGamePlaceholder.Text = "遊戲畫面監控\r\n（啟動自動打怪後顯示；請勿點擊此區以免搶走遊戲焦點）";
-            lbl_ConsoleGamePlaceholder.TextAlign = ContentAlignment.MiddleCenter;
-            // 
-            // panel_ConsoleGameHeader
-            // 
-            panel_ConsoleGameHeader.Controls.Add(lbl_ConsoleGameHint);
-            panel_ConsoleGameHeader.Dock = DockStyle.Top;
-            panel_ConsoleGameHeader.Location = new Point(4, 20);
-            panel_ConsoleGameHeader.Name = "panel_ConsoleGameHeader";
-            panel_ConsoleGameHeader.Size = new Size(356, 28);
-            panel_ConsoleGameHeader.TabIndex = 0;
-            // 
-            // lbl_ConsoleGameHint
-            // 
-            lbl_ConsoleGameHint.AutoSize = true;
-            lbl_ConsoleGameHint.ForeColor = Color.Gray;
-            lbl_ConsoleGameHint.Location = new Point(4, 6);
-            lbl_ConsoleGameHint.Name = "lbl_ConsoleGameHint";
-            lbl_ConsoleGameHint.Size = new Size(249, 15);
-            lbl_ConsoleGameHint.TabIndex = 0;
-            lbl_ConsoleGameHint.Text = "僅監看；點擊 ArtaleAI 會搶焦點導致無法控角";
+            lbl_ConsoleMinimapHint.Text = "路徑／玩家疊加（僅主控台可見時更新）";
             // 
             // groupBox_Log
             // 
@@ -1301,7 +1213,7 @@ namespace ArtaleAI
             groupBox_Log.Location = new Point(0, 0);
             groupBox_Log.Name = "groupBox_Log";
             groupBox_Log.Padding = new Padding(4);
-            groupBox_Log.Size = new Size(730, 212);
+            groupBox_Log.Size = new Size(606, 212);
             groupBox_Log.TabIndex = 2;
             groupBox_Log.TabStop = false;
             groupBox_Log.Text = "日誌";
@@ -1315,7 +1227,7 @@ namespace ArtaleAI
             textBox1.Name = "textBox1";
             textBox1.ReadOnly = true;
             textBox1.ScrollBars = ScrollBars.Vertical;
-            textBox1.Size = new Size(722, 188);
+            textBox1.Size = new Size(598, 188);
             textBox1.TabIndex = 0;
             // 
             // panel_StatusBar
@@ -1326,7 +1238,7 @@ namespace ArtaleAI
             panel_StatusBar.Location = new Point(0, 0);
             panel_StatusBar.Name = "panel_StatusBar";
             panel_StatusBar.Padding = new Padding(2, 0, 2, 2);
-            panel_StatusBar.Size = new Size(730, 56);
+            panel_StatusBar.Size = new Size(606, 56);
             panel_StatusBar.TabIndex = 1;
             // 
             // tableLayoutPanel_Status
@@ -1346,7 +1258,7 @@ namespace ArtaleAI
             tableLayoutPanel_Status.RowCount = 2;
             tableLayoutPanel_Status.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
             tableLayoutPanel_Status.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-            tableLayoutPanel_Status.Size = new Size(726, 54);
+            tableLayoutPanel_Status.Size = new Size(602, 54);
             tableLayoutPanel_Status.TabIndex = 0;
             // 
             // lbl_Status_Game
@@ -1358,7 +1270,7 @@ namespace ArtaleAI
             lbl_Status_Game.Margin = new Padding(0);
             lbl_Status_Game.Name = "lbl_Status_Game";
             lbl_Status_Game.Padding = new Padding(4, 0, 0, 0);
-            lbl_Status_Game.Size = new Size(241, 27);
+            lbl_Status_Game.Size = new Size(200, 27);
             lbl_Status_Game.TabIndex = 0;
             lbl_Status_Game.Text = "遊戲：—";
             lbl_Status_Game.TextAlign = ContentAlignment.MiddleLeft;
@@ -1368,11 +1280,11 @@ namespace ArtaleAI
             lbl_Status_Capture.BackColor = Color.FromArgb(50, 50, 50);
             lbl_Status_Capture.Dock = DockStyle.Fill;
             lbl_Status_Capture.ForeColor = Color.Gainsboro;
-            lbl_Status_Capture.Location = new Point(241, 0);
+            lbl_Status_Capture.Location = new Point(200, 0);
             lbl_Status_Capture.Margin = new Padding(0);
             lbl_Status_Capture.Name = "lbl_Status_Capture";
             lbl_Status_Capture.Padding = new Padding(4, 0, 0, 0);
-            lbl_Status_Capture.Size = new Size(242, 27);
+            lbl_Status_Capture.Size = new Size(200, 27);
             lbl_Status_Capture.TabIndex = 1;
             lbl_Status_Capture.Text = "擷取：—";
             lbl_Status_Capture.TextAlign = ContentAlignment.MiddleLeft;
@@ -1382,11 +1294,11 @@ namespace ArtaleAI
             lbl_Status_Fsm.BackColor = Color.FromArgb(50, 50, 50);
             lbl_Status_Fsm.Dock = DockStyle.Fill;
             lbl_Status_Fsm.ForeColor = Color.Gainsboro;
-            lbl_Status_Fsm.Location = new Point(483, 0);
+            lbl_Status_Fsm.Location = new Point(400, 0);
             lbl_Status_Fsm.Margin = new Padding(0);
             lbl_Status_Fsm.Name = "lbl_Status_Fsm";
             lbl_Status_Fsm.Padding = new Padding(4, 0, 0, 0);
-            lbl_Status_Fsm.Size = new Size(243, 27);
+            lbl_Status_Fsm.Size = new Size(202, 27);
             lbl_Status_Fsm.TabIndex = 2;
             lbl_Status_Fsm.Text = "導航：—";
             lbl_Status_Fsm.TextAlign = ContentAlignment.MiddleLeft;
@@ -1400,7 +1312,7 @@ namespace ArtaleAI
             lbl_Status_Vitals.Margin = new Padding(0);
             lbl_Status_Vitals.Name = "lbl_Status_Vitals";
             lbl_Status_Vitals.Padding = new Padding(4, 0, 0, 0);
-            lbl_Status_Vitals.Size = new Size(241, 27);
+            lbl_Status_Vitals.Size = new Size(200, 27);
             lbl_Status_Vitals.TabIndex = 3;
             lbl_Status_Vitals.Text = "HP — · MP —";
             lbl_Status_Vitals.TextAlign = ContentAlignment.MiddleLeft;
@@ -1411,11 +1323,11 @@ namespace ArtaleAI
             tableLayoutPanel_Status.SetColumnSpan(lbl_Status_Path, 2);
             lbl_Status_Path.Dock = DockStyle.Fill;
             lbl_Status_Path.ForeColor = Color.Gainsboro;
-            lbl_Status_Path.Location = new Point(241, 27);
+            lbl_Status_Path.Location = new Point(200, 27);
             lbl_Status_Path.Margin = new Padding(0);
             lbl_Status_Path.Name = "lbl_Status_Path";
             lbl_Status_Path.Padding = new Padding(4, 0, 0, 0);
-            lbl_Status_Path.Size = new Size(485, 27);
+            lbl_Status_Path.Size = new Size(402, 27);
             lbl_Status_Path.TabIndex = 4;
             lbl_Status_Path.Text = "路徑：—";
             lbl_Status_Path.TextAlign = ContentAlignment.MiddleLeft;
@@ -1439,7 +1351,7 @@ namespace ArtaleAI
             tableLayoutPanel_Ops.RowStyles.Add(new RowStyle(SizeType.Absolute, 160F));
             tableLayoutPanel_Ops.RowStyles.Add(new RowStyle(SizeType.Absolute, 150F));
             tableLayoutPanel_Ops.RowStyles.Add(new RowStyle(SizeType.Absolute, 120F));
-            tableLayoutPanel_Ops.Size = new Size(992, 434);
+            tableLayoutPanel_Ops.Size = new Size(868, 434);
             tableLayoutPanel_Ops.TabIndex = 1;
             // 
             // tabControl1
@@ -1452,7 +1364,7 @@ namespace ArtaleAI
             tabControl1.Location = new Point(0, 0);
             tabControl1.Name = "tabControl1";
             tabControl1.SelectedIndex = 0;
-            tabControl1.Size = new Size(1024, 680);
+            tabControl1.Size = new Size(900, 680);
             tabControl1.TabIndex = 2;
             // 
             // tabPage1
@@ -1462,7 +1374,7 @@ namespace ArtaleAI
             tabPage1.Location = new Point(4, 24);
             tabPage1.Name = "tabPage1";
             tabPage1.Padding = new Padding(3);
-            tabPage1.Size = new Size(1016, 652);
+            tabPage1.Size = new Size(892, 652);
             tabPage1.TabIndex = 0;
             tabPage1.Text = "主控台";
             tabPage1.UseVisualStyleBackColor = true;
@@ -1473,7 +1385,7 @@ namespace ArtaleAI
             tabPageFarmSettings.Location = new Point(4, 24);
             tabPageFarmSettings.Name = "tabPageFarmSettings";
             tabPageFarmSettings.Padding = new Padding(8);
-            tabPageFarmSettings.Size = new Size(1016, 652);
+            tabPageFarmSettings.Size = new Size(892, 652);
             tabPageFarmSettings.TabIndex = 1;
             tabPageFarmSettings.Text = "掛機設定";
             tabPageFarmSettings.UseVisualStyleBackColor = true;
@@ -1487,7 +1399,7 @@ namespace ArtaleAI
             panelFarmSettingsScroll.Location = new Point(8, 8);
             panelFarmSettingsScroll.Name = "panelFarmSettingsScroll";
             panelFarmSettingsScroll.Padding = new Padding(4);
-            panelFarmSettingsScroll.Size = new Size(1000, 636);
+            panelFarmSettingsScroll.Size = new Size(876, 636);
             panelFarmSettingsScroll.TabIndex = 0;
             // 
             // lblFarmSettingsHint
@@ -1509,7 +1421,7 @@ namespace ArtaleAI
             tabPage2.Location = new Point(4, 24);
             tabPage2.Name = "tabPage2";
             tabPage2.Padding = new Padding(3);
-            tabPage2.Size = new Size(1016, 652);
+            tabPage2.Size = new Size(892, 652);
             tabPage2.TabIndex = 2;
             tabPage2.Text = "路徑編輯";
             tabPage2.UseVisualStyleBackColor = true;
@@ -1520,7 +1432,7 @@ namespace ArtaleAI
             panel3.Dock = DockStyle.Fill;
             panel3.Location = new Point(3, 3);
             panel3.Name = "panel3";
-            panel3.Size = new Size(710, 646);
+            panel3.Size = new Size(586, 646);
             panel3.TabIndex = 1;
             // 
             // pictureBoxMinimap
@@ -1528,7 +1440,7 @@ namespace ArtaleAI
             pictureBoxMinimap.Dock = DockStyle.Fill;
             pictureBoxMinimap.Location = new Point(0, 0);
             pictureBoxMinimap.Name = "pictureBoxMinimap";
-            pictureBoxMinimap.Size = new Size(710, 646);
+            pictureBoxMinimap.Size = new Size(586, 646);
             pictureBoxMinimap.TabIndex = 0;
             pictureBoxMinimap.TabStop = false;
             pictureBoxMinimap.Paint += pictureBoxMinimap_Paint;
@@ -1543,7 +1455,7 @@ namespace ArtaleAI
             panel4.Controls.Add(splitSidebar);
             panel4.Controls.Add(panel4BottomHost);
             panel4.Dock = DockStyle.Right;
-            panel4.Location = new Point(713, 3);
+            panel4.Location = new Point(589, 3);
             panel4.MinimumSize = new Size(300, 200);
             panel4.Name = "panel4";
             panel4.Size = new Size(300, 646);
@@ -1988,7 +1900,7 @@ namespace ArtaleAI
             tabPage3.Location = new Point(4, 24);
             tabPage3.Name = "tabPage3";
             tabPage3.Padding = new Padding(3);
-            tabPage3.Size = new Size(1016, 652);
+            tabPage3.Size = new Size(892, 652);
             tabPage3.TabIndex = 3;
             tabPage3.Text = "即時顯示";
             tabPage3.UseVisualStyleBackColor = true;
@@ -1998,7 +1910,7 @@ namespace ArtaleAI
             pictureBoxLiveView.Dock = DockStyle.Fill;
             pictureBoxLiveView.Location = new Point(3, 3);
             pictureBoxLiveView.Name = "pictureBoxLiveView";
-            pictureBoxLiveView.Size = new Size(1010, 646);
+            pictureBoxLiveView.Size = new Size(886, 646);
             pictureBoxLiveView.SizeMode = PictureBoxSizeMode.Zoom;
             pictureBoxLiveView.TabIndex = 0;
             pictureBoxLiveView.TabStop = false;
@@ -2007,9 +1919,9 @@ namespace ArtaleAI
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(1024, 680);
+            ClientSize = new Size(900, 680);
             Controls.Add(tabControl1);
-            MinimumSize = new Size(900, 600);
+            MinimumSize = new Size(820, 600);
             Name = "MainForm";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "ArtaleAI";
@@ -2033,20 +1945,11 @@ namespace ArtaleAI
             splitConsoleMonitor.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)splitConsoleMonitor).EndInit();
             splitConsoleMonitor.ResumeLayout(false);
-            splitConsoleViews.Panel1.ResumeLayout(false);
-            splitConsoleViews.Panel2.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)splitConsoleViews).EndInit();
-            splitConsoleViews.ResumeLayout(false);
             groupBox_ConsoleMinimap.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)pictureBox_ConsoleMinimap).EndInit();
             pictureBox_ConsoleMinimap.ResumeLayout(false);
             panel_ConsoleMinimapHeader.ResumeLayout(false);
             panel_ConsoleMinimapHeader.PerformLayout();
-            groupBox_ConsoleGameView.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)pictureBox_ConsoleGameView).EndInit();
-            pictureBox_ConsoleGameView.ResumeLayout(false);
-            panel_ConsoleGameHeader.ResumeLayout(false);
-            panel_ConsoleGameHeader.PerformLayout();
             groupBox_Log.ResumeLayout(false);
             groupBox_Log.PerformLayout();
             panel_StatusBar.ResumeLayout(false);
@@ -2091,17 +1994,11 @@ namespace ArtaleAI
         private System.Windows.Forms.Panel panelConsoleStack;
         private System.Windows.Forms.Panel panel2;
         private System.Windows.Forms.SplitContainer splitConsoleMonitor;
-        private System.Windows.Forms.SplitContainer splitConsoleViews;
         private System.Windows.Forms.GroupBox groupBox_ConsoleMinimap;
         private System.Windows.Forms.Panel panel_ConsoleMinimapHeader;
         private System.Windows.Forms.Label lbl_ConsoleMinimapHint;
         private System.Windows.Forms.PictureBox pictureBox_ConsoleMinimap;
         private System.Windows.Forms.Label lbl_ConsoleMinimapPlaceholder;
-        private System.Windows.Forms.GroupBox groupBox_ConsoleGameView;
-        private System.Windows.Forms.Panel panel_ConsoleGameHeader;
-        private System.Windows.Forms.Label lbl_ConsoleGameHint;
-        private System.Windows.Forms.PictureBox pictureBox_ConsoleGameView;
-        private System.Windows.Forms.Label lbl_ConsoleGamePlaceholder;
         private System.Windows.Forms.GroupBox groupBox_Log;
         private System.Windows.Forms.Panel panel_StatusBar;
         private System.Windows.Forms.TableLayoutPanel tableLayoutPanel_Ops;

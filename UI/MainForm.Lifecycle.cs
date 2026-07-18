@@ -79,19 +79,15 @@ namespace ArtaleAI
                 var liveViewImage = pictureBoxLiveView.Image;
                 var minimapImage = pictureBoxMinimap.Image;
                 var consoleMinimapImage = pictureBox_ConsoleMinimap.Image;
-                var consoleGameImage = pictureBox_ConsoleGameView.Image;
                 pictureBoxLiveView.Image = null;
                 pictureBoxMinimap.Image = null;
                 pictureBox_ConsoleMinimap.Image = null;
-                pictureBox_ConsoleGameView.Image = null;
                 lbl_ConsoleMinimapPlaceholder.Visible = true;
-                lbl_ConsoleGamePlaceholder.Visible = true;
                 System.Windows.Forms.Application.DoEvents();
 
                 liveViewImage?.Dispose();
                 minimapImage?.Dispose();
                 consoleMinimapImage?.Dispose();
-                consoleGameImage?.Dispose();
 
 
                 _monsterTemplates?.Dispose();

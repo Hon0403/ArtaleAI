@@ -75,6 +75,8 @@ namespace ArtaleAI
         private const int UIUpdateIntervalMs = 33;
         private volatile bool _isUIUpdatePending = false;
         private volatile bool _isLiveViewTabActive = false;
+        /// <summary>預設分頁為主控台；SelectedIndexChanged 在首次切換前可能不觸發。</summary>
+        private volatile bool _isConsoleTabActive = true;
         private volatile bool _isPathEditingTabActive = false;
 
 
