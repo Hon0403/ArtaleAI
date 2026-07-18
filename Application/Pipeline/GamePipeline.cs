@@ -90,6 +90,7 @@ namespace ArtaleAI.Application.Pipeline
         private const int DirectionChangeCooldownMs = 200;
         private const ushort VK_LEFT = 0x25;
         private const ushort VK_RIGHT = 0x27;
+        private const ushort VK_CONTROL = 0x11;
 
         /// <summary>單幀處理超過此毫秒數寫入 Warning（Release 亦可見）。</summary>
         private const double PipelineSlowFrameWarnMs = 120;
@@ -276,15 +277,9 @@ namespace ArtaleAI.Application.Pipeline
                 if (AutoAttackEnabled)
                     ProcessAntiDetectRest(config, now);
 
-                bool attackTriggered = false;
-                if (AutoAttackEnabled
-                    && _restPhase == RestPhaseNone
-                    && !_otherPlayerAvoidance.IsAvoiding
-                    && !_partyRecovery.IsRecovering)
-                    attackTriggered = ProcessAutoAttackDecision();
-
-                if (!attackTriggered)
-                    _isAttacking = false;
+                // 攻擊只允許從本入口發起；怪物背景 worker 僅更新結果，不得自行送鍵。
+                if (CanStartAttack())
+                    ProcessAutoAttackDecision();
 
                 if (trackingResult != null && !BlocksNavigationInput)
                     SignalNavigationOrchestration(trackingResult);
@@ -298,10 +293,18 @@ namespace ArtaleAI.Application.Pipeline
                 if (PartyRecoveryEnabled)
                     TryRecoverPartyHpBar(trackingResult, config, now);
 
-                if (AutoHealEnabled)
+                if (AutoHealEnabled
+                    && !_otherPlayerAvoidance.IsAvoiding
+                    && !_partyRecovery.IsRecovering
+                    && !_farmUiInterrupt.IsDismissing
+                    && Volatile.Read(ref _changeChannelInFlight) == 0)
                     ProcessAutoHeal(config, now);
 
-                if (AutoBuffEnabled && !_otherPlayerAvoidance.IsAvoiding && !_partyRecovery.IsRecovering)
+                if (AutoBuffEnabled
+                    && !_otherPlayerAvoidance.IsAvoiding
+                    && !_partyRecovery.IsRecovering
+                    && !_farmUiInterrupt.IsDismissing
+                    && Volatile.Read(ref _changeChannelInFlight) == 0)
                     ProcessBuffSkills(config, now);
 
                 double msAfterBlood = sw.Elapsed.TotalMilliseconds;
@@ -386,14 +389,62 @@ namespace ArtaleAI.Application.Pipeline
             }
         }
 
+        /// <summary>
+        /// 攻擊決策的唯一閘門：換頻／清窗／退避／隊伍重建／進行中攻擊皆不可再開新攻擊。
+        /// </summary>
+        private bool CanStartAttack()
+        {
+            return AutoAttackEnabled
+                && _restPhase == RestPhaseNone
+                && !_otherPlayerAvoidance.IsAvoiding
+                && !_partyRecovery.IsRecovering
+                && !_farmUiInterrupt.IsDismissing
+                && Volatile.Read(ref _changeChannelInFlight) == 0
+                && Volatile.Read(ref _attackInputLease) == 0;
+        }
+
+        /// <summary>已持有攻擊租約時，換頻／退避發生則應立刻中止後續按鍵。</summary>
+        private bool CanContinueAttack()
+        {
+            return AutoAttackEnabled
+                && !_otherPlayerAvoidance.IsAvoiding
+                && !_partyRecovery.IsRecovering
+                && !_farmUiInterrupt.IsDismissing
+                && Volatile.Read(ref _changeChannelInFlight) == 0;
+        }
+
         private bool ProcessAutoAttackDecision()
         {
             if (!TryCollectAttackTargets(out SdRect playerAttackBox, out List<DetectionResult> targets))
                 return false;
 
+            // CAS 租約：同一時刻只允許一條攻擊序列持有鍵盤。
+            if (Interlocked.CompareExchange(ref _attackInputLease, 1, 0) != 0)
+                return false;
+
             _isAttacking = true;
             _ = PerformAutoAttackAsync(playerAttackBox, targets);
             return true;
+        }
+
+        /// <summary>釋放方向鍵與主攻鍵，避免換頻／熄火時殘留 key-down。</summary>
+        private void AbortCombatInputs()
+        {
+            _movementController?.StopMovement();
+            if (_movementController == null)
+                return;
+
+            _movementController.SendKeyInput(VK_LEFT, keyUp: true);
+            _movementController.SendKeyInput(VK_RIGHT, keyUp: true);
+            _movementController.SendKeyInput(VK_CONTROL, keyUp: true);
+
+            string? primary = AppConfig.Instance?.AutoFarm?.AttackPrimaryHotkey;
+            if (!string.IsNullOrWhiteSpace(primary)
+                && VirtualKeyParser.TryParse(primary, out ushort primaryVk)
+                && primaryVk != VK_CONTROL)
+            {
+                _movementController.SendKeyInput(primaryVk, keyUp: true);
+            }
         }
 
         /// <summary>
@@ -548,7 +599,7 @@ namespace ArtaleAI.Application.Pipeline
             _nextRestSeekRetryUtc = DateTime.MinValue;
             CancelRestFlow();
 
-            _movementController?.StopMovement();
+            AbortCombatInputs();
         }
 
         /// <summary>
@@ -642,7 +693,8 @@ namespace ArtaleAI.Application.Pipeline
             if (!justTriggered)
                 return;
 
-            _movementController?.StopMovement();
+            // 先搶佔戰鬥輸入，避免背景攻擊 Task 與換頻 Esc／點擊互搶鍵盤。
+            AbortCombatInputs();
             OnStatusMessage?.Invoke("偵測到其他玩家：暫停並執行 Esc→點頻道");
             TryStartChangeChannel(config.AutoFarm);
         }
@@ -901,15 +953,15 @@ namespace ArtaleAI.Application.Pipeline
             return baseValue * factor;
         }
 
-        /// <summary>轉向最近目標並送出攻擊鍵；租約期間導航輸入讓出。</summary>
+        /// <summary>轉向最近目標並送出攻擊鍵；租約已由呼叫端 CAS 取得，結束時釋放。</summary>
         private async Task PerformAutoAttackAsync(SdRect playerBox, List<DetectionResult> targets)
         {
-            if (targets == null || targets.Count == 0) return;
-            if (_movementController == null) return;
-
-            Interlocked.Increment(ref _attackInputLease);
             try
             {
+                if (targets == null || targets.Count == 0) return;
+                if (_movementController == null) return;
+                if (!CanContinueAttack()) return;
+
                 _movementController.StopMovement();
 
                 var now = DateTime.UtcNow;
@@ -924,14 +976,18 @@ namespace ArtaleAI.Application.Pipeline
 
                 if ((now - _lastDirectionChangeTime).TotalMilliseconds > DirectionChangeCooldownMs)
                 {
+                    if (!CanContinueAttack()) return;
+
                     int monsterCenterX = target.BoundingBox.X + target.BoundingBox.Width / 2;
                     ushort directionKey = monsterCenterX < playerCenter.X ? VK_LEFT : VK_RIGHT;
 
                     _movementController.SendKeyInput(directionKey, false);
-                    await Task.Delay(20);
+                    await Task.Delay(20).ConfigureAwait(false);
                     _movementController.SendKeyInput(directionKey, true);
                     _lastDirectionChangeTime = now;
                 }
+
+                if (!CanContinueAttack()) return;
 
                 if (!_attackRotation.TrySelectAttackKey(
                         AppConfig.Instance.AutoFarm,
@@ -944,7 +1000,15 @@ namespace ArtaleAI.Application.Pipeline
                 }
 
                 _movementController.SendKeyInput(attackKey, false);
-                await Task.Delay(20);
+                await Task.Delay(20).ConfigureAwait(false);
+
+                // 換頻可能在 Delay 期間觸發：只送 key-up，不送第二次按下。
+                if (!CanContinueAttack())
+                {
+                    _movementController.SendKeyInput(attackKey, true);
+                    return;
+                }
+
                 _movementController.SendKeyInput(attackKey, true);
 
                 _lastAttackTime = now;
@@ -952,31 +1016,8 @@ namespace ArtaleAI.Application.Pipeline
             }
             finally
             {
-                Interlocked.Decrement(ref _attackInputLease);
-            }
-        }
-
-        /// <summary>停止移動、執行攻擊、冷卻後恢復。</summary>
-        public async Task PerformAutoAttackSequenceAsync()
-        {
-            if (_isAttacking) return;
-            _isAttacking = true;
-
-            try
-            {
-                Logger.Info("[GamePipeline] 發現怪物在範圍內，暫停移動並攻擊");
-                _movementController?.StopMovement();
-                if (_movementController != null)
-                    await _movementController.PerformAttackAsync(1000);
-                Logger.Info("[GamePipeline] 攻擊完成，恢復移動");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"[GamePipeline] 攻擊序列失敗: {ex.Message}");
-            }
-            finally
-            {
                 _isAttacking = false;
+                Interlocked.Exchange(ref _attackInputLease, 0);
             }
         }
 
@@ -1401,8 +1442,6 @@ namespace ArtaleAI.Application.Pipeline
                 }
             }
             _lastMonsterDetection = DateTime.UtcNow;
-
-            CheckAutoAttackCondition();
         }
 
         private static void LogMonsterMatchTiming(string monsterName, MonsterTemplateMatchStats stats)
@@ -1417,16 +1456,6 @@ namespace ArtaleAI.Application.Pipeline
                 $"[怪物偵測] {monsterName} {coarsePart} 模板，" +
                 $"down={stats.DownscaleMs:F1}ms score={stats.CoarseScoreMs:F1}ms " +
                 $"fine={stats.FineMs:F1}ms total={stats.TotalMs:F1}ms");
-        }
-
-        /// <summary>怪物與攻擊範圍相交時觸發攻擊序列。</summary>
-        private void CheckAutoAttackCondition()
-        {
-            if (!AutoAttackEnabled || _isAttacking) return;
-            if (!TryCollectAttackTargets(out _, out _))
-                return;
-
-            _ = PerformAutoAttackSequenceAsync();
         }
 
         private sealed class MonsterDetectionWorkItem : IDisposable
