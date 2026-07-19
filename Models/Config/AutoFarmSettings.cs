@@ -31,6 +31,21 @@ namespace ArtaleAI.Models.Config
         /// <summary>同類型藥水最短間隔，避免連按。</summary>
         public int HealCooldownMs { get; set; } = 800;
 
+        /// <summary>
+        /// 連續補給無效次數達標後撤退至安全區。
+        /// 「無效」＝觀察窗結束且新鮮讀值回升幅度低於 <see cref="HealMinRecoveryPercent"/>。
+        /// </summary>
+        public int HealFailureAttempts { get; set; } = 3;
+
+        /// <summary>判定補給有效的最低回升百分比（相對按鍵前讀值）。</summary>
+        public int HealMinRecoveryPercent { get; set; } = 3;
+
+        /// <summary>
+        /// 按鍵後最短觀察毫秒；實際觀察窗取 max(本值, HealCooldownMs)。
+        /// 需等到新的 vitals ReadingId 才結算，避免同幀重算。
+        /// </summary>
+        public int HealObserveMs { get; set; } = 800;
+
         /// <summary>補助技能固定槽位數（UI／YAML／Coordinator 共用）。</summary>
         public const int MaxBuffSkillSlots = 5;
 

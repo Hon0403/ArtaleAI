@@ -195,6 +195,9 @@ autoFarm:
   healMpThresholdPercent: 30
   healMpHotkey: Insert
   healCooldownMs: 800
+  healFailureAttempts: 3
+  healMinRecoveryPercent: 3
+  healObserveMs: 800
   buffSkills:
   - enabled: false
     hotkey: F1

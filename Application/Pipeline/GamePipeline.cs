@@ -60,6 +60,7 @@ namespace ArtaleAI.Application.Pipeline
         private DateTime _lastBloodBarDetection = DateTime.MinValue;
         private DateTime _lastPlayerVitalsDetection = DateTime.MinValue;
         private DateTime _lastMonsterDetection = DateTime.MinValue;
+        private long _nextVitalsReadingId;
 
         private volatile bool _isAttacking = false;
         private bool _lastAutoAttackEnabled;
@@ -89,6 +90,23 @@ namespace ArtaleAI.Application.Pipeline
         private DateTime _restSeekStartedUtc = DateTime.MinValue;
         private string? _restSeekGoalNodeId;
         private readonly HashSet<string> _restSeekFailedNodeIds = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// 補給失敗撤退：None=正常；Seeking=前往安全區（導航開放、攻擊關閉）；
+        /// Waiting=已到安全區等待血魔回升（導航與攻擊皆關閉）。
+        /// </summary>
+        private const int HealRetreatNone = 0;
+        private const int HealRetreatSeeking = 1;
+        private const int HealRetreatWaiting = 2;
+        private volatile int _healRetreatPhase = HealRetreatNone;
+
+        private const int HealRetreatSeekRetrySeconds = 3;
+        private const int HealRetreatSeekTimeoutSeconds = 45;
+        private DateTime _healRetreatSeekStartedUtc = DateTime.MinValue;
+        private DateTime _nextHealRetreatSeekRetryUtc = DateTime.MinValue;
+        private string? _healRetreatGoalNodeId;
+        private readonly HashSet<string> _healRetreatFailedNodeIds = new(StringComparer.Ordinal);
+
         private int _attackInputLease;
         private int _monsterDetectionInFlight;
         private int _monsterJobReplacementCount;
@@ -158,6 +176,12 @@ namespace ArtaleAI.Application.Pipeline
         /// <summary>正在前往安全折點／繩索休息點（導航仍開放）。</summary>
         public bool IsSeekingRestSpot => _restPhase == RestPhaseSeeking;
 
+        /// <summary>補給無效後的安全區撤退／等待回補中。</summary>
+        public bool IsHealRetreating => _healRetreatPhase != HealRetreatNone;
+
+        /// <summary>正在前往安全區（補給失敗撤退）。</summary>
+        public bool IsSeekingHealSafeZone => _healRetreatPhase == HealRetreatSeeking;
+
         /// <summary>小地圖遇人退避中。</summary>
         public bool IsAvoidingOtherPlayers => _otherPlayerAvoidance.IsAvoiding;
 
@@ -165,11 +189,12 @@ namespace ArtaleAI.Application.Pipeline
         public bool IsRecoveringParty => _partyRecovery.IsRecovering;
 
         /// <summary>
-        /// 攻擊／小休倒數／遇人退避／換頻／打怪清窗期間，導航 Walk 應讓出鍵盤。
-        /// SeekingRest 不在此列：前往休息點必須靠導航輸入。
+        /// 攻擊／小休倒數／補給等待／遇人退避／換頻／打怪清窗期間，導航 Walk 應讓出鍵盤。
+        /// SeekingRest／SeekingHealSafeZone 不在此列：前往目標必須靠導航輸入。
         /// </summary>
         public bool BlocksNavigationInput =>
             _restPhase == RestPhaseResting
+            || _healRetreatPhase == HealRetreatWaiting
             || _isAttacking
             || _otherPlayerAvoidance.IsAvoiding
             || _farmUiInterrupt.IsDismissing
@@ -285,8 +310,11 @@ namespace ArtaleAI.Application.Pipeline
 
                 TryProcessFarmUiInterrupt(frameMat, trackingResult, config);
 
-                if (AutoAttackEnabled)
+                if (AutoAttackEnabled && !IsHealRetreating)
                     ProcessAntiDetectRest(config, now);
+
+                if (IsHealRetreating)
+                    ProcessHealRetreat(config, now);
 
                 // 攻擊只允許從本入口發起；怪物背景 worker 僅更新結果，不得自行送鍵。
                 if (CanStartAttack())
@@ -407,6 +435,7 @@ namespace ArtaleAI.Application.Pipeline
         {
             return AutoAttackEnabled
                 && _restPhase == RestPhaseNone
+                && _healRetreatPhase == HealRetreatNone
                 && !_otherPlayerAvoidance.IsAvoiding
                 && !_partyRecovery.IsRecovering
                 && !_farmUiInterrupt.IsDismissing
@@ -414,10 +443,11 @@ namespace ArtaleAI.Application.Pipeline
                 && Volatile.Read(ref _attackInputLease) == 0;
         }
 
-        /// <summary>已持有攻擊租約時，換頻／退避發生則應立刻中止後續按鍵。</summary>
+        /// <summary>已持有攻擊租約時，換頻／退避／補給撤退發生則應立刻中止後續按鍵。</summary>
         private bool CanContinueAttack()
         {
             return AutoAttackEnabled
+                && _healRetreatPhase == HealRetreatNone
                 && !_otherPlayerAvoidance.IsAvoiding
                 && !_partyRecovery.IsRecovering
                 && !_farmUiInterrupt.IsDismissing
@@ -611,6 +641,8 @@ namespace ArtaleAI.Application.Pipeline
             _nextRestDueUtc = DateTime.MinValue;
             _nextRestSeekRetryUtc = DateTime.MinValue;
             CancelRestFlow();
+            CancelHealRetreatFlow(clearForcedGoal: true);
+            _autoHeal.ClearFailureState();
 
             AbortCombatInputs();
         }
@@ -915,11 +947,217 @@ namespace ArtaleAI.Application.Pipeline
             lock (_vitalsLock)
                 vitals = _currentPlayerVitals;
 
-            _autoHeal.TryHeal(
+            HealRetreatSignal signal = _autoHeal.EvaluateAndHeal(
                 config.AutoFarm,
                 vitals,
                 now,
                 TapSkillHotkey);
+
+            if (signal.ShouldRetreat && _healRetreatPhase == HealRetreatNone)
+            {
+                BeginHealRetreat(signal.FailedResource, now);
+                // 撤退狀態改由 Pipeline 持有；清掉失敗計數以便安全區內繼續喝水回補。
+                _autoHeal.ClearFailureState();
+            }
+        }
+
+        /// <summary>
+        /// 遇人換頻／隊伍重建進行中為更高優先；此時不推進撤退尋路逾時，避免誤判安全區不可達。
+        /// </summary>
+        private bool IsHealRetreatPreemptedByHigherPriority() =>
+            _otherPlayerAvoidance.IsAvoiding
+            || _partyRecovery.IsRecovering
+            || _farmUiInterrupt.IsDismissing
+            || Volatile.Read(ref _changeChannelInFlight) != 0;
+
+        private void BeginHealRetreat(HealResourceKind? failedResource, DateTime now)
+        {
+            CancelRestFlow();
+            AbortCombatInputs();
+
+            string label = failedResource switch
+            {
+                HealResourceKind.Hp => "HP",
+                HealResourceKind.Mp => "MP",
+                _ => "血魔"
+            };
+
+            _healRetreatFailedNodeIds.Clear();
+            _healRetreatGoalNodeId = null;
+            _nextHealRetreatSeekRetryUtc = DateTime.MinValue;
+            _healRetreatSeekStartedUtc = now;
+            _healRetreatPhase = HealRetreatSeeking;
+            OnStatusMessage?.Invoke($"{label} 連續補給無效，前往安全區…");
+
+            TryBeginHealRetreatSeek(now, announce: false);
+        }
+
+        private void CancelHealRetreatFlow(bool clearForcedGoal)
+        {
+            if (_healRetreatPhase == HealRetreatNone)
+                return;
+
+            _healRetreatPhase = HealRetreatNone;
+            _healRetreatGoalNodeId = null;
+            _healRetreatFailedNodeIds.Clear();
+            _healRetreatSeekStartedUtc = DateTime.MinValue;
+            _nextHealRetreatSeekRetryUtc = DateTime.MinValue;
+
+            if (clearForcedGoal)
+                RestNavigationTracker?.ClearForcedGoal();
+        }
+
+        private void ProcessHealRetreat(AppConfig config, DateTime now)
+        {
+            if (_healRetreatPhase == HealRetreatWaiting)
+            {
+                ProcessHealRetreatWaiting(config, now);
+                return;
+            }
+
+            if (_healRetreatPhase != HealRetreatSeeking)
+                return;
+
+            if (IsHealRetreatPreemptedByHigherPriority())
+                return;
+
+            var tracker = RestNavigationTracker;
+            if (tracker == null)
+            {
+                EnterHealRetreatWaiting("無導航資料，原地等待回補");
+                return;
+            }
+
+            if (tracker.HasForcedGoal && tracker.IsForcedGoalArrived)
+            {
+                EnterHealRetreatWaiting(reason: null);
+                return;
+            }
+
+            if (!tracker.HasForcedGoal)
+            {
+                TryBeginHealRetreatSeek(now, announce: true);
+                return;
+            }
+
+            if ((now - _healRetreatSeekStartedUtc).TotalSeconds > HealRetreatSeekTimeoutSeconds)
+            {
+                FailOverHealRetreatSpot(tracker, now);
+                return;
+            }
+
+            if (tracker.IsForcedGoalPlanningParked && now >= _nextHealRetreatSeekRetryUtc)
+            {
+                _nextHealRetreatSeekRetryUtc = now.AddSeconds(HealRetreatSeekRetrySeconds);
+                tracker.RetryForcedGoalPlanning();
+            }
+        }
+
+        private void ProcessHealRetreatWaiting(AppConfig config, DateTime now)
+        {
+            PlayerVitalsSnapshot? vitals;
+            lock (_vitalsLock)
+                vitals = _currentPlayerVitals;
+
+            if (!_autoHeal.AreEnabledVitalsAboveThreshold(config.AutoFarm, vitals))
+                return;
+
+            RestNavigationTracker?.ClearForcedGoal();
+            CancelHealRetreatFlow(clearForcedGoal: false);
+            _autoHeal.ClearFailureState();
+            OnStatusMessage?.Invoke("血魔已回補，繼續自動打怪");
+        }
+
+        private void EnterHealRetreatWaiting(string? reason)
+        {
+            _healRetreatPhase = HealRetreatWaiting;
+            _movementController?.StopMovement();
+            OnStatusMessage?.Invoke(reason ?? "已到安全區，等待血魔回補…");
+        }
+
+        private void TryBeginHealRetreatSeek(DateTime now, bool announce)
+        {
+            if (now < _nextHealRetreatSeekRetryUtc)
+                return;
+
+            var tracker = RestNavigationTracker;
+            var graph = tracker?.NavGraph;
+            var playerPos = tracker?.CurrentPathState?.CurrentPlayerPosition;
+
+            if (tracker == null || graph == null || playerPos == null)
+            {
+                EnterHealRetreatWaiting("無導航資料，原地等待回補");
+                return;
+            }
+
+            var selection = RestSpotSelector.Select(
+                graph,
+                playerPos.Value,
+                _healRetreatFailedNodeIds,
+                RestSpotCandidateMode.SafeZonesOnly);
+
+            switch (selection.Outcome)
+            {
+                case RestSpotOutcome.NoCandidates:
+                    EnterHealRetreatWaiting("地圖無安全區，原地等待回補");
+                    return;
+
+                case RestSpotOutcome.Unreachable:
+                    _nextHealRetreatSeekRetryUtc = now.AddSeconds(HealRetreatSeekRetrySeconds);
+                    if (announce)
+                        OnStatusMessage?.Invoke("安全區暫時不可達，稍後重試…");
+                    return;
+            }
+
+            BeginHealRetreatSeekingToward(tracker, selection.Node!, now, announce);
+        }
+
+        private void BeginHealRetreatSeekingToward(
+            PathPlanningTracker tracker,
+            NavigationNode spot,
+            DateTime now,
+            bool announce)
+        {
+            tracker.SetForcedGoal(spot.Id);
+            _healRetreatGoalNodeId = spot.Id;
+            _healRetreatSeekStartedUtc = now;
+            _healRetreatPhase = HealRetreatSeeking;
+            if (announce)
+                OnStatusMessage?.Invoke("補給失敗，前往安全區…");
+        }
+
+        private void FailOverHealRetreatSpot(PathPlanningTracker tracker, DateTime now)
+        {
+            if (_healRetreatGoalNodeId != null)
+                _healRetreatFailedNodeIds.Add(_healRetreatGoalNodeId);
+
+            tracker.ClearForcedGoal();
+            _healRetreatGoalNodeId = null;
+
+            var graph = tracker.NavGraph;
+            var playerPos = tracker.CurrentPathState?.CurrentPlayerPosition;
+            if (graph == null || playerPos == null)
+            {
+                EnterHealRetreatWaiting("導航資料失效，原地等待回補");
+                return;
+            }
+
+            var selection = RestSpotSelector.Select(
+                graph,
+                playerPos.Value,
+                _healRetreatFailedNodeIds,
+                RestSpotCandidateMode.SafeZonesOnly);
+
+            if (selection.Outcome != RestSpotOutcome.Found)
+            {
+                EnterHealRetreatWaiting("所有安全區皆不可達，原地等待回補");
+                return;
+            }
+
+            Logger.Warning(
+                $"[補給撤退] 前往安全區逾時（>{HealRetreatSeekTimeoutSeconds}s），" +
+                $"改選 {selection.Node!.Id}（已排除 {_healRetreatFailedNodeIds.Count} 個）");
+            BeginHealRetreatSeekingToward(tracker, selection.Node, now, announce: true);
         }
 
         private void ProcessBuffSkills(AppConfig config, DateTime now)
@@ -1209,11 +1447,17 @@ namespace ArtaleAI.Application.Pipeline
 
                 if (measured.HasFillReading)
                 {
+                    long readingId = Interlocked.Increment(ref _nextVitalsReadingId);
                     lock (_vitalsLock)
                     {
+                        var stamped = measured with
+                        {
+                            ReadingId = readingId,
+                            MeasuredAtUtc = now
+                        };
                         snapshot = vitalsSettings.SmoothReadings
-                            ? SmoothVitals(measured, _currentPlayerVitals, vitalsSettings.EmaAlpha)
-                            : measured;
+                            ? SmoothVitals(stamped, _currentPlayerVitals, vitalsSettings.EmaAlpha)
+                            : stamped;
                         _currentPlayerVitals = snapshot;
                     }
                     _lastPlayerVitalsDetection = now;
@@ -1243,7 +1487,9 @@ namespace ArtaleAI.Application.Pipeline
             return raw with
             {
                 HpRatio = SmoothRatio(raw.HpRatio, previous.HpRatio, alpha, snapDelta),
-                MpRatio = SmoothRatio(raw.MpRatio, previous.MpRatio, alpha, snapDelta)
+                MpRatio = SmoothRatio(raw.MpRatio, previous.MpRatio, alpha, snapDelta),
+                ReadingId = raw.ReadingId,
+                MeasuredAtUtc = raw.MeasuredAtUtc
             };
         }
 
