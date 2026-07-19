@@ -34,7 +34,8 @@ namespace ArtaleAI.Models.Map
 
     /// <summary>
     /// 手動例外邊的幾何錨點。持久化語意為「在某平台的某個位置」，
-    /// 不綁定 runtime node ID，由 BuildHTopology.ResolveManualEdgeAnchors() 轉譯。
+    /// 不綁定 runtime node ID，由 MapGenerationService.ResolveManualEdgeAnchors 轉譯。
+    /// SideJump 會在拓撲層自動補反向邊；JumpDown／Teleport 維持單向。
     /// </summary>
     public class ManualEdgeAnchor
     {

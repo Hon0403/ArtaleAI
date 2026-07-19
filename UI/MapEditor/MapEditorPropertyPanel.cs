@@ -389,10 +389,19 @@ namespace ArtaleAI.UI.MapEditor
             _content.Controls.Add(btnAction);
 
             AddRow(stats.Resolved ? "解析: 成功" : "解析: 失敗");
-            AddRow(stats.HasReverse ? "反向: 已有其他 ManualEdge" : "反向: 無（單向）");
+            AddRow(DescribeManualEdgeReverse(stats));
             AddCanvasGuide(
                 "移動錨點：刪除後用「兩點連線」在畫布重標",
                 "僅改動作類型：可用上方下拉（不需輸入座標）");
+        }
+
+        private static string DescribeManualEdgeReverse(MapEditorManualEdgeStats stats)
+        {
+            if (!stats.HasReverse)
+                return "反向: 無（單向）";
+            if (stats.ReverseIsAuto)
+                return "反向: SideJump 拓撲自動雙向";
+            return "反向: 已有其他 ManualEdge";
         }
 
         private void BuildRuntimeNodeView(MapEditor editor, int nodeIndex)

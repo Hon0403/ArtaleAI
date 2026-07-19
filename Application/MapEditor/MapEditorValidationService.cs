@@ -366,7 +366,7 @@ namespace ArtaleAI.Application.MapEditor
             foreach (var anchor in mapData.ManualEdgeAnchors)
             {
                 if (anchor.ActionType is NavigationActionType.Walk or NavigationActionType.ClimbUp
-                    or NavigationActionType.ClimbDown)
+                    or NavigationActionType.ClimbDown or NavigationActionType.SideJump)
                     continue;
 
                 if (!TryResolveNodeId(nodeById, anchor.FromPlatformId, anchor.FromX, anchor.FromY, out string fromId))

@@ -39,6 +39,8 @@ namespace ArtaleAI.UI.MapEditor
         public string? FromNodeId { get; init; }
         public string? ToNodeId { get; init; }
         public bool HasReverse { get; init; }
+        /// <summary>反向由 SideJump 拓撲自動補上，非使用者另畫的 ManualEdge。</summary>
+        public bool ReverseIsAuto { get; init; }
     }
 
     public partial class MapEditor
@@ -140,17 +142,22 @@ namespace ArtaleAI.UI.MapEditor
                 string.Equals(e.FromNodeId, fromNodeId, StringComparison.Ordinal) &&
                 string.Equals(e.ToNodeId, toNodeId, StringComparison.Ordinal));
 
-            bool hasReverse = _currentMapData.ManualEdgeAnchors?.Any(a =>
-                !ReferenceEquals(a, anchor) &&
-                string.Equals(a.FromPlatformId, anchor.ToPlatformId, StringComparison.Ordinal) &&
-                string.Equals(a.ToPlatformId, anchor.FromPlatformId, StringComparison.Ordinal)) == true;
+            bool hasReverse = anchor.ActionType == NavigationActionType.SideJump
+                || _currentMapData.Edges.Any(e =>
+                    string.Equals(e.FromNodeId, toNodeId, StringComparison.Ordinal) &&
+                    string.Equals(e.ToNodeId, fromNodeId, StringComparison.Ordinal))
+                || _currentMapData.ManualEdgeAnchors?.Any(a =>
+                    !ReferenceEquals(a, anchor) &&
+                    string.Equals(a.FromPlatformId, anchor.ToPlatformId, StringComparison.Ordinal) &&
+                    string.Equals(a.ToPlatformId, anchor.FromPlatformId, StringComparison.Ordinal)) == true;
 
             return new MapEditorManualEdgeStats
             {
                 Resolved = resolved,
                 FromNodeId = fromNodeId,
                 ToNodeId = toNodeId,
-                HasReverse = hasReverse
+                HasReverse = hasReverse,
+                ReverseIsAuto = anchor.ActionType == NavigationActionType.SideJump
             };
         }
 

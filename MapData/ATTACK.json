@@ -11,9 +11,9 @@
       97.2
     ],
     [
-      39.8,
-      106.0,
-      123.9
+      38.6,
+      105.9,
+      122.8
     ]
   ],
   "JumpLinks": [
@@ -53,9 +53,9 @@
       87.1
     ],
     [
-      40.0,
-      123.1,
-      131.2
+      38.5,
+      122.9,
+      130.7
     ]
   ],
   "PolylinePlatforms": [
@@ -234,6 +234,18 @@
       ]
     }
   ],
-  "ManualEdgeAnchors": [],
+  "ManualEdgeAnchors": [
+    {
+      "FromPlatformId": "plat_8",
+      "FromX": 148.8,
+      "FromY": 121.7,
+      "FromSegmentIndex": 0,
+      "ToPlatformId": "plat_7",
+      "ToX": 143.7,
+      "ToY": 117.6,
+      "ToSegmentIndex": 0,
+      "ActionType": 3
+    }
+  ],
   "RestrictedZones": []
 }

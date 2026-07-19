@@ -75,9 +75,20 @@ namespace ArtaleAI.Application.Pipeline
 
         /// <summary>選點或強制目標規劃失敗時的重試節流，避免每幀重跑 A*。</summary>
         private const int RestSeekRetrySeconds = 3;
+
+        /// <summary>
+        /// 單一休息點的尋路預算：超過即判定不可達並故障轉移到下一個候選點。
+        /// 沒有這道停損，選點誤判（起點跨平台誤對齊、拓撲斷邊）會讓 Seeking
+        /// 無限重試，而 Seeking 期間攻擊全面關閉＝自動打怪永久停擺。
+        /// </summary>
+        private const int RestSeekTimeoutSeconds = 45;
+
         private DateTime _restEndsAtUtc = DateTime.MinValue;
         private DateTime _nextRestDueUtc = DateTime.MinValue;
         private DateTime _nextRestSeekRetryUtc = DateTime.MinValue;
+        private DateTime _restSeekStartedUtc = DateTime.MinValue;
+        private string? _restSeekGoalNodeId;
+        private readonly HashSet<string> _restSeekFailedNodeIds = new(StringComparer.Ordinal);
         private int _attackInputLease;
         private int _monsterDetectionInFlight;
         private int _monsterJobReplacementCount;
@@ -578,6 +589,8 @@ namespace ArtaleAI.Application.Pipeline
         {
             if (_restPhase == RestPhaseNone) return;
             _restPhase = RestPhaseNone;
+            _restSeekGoalNodeId = null;
+            _restSeekFailedNodeIds.Clear();
             RestNavigationTracker?.ClearForcedGoal();
         }
 
@@ -621,6 +634,8 @@ namespace ArtaleAI.Application.Pipeline
                 return;
             }
 
+            _restSeekFailedNodeIds.Clear();
+
             var selection = RestSpotSelector.Select(graph, playerPos.Value);
             switch (selection.Outcome)
             {
@@ -634,13 +649,29 @@ namespace ArtaleAI.Application.Pipeline
                     return;
             }
 
-            tracker.SetForcedGoal(selection.Node!.Id);
-            _restPhase = RestPhaseSeeking;
-            string spotKind = selection.Node.Type == NavigationNodeType.Rope ? "繩索" : "安全區";
-            OnStatusMessage?.Invoke($"休息時間到，前往{spotKind}休息點…");
+            BeginSeekingToward(tracker, selection.Node!, now, "休息時間到");
         }
 
-        /// <summary>SeekingRest：等待強制目標到達；規劃停擺時節流重試，直到到達才開始倒數。</summary>
+        /// <summary>注入強制目標並重置本次尋路的逾時基準點。</summary>
+        private void BeginSeekingToward(
+            PathPlanningTracker tracker,
+            NavigationNode spot,
+            DateTime now,
+            string prefix)
+        {
+            tracker.SetForcedGoal(spot.Id);
+            _restSeekGoalNodeId = spot.Id;
+            _restSeekStartedUtc = now;
+            _restPhase = RestPhaseSeeking;
+            string spotKind = spot.Type == NavigationNodeType.Rope ? "繩索" : "安全區";
+            OnStatusMessage?.Invoke($"{prefix}，前往{spotKind}休息點…");
+        }
+
+        /// <summary>
+        /// SeekingRest：等待強制目標到達；規劃停擺時節流重試。
+        /// 超過尋路預算即視為不可達，故障轉移到下一個候選休息點；
+        /// 候選耗盡才降級原地小休。保證 Seeking 有界，不會凍結自動打怪。
+        /// </summary>
         private void ProcessRestSeeking(AppConfig config, DateTime now)
         {
             var tracker = RestNavigationTracker;
@@ -657,11 +688,47 @@ namespace ArtaleAI.Application.Pipeline
                 return;
             }
 
+            if ((now - _restSeekStartedUtc).TotalSeconds > RestSeekTimeoutSeconds)
+            {
+                FailOverToNextRestSpot(tracker, config, now);
+                return;
+            }
+
             if (tracker.IsForcedGoalPlanningParked && now >= _nextRestSeekRetryUtc)
             {
                 _nextRestSeekRetryUtc = now.AddSeconds(RestSeekRetrySeconds);
                 tracker.RetryForcedGoalPlanning();
             }
+        }
+
+        /// <summary>把逾時的休息點列入本輪黑名單並改選下一個；沒得選就原地小休。</summary>
+        private void FailOverToNextRestSpot(PathPlanningTracker tracker, AppConfig config, DateTime now)
+        {
+            if (_restSeekGoalNodeId != null)
+                _restSeekFailedNodeIds.Add(_restSeekGoalNodeId);
+
+            tracker.ClearForcedGoal();
+            _restSeekGoalNodeId = null;
+
+            var graph = tracker.NavGraph;
+            var playerPos = tracker.CurrentPathState?.CurrentPlayerPosition;
+            if (graph == null || playerPos == null)
+            {
+                BeginRestCountdown(config, now, "導航資料失效，原地小休");
+                return;
+            }
+
+            var selection = RestSpotSelector.Select(graph, playerPos.Value, _restSeekFailedNodeIds);
+            if (selection.Outcome != RestSpotOutcome.Found)
+            {
+                BeginRestCountdown(config, now, "所有休息點皆不可達，原地小休");
+                return;
+            }
+
+            Logger.Warning(
+                $"[休息尋點] 前往休息點逾時（>{RestSeekTimeoutSeconds}s），" +
+                $"改選 {selection.Node!.Id}（已排除 {_restSeekFailedNodeIds.Count} 個）");
+            BeginSeekingToward(tracker, selection.Node, now, "休息點逾時");
         }
 
         private void BeginRestCountdown(AppConfig config, DateTime now, string? reason)
