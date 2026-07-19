@@ -26,7 +26,8 @@ namespace ArtaleAI.UI
         private System.Threading.Timer? _detectionTimer;
         private int _isRunningState = 0;
 
-        private const int DetectionIntervalMs = 20;
+        /// <summary>防止設定為 0 時變成忙等迴圈；低於此值的間隔無實益。</summary>
+        private const int MinFrameDispatchIntervalMs = 50;
         private const int MaxFrameQueueSize = 3;
         private const int ShutdownDelayMs = 50;
         private static int _skippedDetectionTicksWhileBusy;
@@ -52,13 +53,15 @@ namespace ArtaleAI.UI
             {
                 _capturer = new GraphicsCapturer(captureItem);
 
-                int targetFPS = config.Vision.CaptureFrameRate;
+                int targetFPS = Math.Max(1, config.Vision.CaptureFrameRate);
                 int captureIntervalMs = 1000 / targetFPS;
+                // 與 monsterDetectIntervalMs 對齊：避免舊硬編碼 20ms 以 50Hz 空轉排程把管線打滿。
+                int dispatchIntervalMs = Math.Max(MinFrameDispatchIntervalMs, config.Vision.MonsterDetectIntervalMs);
 
                 _captureTimer = new System.Threading.Timer(OnCaptureTimer, null, 0, captureIntervalMs);
-                _detectionTimer = new System.Threading.Timer(OnDetectionTimer, null, 100, DetectionIntervalMs);
+                _detectionTimer = new System.Threading.Timer(OnDetectionTimer, null, dispatchIntervalMs, dispatchIntervalMs);
 
-                Logger.Info($"[LiveView] LiveView已啟動: {targetFPS}FPS, 偵測頻率:{1000.0 / DetectionIntervalMs:F1}Hz");
+                Logger.Info($"[LiveView] LiveView已啟動: {targetFPS}FPS, 幀分發間隔:{dispatchIntervalMs}ms ({1000.0 / dispatchIntervalMs:F1}Hz)");
             }
             catch (Exception ex)
             {

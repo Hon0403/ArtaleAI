@@ -1215,17 +1215,18 @@ namespace ArtaleAI.Application.Pipeline
         /// <summary>節流並非同步排程怪物辨識；進行中則以 Latest-Frame-Wins 覆蓋待處理 ROI。</summary>
         private void ScheduleMonsterDetection(Mat frameMat, DateTime captureTime, AppConfig config, DateTime now)
         {
+            // 無論目前有無命中，一律節流；否則「搜尋中」會每幀全模板比對，config 形同虛設。
             var elapsed = (now - _lastMonsterDetection).TotalMilliseconds;
-            int monsterCount;
-            lock (_monsterLock) monsterCount = _currentMonsters.Count;
-
-            if (elapsed < config.Vision.MonsterDetectIntervalMs && monsterCount > 0) return;
+            if (elapsed < config.Vision.MonsterDetectIntervalMs) return;
 
             if (!_currentDetectionBoxes.Any()) return;
             if (MonsterCatalog.IsEmpty) return;
 
             var workItem = TryBuildMonsterWorkItem(frameMat, captureTime, config);
             if (workItem == null) return;
+
+            // 排程當下打點：避免 in-flight 期間仍每幀 Clone ROI／覆蓋 pending。
+            _lastMonsterDetection = now;
 
             if (Interlocked.CompareExchange(ref _monsterDetectionInFlight, 1, 0) != 0)
             {
@@ -1441,7 +1442,6 @@ namespace ArtaleAI.Application.Pipeline
                     _monsterResultCaptureUtc = captureTime;
                 }
             }
-            _lastMonsterDetection = DateTime.UtcNow;
         }
 
         private static void LogMonsterMatchTiming(string monsterName, MonsterTemplateMatchStats stats)

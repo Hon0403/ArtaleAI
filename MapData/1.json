@@ -1,0 +1,130 @@
+{
+  "Ropes": [
+    [
+      148.7,
+      86.2,
+      96.0
+    ]
+  ],
+  "JumpLinks": [
+    [
+      140.2,
+      75.8,
+      81.6
+    ],
+    [
+      140.5,
+      81.6,
+      86.2
+    ],
+    [
+      51.4,
+      81.7,
+      86.6
+    ]
+  ],
+  "PolylinePlatforms": [
+    {
+      "Id": "plat_0",
+      "Points": [
+        {
+          "X": 45.4,
+          "Y": 86.6
+        },
+        {
+          "X": 148.8,
+          "Y": 86.4
+        }
+      ]
+    },
+    {
+      "Id": "plat_1",
+      "Points": [
+        {
+          "X": 48.7,
+          "Y": 81.8,
+          "IsSafeZone": true
+        },
+        {
+          "X": 54.9,
+          "Y": 81.8,
+          "IsSafeZone": true
+        }
+      ]
+    },
+    {
+      "Id": "plat_3",
+      "Points": [
+        {
+          "X": 137.4,
+          "Y": 75.9,
+          "IsSafeZone": true
+        },
+        {
+          "X": 143.4,
+          "Y": 75.9,
+          "IsSafeZone": true
+        }
+      ]
+    },
+    {
+      "Id": "plat_4",
+      "Points": [
+        {
+          "X": 134.0,
+          "Y": 81.7,
+          "IsSafeZone": true
+        },
+        {
+          "X": 147.5,
+          "Y": 81.8,
+          "IsSafeZone": true
+        }
+      ]
+    },
+    {
+      "Id": "plat_5",
+      "Points": [
+        {
+          "X": 29.4,
+          "Y": 90.6,
+          "IsSafeZone": true
+        },
+        {
+          "X": 37.2,
+          "Y": 90.6,
+          "IsSafeZone": true
+        }
+      ]
+    },
+    {
+      "Id": "plat_6",
+      "Points": [
+        {
+          "X": 145.7,
+          "Y": 96.1,
+          "IsSafeZone": true
+        },
+        {
+          "X": 150.8,
+          "Y": 96.1,
+          "IsSafeZone": true
+        }
+      ]
+    }
+  ],
+  "ManualEdgeAnchors": [
+    {
+      "FromPlatformId": "plat_5",
+      "FromX": 37.2,
+      "FromY": 90.6,
+      "FromSegmentIndex": 0,
+      "ToPlatformId": "plat_0",
+      "ToX": 45.6,
+      "ToY": 86.6,
+      "ToSegmentIndex": 0,
+      "ActionType": 3
+    }
+  ],
+  "RestrictedZones": []
+}
