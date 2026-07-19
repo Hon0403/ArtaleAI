@@ -97,20 +97,35 @@ namespace ArtaleAI.Domain.Navigation
                 if (string.Equals(fromId, toId, StringComparison.Ordinal))
                     continue;
 
-                bool duplicate = mapData.Edges.Any(e =>
-                    string.Equals(e.FromNodeId, fromId, StringComparison.Ordinal) &&
-                    string.Equals(e.ToNodeId, toId, StringComparison.Ordinal));
-                if (duplicate) continue;
+                TryAddDirectedManualEdge(mapData, nodeById, fromId, toId, anchor.ActionType);
 
-                float cost = ComputeAnchorCost(anchor, nodeById[fromId], nodeById[toId]);
-                mapData.Edges.Add(new NavEdgeData
-                {
-                    FromNodeId = fromId,
-                    ToNodeId = toId,
-                    ActionType = anchor.ActionType,
-                    Cost = cost
-                });
+                // SideJump 是兩平台間可站立落點的水平跳：能過去原則上能回來，
+                // 比照繩索／垂直跳點在拓撲層自動補反向，避免 A* 把回程當不可達。
+                if (anchor.ActionType == NavigationActionType.SideJump)
+                    TryAddDirectedManualEdge(mapData, nodeById, toId, fromId, NavigationActionType.SideJump);
             }
+        }
+
+        private static void TryAddDirectedManualEdge(
+            MapData mapData,
+            Dictionary<string, NavNodeData> nodeById,
+            string fromId,
+            string toId,
+            NavigationActionType actionType)
+        {
+            bool duplicate = mapData.Edges.Any(e =>
+                string.Equals(e.FromNodeId, fromId, StringComparison.Ordinal) &&
+                string.Equals(e.ToNodeId, toId, StringComparison.Ordinal));
+            if (duplicate) return;
+
+            float cost = ComputeActionCost(actionType, nodeById[fromId], nodeById[toId]);
+            mapData.Edges.Add(new NavEdgeData
+            {
+                FromNodeId = fromId,
+                ToNodeId = toId,
+                ActionType = actionType,
+                Cost = cost
+            });
         }
 
         /// <summary>
@@ -157,12 +172,12 @@ namespace ArtaleAI.Domain.Navigation
         }
 
         /// <summary>Cost 由 ActionType + 幾何距離決定，不由 UI 預算。</summary>
-        private static float ComputeAnchorCost(ManualEdgeAnchor anchor, NavNodeData from, NavNodeData to)
+        private static float ComputeActionCost(NavigationActionType actionType, NavNodeData from, NavNodeData to)
         {
             float dx = to.X - from.X;
             float dy = to.Y - from.Y;
             float dist = (float)Math.Sqrt(dx * dx + dy * dy);
-            return anchor.ActionType switch
+            return actionType switch
             {
                 NavigationActionType.Walk => dist,
                 NavigationActionType.Jump => Math.Max(JumpUpMinCost, dist * JumpUpCostPerPx),

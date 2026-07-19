@@ -439,12 +439,22 @@ namespace ArtaleAI.UI.MapEditor
                 ? $"解析: 成功 → {fromNodeId} → {toNodeId}"
                 : "解析: 失敗（無對應 runtime 邊）");
 
-            bool hasReverse = _currentMapData.ManualEdgeAnchors?.Any(a =>
-                !ReferenceEquals(a, anchor) &&
-                string.Equals(a.FromPlatformId, anchor.ToPlatformId, StringComparison.Ordinal) &&
-                string.Equals(a.ToPlatformId, anchor.FromPlatformId, StringComparison.Ordinal)) == true;
+            if (anchor.ActionType == NavigationActionType.SideJump)
+            {
+                lines.Add("反向邊: SideJump 拓撲自動雙向");
+            }
+            else
+            {
+                bool hasReverse = _currentMapData.Edges.Any(e =>
+                        string.Equals(e.FromNodeId, toNodeId, StringComparison.Ordinal) &&
+                        string.Equals(e.ToNodeId, fromNodeId, StringComparison.Ordinal))
+                    || _currentMapData.ManualEdgeAnchors?.Any(a =>
+                        !ReferenceEquals(a, anchor) &&
+                        string.Equals(a.FromPlatformId, anchor.ToPlatformId, StringComparison.Ordinal) &&
+                        string.Equals(a.ToPlatformId, anchor.FromPlatformId, StringComparison.Ordinal)) == true;
 
-            lines.Add(hasReverse ? "反向邊: 已存在其他 ManualEdge" : "反向邊: 無（單向）");
+                lines.Add(hasReverse ? "反向邊: 已存在 runtime／ManualEdge" : "反向邊: 無（單向）");
+            }
         }
 
         private void AppendRuntimeNodeInspector(List<string> lines, int nodeIndex)

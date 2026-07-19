@@ -10,7 +10,7 @@ namespace ArtaleAI.Domain.Navigation
     {
         Walk = 1,
         Jump = 2,           // 手標跳躍；執行層依 ΔY 自動選原地/上跳或下跳
-        SideJump = 3,       // 側跳 (自動判定左右)
+        SideJump = 3,       // 側跳（自動判定左右；ManualEdge 拓撲自動雙向）
         JumpDown = 4,       // 下跳
         Teleport = 5,       // 傳送
         ClimbUp = 6,        // 繩索：下平台 → 上平台

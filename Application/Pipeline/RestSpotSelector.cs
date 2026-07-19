@@ -16,15 +16,19 @@ namespace ArtaleAI.Application.Pipeline
     /// <summary>
     /// 定時休息選點：安全折點與繩索同場比較，以 A* 路徑成本取最近「可達」者。
     /// 用圖上成本而非直線距離，避免挑到隔著斷層的假近點。
+    /// excludedNodeIds 供 Seeking 逾時後的故障轉移：本輪已證實到不了的點不再重選。
     /// </summary>
     public static class RestSpotSelector
     {
         private const float StartNodeSearchRadiusPx = 100f;
 
-        public static RestSpotSelection Select(NavigationGraph graph, PointF playerPos)
+        public static RestSpotSelection Select(
+            NavigationGraph graph,
+            PointF playerPos,
+            IReadOnlySet<string>? excludedNodeIds = null)
         {
             var candidates = graph.GetAllNodes()
-                .Where(IsRestCandidate)
+                .Where(node => IsRestCandidate(node) && excludedNodeIds?.Contains(node.Id) != true)
                 .ToList();
 
             if (candidates.Count == 0)
