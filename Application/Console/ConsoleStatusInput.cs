@@ -11,6 +11,10 @@ namespace ArtaleAI.Application.Console
         public bool IsResting { get; init; }
         /// <summary>休息流程的前段：正在前往安全區／繩索休息點（尚未開始倒數）。</summary>
         public bool IsSeekingRestSpot { get; init; }
+        /// <summary>補給無效後正在前往安全區或原地等待回補。</summary>
+        public bool IsHealRetreating { get; init; }
+        /// <summary>補給撤退前段：正在前往安全區。</summary>
+        public bool IsSeekingHealSafeZone { get; init; }
         public bool IsAvoidingOtherPlayers { get; init; }
         public NavigationState FsmState { get; init; } = NavigationState.Idle;
         public double? HpRatio { get; init; }

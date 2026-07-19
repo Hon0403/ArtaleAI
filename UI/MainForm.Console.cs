@@ -682,6 +682,8 @@ namespace ArtaleAI
                 CaptureRunning = liveViewManager?.IsRunning == true,
                 IsResting = _gamePipeline?.IsResting == true,
                 IsSeekingRestSpot = _gamePipeline?.IsSeekingRestSpot == true,
+                IsHealRetreating = _gamePipeline?.IsHealRetreating == true,
+                IsSeekingHealSafeZone = _gamePipeline?.IsSeekingHealSafeZone == true,
                 IsAvoidingOtherPlayers = _gamePipeline?.IsAvoidingOtherPlayers == true,
                 IsRecoveringParty = _gamePipeline?.IsRecoveringParty == true,
                 FsmState = _fsm?.CurrentState ?? NavigationState.Idle,

@@ -250,10 +250,16 @@ namespace ArtaleAI.Vision
                         br.Height < minFillH || br.Height > maxFillH)
                         continue;
 
-                    // 活動 ICON 紅塊偏方；真血條填充必須是橫長條
-                    double aspect = br.Width / (double)Math.Max(1, br.Height);
-                    if (aspect < minFillAspect)
-                        continue;
+                    // 長寬比只擋「夠寬才看得出是橫條」的候選。
+                    // 低血短紅條寬度小、比例必然偏低；若硬套用會在約 1/3 血以下冷啟漏檢，
+                    // 誤觸發隊伍重建。短紅條改由高度閘門 + 左右端點括號把關。
+                    int aspectGateMinWidth = (int)Math.Ceiling(frameH * minFillAspect);
+                    if (br.Width >= aspectGateMinWidth)
+                    {
+                        double aspect = br.Width / (double)Math.Max(1, br.Height);
+                        if (aspect < minFillAspect)
+                            continue;
+                    }
 
                     fillCount++;
 

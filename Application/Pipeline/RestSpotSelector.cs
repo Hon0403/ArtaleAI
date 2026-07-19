@@ -11,10 +11,19 @@ namespace ArtaleAI.Application.Pipeline
         Unreachable
     }
 
+    /// <summary>
+    /// 候選範圍：定時休息含繩索；補給失敗撤退只允許地圖標記的安全區。
+    /// </summary>
+    public enum RestSpotCandidateMode
+    {
+        SafeZonesAndRopes,
+        SafeZonesOnly
+    }
+
     public readonly record struct RestSpotSelection(RestSpotOutcome Outcome, NavigationNode? Node);
 
     /// <summary>
-    /// 定時休息選點：安全折點與繩索同場比較，以 A* 路徑成本取最近「可達」者。
+    /// 定時休息／緊急撤退選點：以 A* 路徑成本取最近「可達」者。
     /// 用圖上成本而非直線距離，避免挑到隔著斷層的假近點。
     /// excludedNodeIds 供 Seeking 逾時後的故障轉移：本輪已證實到不了的點不再重選。
     /// </summary>
@@ -25,10 +34,11 @@ namespace ArtaleAI.Application.Pipeline
         public static RestSpotSelection Select(
             NavigationGraph graph,
             PointF playerPos,
-            IReadOnlySet<string>? excludedNodeIds = null)
+            IReadOnlySet<string>? excludedNodeIds = null,
+            RestSpotCandidateMode mode = RestSpotCandidateMode.SafeZonesAndRopes)
         {
             var candidates = graph.GetAllNodes()
-                .Where(node => IsRestCandidate(node) && excludedNodeIds?.Contains(node.Id) != true)
+                .Where(node => IsCandidate(node, mode) && excludedNodeIds?.Contains(node.Id) != true)
                 .ToList();
 
             if (candidates.Count == 0)
@@ -62,8 +72,14 @@ namespace ArtaleAI.Application.Pipeline
                 : new(RestSpotOutcome.Found, best);
         }
 
-        private static bool IsRestCandidate(NavigationNode node) =>
-            (node.Type == NavigationNodeType.Platform && node.IsSafeZone)
-            || node.Type == NavigationNodeType.Rope;
+        private static bool IsCandidate(NavigationNode node, RestSpotCandidateMode mode) =>
+            mode switch
+            {
+                RestSpotCandidateMode.SafeZonesOnly =>
+                    node.Type == NavigationNodeType.Platform && node.IsSafeZone,
+                _ =>
+                    (node.Type == NavigationNodeType.Platform && node.IsSafeZone)
+                    || node.Type == NavigationNodeType.Rope
+            };
     }
 }

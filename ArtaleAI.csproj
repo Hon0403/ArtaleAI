@@ -14,6 +14,9 @@
     <Compile Remove="MapData\**" />
     <EmbeddedResource Remove="MapData\**" />
     <Page Remove="MapData\**" />
+    <Compile Remove="Tests\**" />
+    <EmbeddedResource Remove="Tests\**" />
+    <None Remove="Tests\**" />
   </ItemGroup>
 
   <!-- 執行期內容：複製到輸出目錄（PathManager 優先讀專案根；找不到 csproj 時仍可從 bin 讀取） -->

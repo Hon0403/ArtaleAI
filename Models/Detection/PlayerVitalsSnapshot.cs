@@ -19,6 +19,15 @@ namespace ArtaleAI.Models.Detection
         /// <summary>HSV 填充率讀取成功（與 ROI 校準可獨立）。</summary>
         public bool HasFillReading { get; init; }
 
+        /// <summary>
+        /// 每次成功量測填充率時遞增；佈局-only 更新不改動。
+        /// 補給效果判定只消費更新的 ReadingId，避免同幀重算失敗。
+        /// </summary>
+        public long ReadingId { get; init; }
+
+        /// <summary>本次填充量測的 UTC 時間；無填充讀數時為 MinValue。</summary>
+        public DateTime MeasuredAtUtc { get; init; }
+
         public static PlayerVitalsSnapshot Empty { get; } = new();
     }
 }

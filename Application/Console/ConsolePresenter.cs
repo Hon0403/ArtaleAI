@@ -30,7 +30,9 @@ namespace ArtaleAI.Application.Console
                     : ConsoleStatusTone.Danger,
 
                 StatusCapture = FormatCapture(input),
-                StatusCaptureTone = input.IsResting || input.IsAvoidingOtherPlayers
+                StatusCaptureTone = input.IsResting
+                    || input.IsHealRetreating
+                    || input.IsAvoidingOtherPlayers
                     ? ConsoleStatusTone.Accent
                     : ConsoleStatusTone.Neutral,
 
@@ -73,6 +75,12 @@ namespace ArtaleAI.Application.Console
 
             if (input.IsRecoveringParty)
                 return "擷取：隊伍重建中";
+
+            if (input.IsSeekingHealSafeZone)
+                return "擷取：補給撤退中";
+
+            if (input.IsHealRetreating)
+                return "擷取：安全區回補中";
 
             if (input.IsSeekingRestSpot)
                 return "擷取：前往休息點";
@@ -118,6 +126,12 @@ namespace ArtaleAI.Application.Console
             if (input.IsRecoveringParty)
                 return "導航：隊伍重建";
 
+            if (input.IsSeekingHealSafeZone)
+                return "導航：補給撤退（安全區）";
+
+            if (input.IsHealRetreating)
+                return "導航：安全區等待回補";
+
             if (input.IsSeekingRestSpot)
                 return "導航：前往休息點（安全區/繩索）";
 
@@ -129,7 +143,10 @@ namespace ArtaleAI.Application.Console
 
         private static ConsoleStatusTone ResolveFsmTone(ConsoleStatusInput input)
         {
-            if (input.IsAvoidingOtherPlayers || input.IsRecoveringParty || input.IsResting)
+            if (input.IsAvoidingOtherPlayers
+                || input.IsRecoveringParty
+                || input.IsResting
+                || input.IsHealRetreating)
                 return ConsoleStatusTone.Accent;
 
             return input.FsmState == NavigationState.Error

@@ -112,7 +112,10 @@ namespace ArtaleAI.Models.Config
         /// </summary>
         public double BloodBarFrameMaxInteriorTip { get; set; } = 0.12;
 
-        /// <summary>紅填充最小長寬比（擋方形活動 ICON 紅塊）。</summary>
+        /// <summary>
+        /// 紅填充最小長寬比（擋方形活動 ICON）。
+        /// 僅在填充寬度 ≥ 高×此值時套用；更短的低血紅條不套用，改靠高度與端點。
+        /// </summary>
         public double BloodBarFrameMinFillAspect { get; set; } = 2.5;
 
         /// <summary>上一幀外框追蹤半徑（像素）；候選中心在此距離內加分。</summary>
