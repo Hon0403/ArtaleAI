@@ -115,8 +115,7 @@ namespace ArtaleAI.Application.Pipeline
         private const int MonsterJobReplacementLogInterval = 30;
         private DateTime _lastAttackTime = DateTime.MinValue;
         private DateTime _lastDirectionChangeTime = DateTime.MinValue;
-        private const int AttackCooldownMs = 500;
-        private const int DirectionChangeCooldownMs = 200;
+        private int _heldAttackVirtualKey;
         private const ushort VK_LEFT = 0x25;
         private const ushort VK_RIGHT = 0x27;
         private const ushort VK_CONTROL = 0x11;
@@ -189,7 +188,8 @@ namespace ArtaleAI.Application.Pipeline
         public bool IsRecoveringParty => _partyRecovery.IsRecovering;
 
         /// <summary>
-        /// 攻擊／小休倒數／補給等待／遇人退避／換頻／打怪清窗期間，導航 Walk 應讓出鍵盤。
+        /// 攻擊／小休倒數／補給等待／遇人退避／換頻／打怪清窗期間，移動控制器應讓出方向鍵。
+        /// 導航 FSM 仍應持續 tick（由 MovementController 在送鍵前讓路），不可連編排一起擋住。
         /// SeekingRest／SeekingHealSafeZone 不在此列：前往目標必須靠導航輸入。
         /// </summary>
         public bool BlocksNavigationInput =>
@@ -316,11 +316,16 @@ namespace ArtaleAI.Application.Pipeline
                 if (IsHealRetreating)
                     ProcessHealRetreat(config, now);
 
+                // 垂直換層優先於長按攻擊：先搶回鍵盤，再允許導航送 ↓／Alt。
+                if (ShouldDeferAttackForNavigation() && IsCombatInputHeld())
+                    PreemptCombatForNavigation();
+
                 // 攻擊只允許從本入口發起；怪物背景 worker 僅更新結果，不得自行送鍵。
                 if (CanStartAttack())
                     ProcessAutoAttackDecision();
 
-                if (trackingResult != null && !BlocksNavigationInput)
+                // 導航編排不因攻擊租約而停 tick；實際方向鍵由 MovementController 讓路。
+                if (trackingResult != null)
                     SignalNavigationOrchestration(trackingResult);
 
                 double msAfterPathAttack = sw.Elapsed.TotalMilliseconds;
@@ -429,7 +434,8 @@ namespace ArtaleAI.Application.Pipeline
         }
 
         /// <summary>
-        /// 攻擊決策的唯一閘門：換頻／清窗／退避／隊伍重建／進行中攻擊皆不可再開新攻擊。
+        /// 攻擊決策的唯一閘門：換頻／清窗／退避／隊伍重建／進行中攻擊／冷卻皆不可再開新攻擊。
+        /// 冷卻必須擋在入口，禁止「先 StopMovement 再因冷卻 return」空轉搶鍵。
         /// </summary>
         private bool CanStartAttack()
         {
@@ -440,18 +446,39 @@ namespace ArtaleAI.Application.Pipeline
                 && !_partyRecovery.IsRecovering
                 && !_farmUiInterrupt.IsDismissing
                 && Volatile.Read(ref _changeChannelInFlight) == 0
-                && Volatile.Read(ref _attackInputLease) == 0;
+                && Volatile.Read(ref _attackInputLease) == 0
+                && AttackInputArbiter.IsCooldownReady(_lastAttackTime, DateTime.UtcNow);
         }
 
-        /// <summary>已持有攻擊租約時，換頻／退避／補給撤退發生則應立刻中止後續按鍵。</summary>
+        /// <summary>已持有攻擊租約時，換頻／退避／休息／補給撤退／垂直導航發生則應立刻中止。</summary>
         private bool CanContinueAttack()
         {
             return AutoAttackEnabled
+                && _restPhase == RestPhaseNone
                 && _healRetreatPhase == HealRetreatNone
                 && !_otherPlayerAvoidance.IsAvoiding
                 && !_partyRecovery.IsRecovering
                 && !_farmUiInterrupt.IsDismissing
-                && Volatile.Read(ref _changeChannelInFlight) == 0;
+                && Volatile.Read(ref _changeChannelInFlight) == 0
+                && !ShouldDeferAttackForNavigation();
+        }
+
+        private bool IsCombatInputHeld() =>
+            _isAttacking
+            || Volatile.Read(ref _attackInputLease) > 0
+            || Volatile.Read(ref _heldAttackVirtualKey) != 0;
+
+        /// <summary>
+        /// 垂直換層／休息尋路等更高優先活動接管鍵盤前呼叫：
+        /// 立刻放鍵並釋放租約，避免 Walk／JumpDown 假啟動。
+        /// </summary>
+        public void PreemptCombatForNavigation()
+        {
+            AbortCombatInputs();
+            Interlocked.Exchange(ref _heldAttackVirtualKey, 0);
+            _isAttacking = false;
+            Interlocked.Exchange(ref _attackInputLease, 0);
+            _lastAttackTime = DateTime.UtcNow;
         }
 
         private bool ProcessAutoAttackDecision()
@@ -468,7 +495,7 @@ namespace ArtaleAI.Application.Pipeline
             return true;
         }
 
-        /// <summary>釋放方向鍵與主攻鍵，避免換頻／熄火時殘留 key-down。</summary>
+        /// <summary>釋放方向鍵與攻擊鍵，避免換頻／熄火時殘留 key-down。</summary>
         private void AbortCombatInputs()
         {
             _movementController?.StopMovement();
@@ -479,10 +506,15 @@ namespace ArtaleAI.Application.Pipeline
             _movementController.SendKeyInput(VK_RIGHT, keyUp: true);
             _movementController.SendKeyInput(VK_CONTROL, keyUp: true);
 
+            int heldVk = Interlocked.Exchange(ref _heldAttackVirtualKey, 0);
+            if (heldVk != 0)
+                _movementController.SendKeyInput((ushort)heldVk, keyUp: true);
+
             string? primary = AppConfig.Instance?.AutoFarm?.AttackPrimaryHotkey;
             if (!string.IsNullOrWhiteSpace(primary)
                 && VirtualKeyParser.TryParse(primary, out ushort primaryVk)
-                && primaryVk != VK_CONTROL)
+                && primaryVk != VK_CONTROL
+                && primaryVk != heldVk)
             {
                 _movementController.SendKeyInput(primaryVk, keyUp: true);
             }
@@ -511,6 +543,25 @@ namespace ArtaleAI.Application.Pipeline
             if (attackBox.IsEmpty)
                 return false;
 
+            targets = FilterAttackTargetsInBox(attackBox, monsters);
+            return targets.Count > 0;
+        }
+
+        /// <summary>以最新怪物清單重驗攻擊框內目標，避免殭屍偵測在怪死後仍出手。</summary>
+        private bool TryRefreshLiveAttackTargets(SdRect attackBox, out List<DetectionResult> targets)
+        {
+            List<DetectionResult> monsters;
+            lock (_monsterLock) monsters = _currentMonsters.ToList();
+            targets = FilterAttackTargetsInBox(attackBox, monsters);
+            return targets.Count > 0;
+        }
+
+        private List<DetectionResult> FilterAttackTargetsInBox(SdRect attackBox, IReadOnlyList<DetectionResult> monsters)
+        {
+            var targets = new List<DetectionResult>();
+            if (attackBox.IsEmpty || monsters.Count == 0)
+                return targets;
+
             int maxVerticalDelta = ResolveAttackMaxVerticalDeltaPx();
             float boxCenterY = attackBox.Y + attackBox.Height / 2f;
 
@@ -526,12 +577,12 @@ namespace ArtaleAI.Application.Pipeline
                 targets.Add(m);
             }
 
-            return targets.Count > 0;
+            return targets;
         }
 
         /// <summary>
-        /// 僅在垂直移動／跳躍飛行中暫緩攻擊；Walk 巡邏允許同層攻擊。
-        /// （先前「路徑未走完就不打」會導致巡邏永遠不攻擊。）
+        /// 垂直移動／跳躍／起跳對位期間暫緩攻擊；Walk 巡邏允許同層攻擊。
+        /// 必須在「飛行尚未開始、邊已是 JumpDown」時就讓出，否則長按會擋 ↓／Alt。
         /// </summary>
         private bool ShouldDeferAttackForNavigation()
         {
@@ -542,10 +593,15 @@ namespace ArtaleAI.Application.Pipeline
             if (_pathPlanningManager == null || !_pathPlanningManager.IsRunning)
                 return false;
 
-            if (!_pathPlanningManager.HasActiveNavigationFlight)
-                return false;
+            var tracker = _pathPlanningManager.Tracker;
+            if (tracker.IsSideJumpApproachInProgress)
+                return true;
 
-            return _pathPlanningManager.ActiveFlightActionType is
+            NavigationActionType? action =
+                _pathPlanningManager.ActiveFlightActionType
+                ?? tracker.CurrentNavigationEdge?.ActionType;
+
+            return action is
                 NavigationActionType.ClimbUp or
                 NavigationActionType.ClimbDown or
                 NavigationActionType.Jump or
@@ -691,6 +747,8 @@ namespace ArtaleAI.Application.Pipeline
             DateTime now,
             string prefix)
         {
+            // 休息尋路需要導航鍵；進行中長按必須立刻讓出。
+            PreemptCombatForNavigation();
             tracker.SetForcedGoal(spot.Id);
             _restSeekGoalNodeId = spot.Id;
             _restSeekStartedUtc = now;
@@ -768,6 +826,7 @@ namespace ArtaleAI.Application.Pipeline
             int durationSeconds = ResolveRestDurationSeconds(config.AutoFarm);
             _restPhase = RestPhaseResting;
             _restEndsAtUtc = now.AddSeconds(durationSeconds);
+            PreemptCombatForNavigation();
             _movementController?.StopMovement();
             OnStatusMessage?.Invoke(reason == null
                 ? $"已到休息點，小休約 {durationSeconds} 秒…"
@@ -1258,8 +1317,11 @@ namespace ArtaleAI.Application.Pipeline
             return baseValue * factor;
         }
 
-        /// <summary>轉向最近目標並送出攻擊鍵；租約已由呼叫端 CAS 取得，結束時釋放。</summary>
-        private async Task PerformAutoAttackAsync(SdRect playerBox, List<DetectionResult> targets)
+        /// <summary>
+        /// 轉向最近目標並送出攻擊鍵；租約已由呼叫端 CAS 取得，結束時釋放。
+        /// 主攻長按至框內無活怪；輪轉技仍為單次脈衝。
+        /// </summary>
+        private async Task PerformAutoAttackAsync(SdRect playerAttackBox, List<DetectionResult> targets)
         {
             try
             {
@@ -1267,72 +1329,164 @@ namespace ArtaleAI.Application.Pipeline
                 if (_movementController == null) return;
                 if (!CanContinueAttack()) return;
 
-                _movementController.StopMovement();
-
                 var now = DateTime.UtcNow;
-                if ((now - _lastAttackTime).TotalMilliseconds < AttackCooldownMs) return;
+                if (!AttackInputArbiter.IsCooldownReady(_lastAttackTime, now))
+                    return;
 
-                var playerCenter = new SdPoint(
-                    playerBox.X + playerBox.Width / 2,
-                    playerBox.Y + playerBox.Height / 2);
-                var target = targets.OrderBy(m =>
-                    Math.Abs((m.BoundingBox.X + m.BoundingBox.Width / 2) - playerCenter.X)).FirstOrDefault();
-                if (target == null) return;
+                if (!TryGetCurrentAttackBox(out SdRect attackBox))
+                    attackBox = playerAttackBox;
 
-                if ((now - _lastDirectionChangeTime).TotalMilliseconds > DirectionChangeCooldownMs)
-                {
-                    if (!CanContinueAttack()) return;
-
-                    int monsterCenterX = target.BoundingBox.X + target.BoundingBox.Width / 2;
-                    ushort directionKey = monsterCenterX < playerCenter.X ? VK_LEFT : VK_RIGHT;
-
-                    _movementController.SendKeyInput(directionKey, false);
-                    await Task.Delay(20).ConfigureAwait(false);
-                    _movementController.SendKeyInput(directionKey, true);
-                    _lastDirectionChangeTime = now;
-                }
-
-                if (!CanContinueAttack()) return;
+                if (!TryRefreshLiveAttackTargets(attackBox, out var liveTargets))
+                    return;
 
                 if (!_attackRotation.TrySelectAttackKey(
                         AppConfig.Instance.AutoFarm,
                         now,
                         out ushort attackKey,
-                        out string attackLabel))
+                        out string attackLabel,
+                        out bool useHoldAttack))
                 {
                     Logger.Warning("[自動攻擊] 主攻快捷鍵無法解析，略過此次攻擊");
                     return;
                 }
 
-                _movementController.SendKeyInput(attackKey, false);
-                await Task.Delay(20).ConfigureAwait(false);
-
-                // 換頻可能在 Delay 期間觸發：只送 key-up，不送第二次按下。
-                if (!CanContinueAttack())
-                {
-                    _movementController.SendKeyInput(attackKey, true);
+                if (!TryRefreshLiveAttackTargets(attackBox, out liveTargets))
                     return;
-                }
 
-                _movementController.SendKeyInput(attackKey, true);
+                _movementController.StopMovement();
+                await TryFaceNearestTargetAsync(attackBox, liveTargets).ConfigureAwait(false);
 
-                _lastAttackTime = now;
-                OnStatusMessage?.Invoke($"自動攻擊: 鎖定 {target.Name}（{attackLabel}）");
+                if (!CanContinueAttack() || ShouldDeferAttackForNavigation())
+                    return;
+
+                if (!TryRefreshLiveAttackTargets(attackBox, out liveTargets))
+                    return;
+
+                if (useHoldAttack)
+                    await HoldPrimaryAttackAsync(attackBox, attackKey, attackLabel, liveTargets).ConfigureAwait(false);
+                else
+                    await PulseSkillAttackAsync(attackBox, attackKey, attackLabel, liveTargets).ConfigureAwait(false);
             }
             finally
             {
+                ReleaseHeldAttackKey();
                 _isAttacking = false;
                 Interlocked.Exchange(ref _attackInputLease, 0);
             }
         }
 
-        /// <summary>每幀更新玩家座標 SSOT（攻擊期間仍執行）。</summary>
+        private bool TryGetCurrentAttackBox(out SdRect attackBox)
+        {
+            attackBox = _currentAttackRangeBoxes.FirstOrDefault();
+            return !attackBox.IsEmpty;
+        }
+
+        private static DetectionResult PickNearestTarget(SdRect attackBox, IReadOnlyList<DetectionResult> targets)
+        {
+            var playerCenter = new SdPoint(
+                attackBox.X + attackBox.Width / 2,
+                attackBox.Y + attackBox.Height / 2);
+
+            return targets.OrderBy(m =>
+                Math.Abs((m.BoundingBox.X + m.BoundingBox.Width / 2) - playerCenter.X)).First();
+        }
+
+        private async Task TryFaceNearestTargetAsync(SdRect attackBox, IReadOnlyList<DetectionResult> targets)
+        {
+            if (_movementController == null || targets.Count == 0)
+                return;
+
+            var now = DateTime.UtcNow;
+            if (!AttackInputArbiter.ShouldRetapFacing(_lastDirectionChangeTime, now))
+                return;
+
+            var target = PickNearestTarget(attackBox, targets);
+            var playerCenter = new SdPoint(
+                attackBox.X + attackBox.Width / 2,
+                attackBox.Y + attackBox.Height / 2);
+            int monsterCenterX = target.BoundingBox.X + target.BoundingBox.Width / 2;
+            ushort directionKey = monsterCenterX < playerCenter.X ? VK_LEFT : VK_RIGHT;
+
+            _movementController.SendKeyInput(directionKey, false);
+            await Task.Delay(AttackInputArbiter.SkillPulseMs).ConfigureAwait(false);
+            _movementController.SendKeyInput(directionKey, true);
+            _lastDirectionChangeTime = DateTime.UtcNow;
+        }
+
+        private void PressAttackKey(ushort attackKey)
+        {
+            Volatile.Write(ref _heldAttackVirtualKey, attackKey);
+            _movementController!.SendKeyInput(attackKey, false);
+        }
+
+        private void ReleaseHeldAttackKey()
+        {
+            int vk = Interlocked.Exchange(ref _heldAttackVirtualKey, 0);
+            if (vk != 0)
+                _movementController?.SendKeyInput((ushort)vk, true);
+        }
+
+        /// <summary>楓之谷主攻：長按至攻擊框內無活怪或導航需接管。</summary>
+        private async Task HoldPrimaryAttackAsync(
+            SdRect attackBox,
+            ushort attackKey,
+            string attackLabel,
+            List<DetectionResult> liveTargets)
+        {
+            var target = PickNearestTarget(attackBox, liveTargets);
+            PressAttackKey(attackKey);
+            OnStatusMessage?.Invoke($"自動攻擊: 按住 {target.Name}（{attackLabel}）");
+
+            var holdStarted = DateTime.UtcNow;
+            while (CanContinueAttack() && !ShouldDeferAttackForNavigation())
+            {
+                if ((DateTime.UtcNow - holdStarted).TotalMilliseconds >= AttackInputArbiter.MaxHoldMs)
+                    break;
+
+                if (!TryGetCurrentAttackBox(out attackBox))
+                    break;
+
+                if (!TryRefreshLiveAttackTargets(attackBox, out liveTargets))
+                    break;
+
+                await TryFaceNearestTargetAsync(attackBox, liveTargets).ConfigureAwait(false);
+                await Task.Delay(AttackInputArbiter.HoldPollMs).ConfigureAwait(false);
+            }
+
+            ReleaseHeldAttackKey();
+            _lastAttackTime = DateTime.UtcNow;
+        }
+
+        private async Task PulseSkillAttackAsync(
+            SdRect attackBox,
+            ushort attackKey,
+            string attackLabel,
+            List<DetectionResult> liveTargets)
+        {
+            var target = PickNearestTarget(attackBox, liveTargets);
+            _movementController!.SendKeyInput(attackKey, false);
+            await Task.Delay(AttackInputArbiter.SkillPulseMs).ConfigureAwait(false);
+
+            if (!CanContinueAttack())
+            {
+                _movementController.SendKeyInput(attackKey, true);
+                return;
+            }
+
+            _movementController.SendKeyInput(attackKey, true);
+            _lastAttackTime = DateTime.UtcNow;
+            OnStatusMessage?.Invoke($"自動攻擊: 鎖定 {target.Name}（{attackLabel}）");
+        }
+
+        /// <summary>每幀更新玩家座標 SSOT（攻擊期間仍執行）；並同步卡點豁免旗標。</summary>
         private void FeedPlayerTracking(MinimapTrackingResult result)
         {
             if (_pathPlanningManager == null || !_pathPlanningManager.IsRunning) return;
 
             try
             {
+                // 攻擊／換頻等佔鍵期間靜止是預期行為，不得累積卡點與救援熔斷。
+                _pathPlanningManager.Tracker.SuppressStuckDetection = BlocksNavigationInput;
                 _pathPlanningManager.ProcessTrackingResult(result);
             }
             catch (Exception ex)
@@ -1341,7 +1495,7 @@ namespace ArtaleAI.Application.Pipeline
             }
         }
 
-        /// <summary>攻擊未佔用輸入時，才推進導航 FSM tick。</summary>
+        /// <summary>推進導航 FSM tick（攻擊期間仍編排；送鍵由 MovementController 讓路）。</summary>
         private void SignalNavigationOrchestration(MinimapTrackingResult result)
         {
             if (_pathPlanningManager == null || !_pathPlanningManager.IsRunning) return;
@@ -1503,15 +1657,33 @@ namespace ArtaleAI.Application.Pipeline
 
         /// <summary>
         /// 怪物結果最大存活時間：來源幀年齡超過即整批清空釋放。
-        /// 取 3 個偵測週期（下限 250ms）容忍背景偵測的正常延遲，同時擋住卡頓後的殭屍資料。
+        /// 戰鬥中縮短殭屍框壽命，讓長按主攻較快在怪死後放開。
         /// </summary>
-        private static int ResolveMonsterResultMaxAgeMs(AppConfig config) =>
-            Math.Max(250, config.Vision.MonsterDetectIntervalMs * 3);
+        private static int ResolveMonsterResultMaxAgeMs(AppConfig config, bool combatActive)
+        {
+            int interval = Math.Max(50, config.Vision.MonsterDetectIntervalMs);
+            int multiplier = combatActive ? 2 : 3;
+            int floor = combatActive ? 180 : 250;
+            return Math.Max(floor, interval * multiplier);
+        }
+
+        private bool IsCombatMonsterRefreshActive() =>
+            _isAttacking || Volatile.Read(ref _heldAttackVirtualKey) != 0;
+
+        /// <summary>戰鬥期間加速怪物掃描，避免長按時仍吃 200ms 級殭屍框。</summary>
+        private int ResolveMonsterDetectIntervalMs(AppConfig config)
+        {
+            int interval = Math.Max(50, config.Vision.MonsterDetectIntervalMs);
+            if (!IsCombatMonsterRefreshActive())
+                return interval;
+
+            return Math.Max(80, interval / 2);
+        }
 
         /// <summary>來源幀過期的怪物結果整批清空，讓下游 fail-closed（無資料＝不攻擊）。</summary>
         private void PruneStaleMonsterResults(DateTime now, AppConfig config)
         {
-            int maxAgeMs = ResolveMonsterResultMaxAgeMs(config);
+            int maxAgeMs = ResolveMonsterResultMaxAgeMs(config, IsCombatMonsterRefreshActive());
             lock (_monsterLock)
             {
                 if (_currentMonsters.Count == 0)
@@ -1530,7 +1702,7 @@ namespace ArtaleAI.Application.Pipeline
         {
             // 無論目前有無命中，一律節流；否則「搜尋中」會每幀全模板比對，config 形同虛設。
             var elapsed = (now - _lastMonsterDetection).TotalMilliseconds;
-            if (elapsed < config.Vision.MonsterDetectIntervalMs) return;
+            if (elapsed < ResolveMonsterDetectIntervalMs(config)) return;
 
             if (!_currentDetectionBoxes.Any()) return;
             if (MonsterCatalog.IsEmpty) return;

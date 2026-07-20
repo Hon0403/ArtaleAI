@@ -55,8 +55,11 @@ namespace ArtaleAI.UI
 
                 int targetFPS = Math.Max(1, config.Vision.CaptureFrameRate);
                 int captureIntervalMs = 1000 / targetFPS;
-                // 與 monsterDetectIntervalMs 對齊：避免舊硬編碼 20ms 以 50Hz 空轉排程把管線打滿。
-                int dispatchIntervalMs = Math.Max(MinFrameDispatchIntervalMs, config.Vision.MonsterDetectIntervalMs);
+                int monsterIntervalMs = Math.Max(MinFrameDispatchIntervalMs, config.Vision.MonsterDetectIntervalMs);
+                int configuredDispatchMs = config.Vision.FrameDispatchIntervalMs;
+                int dispatchIntervalMs = configuredDispatchMs > 0
+                    ? Math.Max(MinFrameDispatchIntervalMs, configuredDispatchMs)
+                    : monsterIntervalMs;
 
                 _captureTimer = new System.Threading.Timer(OnCaptureTimer, null, 0, captureIntervalMs);
                 _detectionTimer = new System.Threading.Timer(OnDetectionTimer, null, dispatchIntervalMs, dispatchIntervalMs);

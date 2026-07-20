@@ -35,6 +35,12 @@ namespace ArtaleAI.Models.Config
         /// <summary>同座標、同補給節點連續救援達此值即熔斷，避免 livelock。</summary>
         public int RescueRepeatCutoff { get; set; } = 3;
 
+        /// <summary>
+        /// 救援熔斷冷卻（秒）。逾時自動解除，避免假卡點造成巡邏永久停走。
+        /// 設 0 表示不自動解除（僅位移／邊成功／Stop 時清除）。
+        /// </summary>
+        public int RescueCircuitCooldownSeconds { get; set; } = 20;
+
         /// <summary>繩索節點的到達判定寬度 (px)</summary>
         public double RopeHitboxWidth { get; set; } = 6.0;
 

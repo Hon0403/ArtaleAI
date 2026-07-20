@@ -134,13 +134,13 @@
       "Id": "plat_7",
       "Points": [
         {
-          "X": 133.3,
-          "Y": 117.4,
+          "X": 135.5,
+          "Y": 117.6,
           "IsSafeZone": true
         },
         {
-          "X": 143.7,
-          "Y": 117.6,
+          "X": 145.9,
+          "Y": 117.5,
           "IsSafeZone": true
         }
       ]
@@ -236,13 +236,13 @@
   ],
   "ManualEdgeAnchors": [
     {
-      "FromPlatformId": "plat_8",
-      "FromX": 148.8,
-      "FromY": 121.7,
+      "FromPlatformId": "plat_7",
+      "FromX": 145.9,
+      "FromY": 117.5,
       "FromSegmentIndex": 0,
-      "ToPlatformId": "plat_7",
-      "ToX": 143.7,
-      "ToY": 117.6,
+      "ToPlatformId": "plat_8",
+      "ToX": 148.8,
+      "ToY": 121.7,
       "ToSegmentIndex": 0,
       "ActionType": 3
     }

@@ -21,14 +21,17 @@ namespace ArtaleAI.Application.Pipeline
         private readonly Random _random = new();
 
         /// <summary>選出本次攻擊 Virtual-Key；無法解析主攻則失敗。</summary>
+        /// <param name="useHoldAttack">true＝主攻長按連打；false＝輪轉技單次脈衝。</param>
         public bool TrySelectAttackKey(
             AutoFarmSettings settings,
             DateTime nowUtc,
             out ushort virtualKey,
-            out string displayLabel)
+            out string displayLabel,
+            out bool useHoldAttack)
         {
             virtualKey = 0;
             displayLabel = string.Empty;
+            useHoldAttack = false;
             ArgumentNullException.ThrowIfNull(settings);
 
             settings.EnsureAttackSkillSlots();
@@ -49,6 +52,7 @@ namespace ArtaleAI.Application.Pipeline
 
                 virtualKey = skillVk;
                 displayLabel = NormalizeLabel(skill.Hotkey);
+                useHoldAttack = false;
                 _nextReadyUtc[i] = nowUtc.AddSeconds(ResolveCooldownSeconds(skill.CooldownSeconds));
                 _lastPulseUtc = nowUtc;
                 _lastPulseLabel = $"攻擊技 {displayLabel}";
@@ -59,6 +63,7 @@ namespace ArtaleAI.Application.Pipeline
                 return false;
 
             displayLabel = NormalizeLabel(settings.AttackPrimaryHotkey);
+            useHoldAttack = true;
             return true;
         }
 

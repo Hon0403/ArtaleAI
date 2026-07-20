@@ -235,7 +235,14 @@ namespace ArtaleAI.Application.Navigation
 
             _movementController.FocusGameWindow();
 
-            _keyboard.HoldKey(VK_DOWN);
+            // 攻擊租約佔鍵時 HoldKey 會失敗；不可忽略後仍送 Alt（假下跳 → 假卡點 → 熔斷）。
+            if (!_keyboard.HoldKey(VK_DOWN))
+            {
+                Logger.Warning("[下跳] 無法按住 ↓（導航輸入被更高優先活動佔用），判定失敗並交回救援。");
+                _keyboard.SendKey(VK_DOWN, true);
+                return ExecutionResult.Failed;
+            }
+
             await Task.Delay(JumpDownDirectionLeadMs, ct);
 
             _keyboard.SendKey(VK_JUMP, false);
