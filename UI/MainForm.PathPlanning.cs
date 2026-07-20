@@ -82,9 +82,7 @@ namespace ArtaleAI
                                 return;
                             _gamePipeline.VisionDataReady = false;
 
-                            if (_gamePipeline.BlocksNavigationInput)
-                                return;
-
+                            // 攻擊租約只擋方向鍵（MovementController 讓路），不應擋 FSM tick。
                             var tracker = _pathPlanningManager?.Tracker;
                             if (tracker?.IsRescueCircuitBroken == true)
                             {
@@ -96,8 +94,53 @@ namespace ArtaleAI
                             NavigationEdge? edgeToExecute = currentEdge;
                             var executeTarget = nextWaypoint;
 
+                            // 掛繩時必須先離繩；不可先跑 JumpDown 起跳檢查（會誤救援熔斷）。
+                            if (tracker != null &&
+                                tracker.IsPlayerOnRope((System.Drawing.PointF)playerPos))
+                            {
+                                var climbGoal = pathState.PlannedPath.Count > 0
+                                    ? pathState.PlannedPath[^1]
+                                    : executeTarget;
+
+                                if (tracker.TryResolveRopeClimbTowardGoal(
+                                        (System.Drawing.PointF)playerPos,
+                                        (System.Drawing.PointF)climbGoal,
+                                        out var ropeClimb,
+                                        out var ropeLanding) &&
+                                    ropeClimb != null)
+                                {
+                                    _gamePipeline.PreemptCombatForNavigation();
+                                    tracker.MarkRopeDismountClimbStarted();
+                                    Logger.Info(
+                                        $"[導航] 掛繩改爬 {ropeClimb.ActionType} " +
+                                        $"player=({playerPos.X:F1},{playerPos.Y:F1}) " +
+                                        $"goalY={climbGoal.Y:F1} landing=({ropeLanding.X:F1},{ropeLanding.Y:F1})");
+
+                                    if (_fsm != null &&
+                                        _fsm.TryStartNavigation(
+                                            ropeClimb, (SdPointF)playerPos, (SdPointF)ropeLanding))
+                                    {
+                                        ReportAction($"{ropeClimb.ActionType}");
+                                    }
+
+                                    return;
+                                }
+
+                                Logger.Warning(
+                                    $"[導航] 掛繩但找不到 Climb 邊，暫不執行 " +
+                                    $"player=({playerPos.X:F1},{playerPos.Y:F1})");
+                                return;
+                            }
+
                             bool needsJumpApproach = currentEdge?.ActionType is
                                 NavigationActionType.Jump or NavigationActionType.SideJump or NavigationActionType.JumpDown;
+
+                            // 換層邊／起跳對位前先搶回攻擊租約，避免 ↓／Alt 被長按擋下。
+                            bool needsVerticalPriority = needsJumpApproach
+                                || currentEdge?.ActionType is
+                                    NavigationActionType.ClimbUp or NavigationActionType.ClimbDown;
+                            if (needsVerticalPriority)
+                                _gamePipeline.PreemptCombatForNavigation();
 
                             if (needsJumpApproach &&
                                 tracker != null &&
@@ -133,9 +176,6 @@ namespace ArtaleAI
 
                             Logger.Info($"[導航狀態] 玩家=({playerPos.X:F1},{playerPos.Y:F1}) 目標=({executeTarget.X:F1},{executeTarget.Y:F1}) Edge={edgeToExecute?.FromNodeId}->{edgeToExecute?.ToNodeId} Action={edgeToExecute?.ActionType}");
 
-                            bool walkEdge = edgeToExecute != null &&
-                                            edgeToExecute.ActionType == NavigationActionType.Walk;
-
                             if (edgeToExecute == null)
                             {
                                 Logger.Error($"[導航狀態] 無合法導航邊可執行，停止自動導航。玩家=({playerPos.X:F1},{playerPos.Y:F1})");
@@ -143,13 +183,7 @@ namespace ArtaleAI
                                 return;
                             }
 
-                            if (walkEdge &&
-                                tracker != null &&
-                                tracker.IsPlayerOnRope((System.Drawing.PointF)playerPos))
-                            {
-                                Logger.Debug($"[導航] 仍在繩上，暫不啟動 Walk player=({playerPos.X:F1},{playerPos.Y:F1})");
-                            }
-                            else if (_fsm != null &&
+                            if (_fsm != null &&
                                 _fsm.TryStartNavigation(edgeToExecute, (SdPointF)playerPos, (SdPointF)executeTarget))
                             {
                                 ReportAction($"{edgeToExecute.ActionType}");

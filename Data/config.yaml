@@ -48,6 +48,7 @@ vision:
   - Color
   bloodBarDetectIntervalMs: 250
   monsterDetectIntervalMs: 200
+  frameDispatchIntervalMs: 0
   captureFrameRate: 15
   useFixedMinimapPosition: false
   fixedMinimapWidth: 250
@@ -87,6 +88,7 @@ navigation:
   ropeSegmentXTolerancePx: 1.5
   approachFailureRescueCutoff: 3
   rescueRepeatCutoff: 3
+  rescueCircuitCooldownSeconds: 20
   ropeHitboxWidth: 6
   ropeHitboxHeight: 15
   sideJumpAltHoldMs: 110
@@ -185,7 +187,7 @@ playerVitals:
   sampleRowCount: 0
   useAutoLayout: false
 autoFarm:
-  restIntervalMinutes: 1
+  restIntervalMinutes: 30
   restDurationSeconds: 60
   restJitterPercent: 20
   healHpEnabled: false

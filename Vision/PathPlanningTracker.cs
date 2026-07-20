@@ -63,14 +63,22 @@ namespace ArtaleAI.Vision
 
         private bool _sideJumpApproachInProgress;
         private string? _sideJumpApproachFromNodeId;
+        /// <summary>掛繩時誤排 Walk，改執行離繩 Climb；完成後不推進巡邏 waypoint。</summary>
+        private bool _ropeDismountClimbInProgress;
         private PlatformGeometryIndex _platformGeometry = PlatformGeometryIndex.Empty;
         private string? _approachFailNodeId;
         private int _approachFailCount;
         private readonly HashSet<string> _approachCutoffNodes = new(StringComparer.Ordinal);
 
         private bool _rescueCircuitBroken;
+        private DateTime _rescueCircuitBrokenUtc = DateTime.MinValue;
         private string? _lastRescueKey;
         private int _consecutiveSameRescueCount;
+
+        /// <summary>
+        /// 由 Pipeline 設定：攻擊租約／換頻等讓導航鍵時，靜止是預期行為，不可當卡點。
+        /// </summary>
+        public volatile bool SuppressStuckDetection;
 
         private readonly object _flightLock = new();
         private NavigationFlight? _activeFlight;
@@ -248,6 +256,13 @@ namespace ArtaleAI.Vision
                 return null;
             }
 
+            // Climb 凍結目標綁 edge.ToNode（含掛繩離繩改爬），不可用巡邏 Walk 的 waypoint。
+            if (frozen && edge != null &&
+                edge.ActionType is NavigationActionType.ClimbUp or NavigationActionType.ClimbDown)
+            {
+                return ResolveClimbLandingTarget(edge);
+            }
+
             if (!frozen)
             {
                 var state = CurrentPathState;
@@ -266,7 +281,7 @@ namespace ArtaleAI.Vision
                 return null;
             }
 
-            NavigationEdge? policyEdge = frozen ? edge : CurrentNavigationEdge;
+            NavigationEdge? policyEdge = CurrentNavigationEdge;
             if (policyEdge?.ActionType is NavigationActionType.ClimbUp or NavigationActionType.ClimbDown)
             {
                 if (!NavigationRopeHelper.TryExtractRopeX(policyEdge, out float ropeX))
@@ -281,6 +296,26 @@ namespace ArtaleAI.Vision
             }
 
             return ExecutionTargetTranslator.ForWaypoint(waypointNode);
+        }
+
+        private ExecutionTarget? ResolveClimbLandingTarget(NavigationEdge climbEdge)
+        {
+            var landingNode = _navGraph?.GetNode(climbEdge.ToNodeId);
+            if (landingNode == null)
+            {
+                Logger.Error(
+                    $"[導航] Climb 落地節點不存在 to={climbEdge.ToNodeId}");
+                return null;
+            }
+
+            if (!NavigationRopeHelper.TryExtractRopeX(climbEdge, out float ropeX))
+            {
+                Logger.Error(
+                    $"[導航] Climb 邊缺少 ropeX metadata edge={FormatEdgeLabel(climbEdge)}");
+                return null;
+            }
+
+            return ExecutionTargetTranslator.ForRopeLanding(landingNode, ropeX);
         }
 
         private static string FormatEdgeLabel(NavigationEdge? edge) =>
@@ -303,6 +338,10 @@ namespace ArtaleAI.Vision
         {
             lock (_flightLock)
                 ClearNavigationFlightInternal();
+
+            // 飛行中斷時也要清，避免下一次正常 Walk 誤跳過 waypoint 推進。
+            if (_ropeDismountClimbInProgress)
+                ClearRopeDismountClimbState();
         }
 
         /// <summary>
@@ -378,6 +417,59 @@ namespace ArtaleAI.Vision
                 (float)nav.RopeSegmentXTolerancePx,
                 (float)nav.RopeLandingYTolerancePx);
         }
+
+        /// <summary>
+        /// 掛繩且誤排 Walk 時：依目標 Y 選 ClimbUp／ClimbDown，落地後可再走。
+        /// </summary>
+        public bool TryResolveRopeClimbTowardGoal(
+            PointF playerPos,
+            PointF goalPos,
+            out NavigationEdge? climbEdge,
+            out PointF landingPos)
+        {
+            climbEdge = null;
+            landingPos = default;
+            if (_navGraph == null)
+                return false;
+
+            var nav = AppConfig.Instance.Navigation;
+            var candidates = new List<ClimbEdgeCandidate>();
+            foreach (var node in _navGraph.GetAllNodes())
+            {
+                foreach (var edge in _navGraph.GetOutgoingEdges(node.Id))
+                {
+                    if (edge.ActionType is not (NavigationActionType.ClimbUp or NavigationActionType.ClimbDown))
+                        continue;
+                    var toNode = _navGraph.GetNode(edge.ToNodeId);
+                    if (toNode == null)
+                        continue;
+                    candidates.Add(new ClimbEdgeCandidate(edge, toNode.Position));
+                }
+            }
+
+            var query = new RopeClimbPickQuery
+            {
+                PlayerPos = playerPos,
+                GoalPos = goalPos,
+                RopeSegments = _mapRopeSegmentsForVisualization,
+                Candidates = candidates,
+                RopeXTolerancePx = (float)nav.RopeSegmentXTolerancePx,
+                EndpointYTolerancePx = (float)nav.RopeLandingYTolerancePx
+            };
+
+            if (!NavigationRopeHelper.TryPickClimbTowardGoal(query, out var picked))
+                return false;
+
+            climbEdge = picked.Edge;
+            landingPos = picked.LandingPos;
+            return true;
+        }
+
+        public void MarkRopeDismountClimbStarted() => _ropeDismountClimbInProgress = true;
+
+        public bool IsRopeDismountClimbInProgress => _ropeDismountClimbInProgress;
+
+        public void ClearRopeDismountClimbState() => _ropeDismountClimbInProgress = false;
 
         /// <summary>
         /// Jump / SideJump / JumpDown 前若尚未站在 from 節點 Hitbox，回傳需先執行的 Walk 邊與目標座標。
@@ -605,6 +697,11 @@ namespace ArtaleAI.Vision
                         ClearSideJumpApproachState();
                         Logger.Info("[路徑追蹤] 跳躍起跳點已對齊，下帧執行跳躍動作。");
                     }
+                    else if (_ropeDismountClimbInProgress)
+                    {
+                        ClearRopeDismountClimbState();
+                        Logger.Info("[路徑追蹤] 掛繩離繩完成，不推進巡邏 waypoint，下帧可啟動 Walk。");
+                    }
                     else
                     {
                         Logger.Info($"[路徑追蹤] FSM 驗收成功，正式推進進度。");
@@ -654,6 +751,44 @@ namespace ArtaleAI.Vision
             _lastRescueKey = null;
             _consecutiveSameRescueCount = 0;
             _rescueCircuitBroken = false;
+            _rescueCircuitBrokenUtc = DateTime.MinValue;
+        }
+
+        /// <summary>
+        /// 自動打怪 Stop／Start 時呼叫：清掉熔斷、Approach 黑名單與殘留飛行，
+        /// 避免「關掉再開」仍被舊熔斷擋死無法恢復巡邏。
+        /// </summary>
+        public void ResetFarmSessionState()
+        {
+            SuppressStuckDetection = false;
+            ResetRescueCircuitBreaker();
+            ClearSideJumpApproachState();
+            ClearRopeDismountClimbState();
+            _approachCutoffNodes.Clear();
+            _approachFailNodeId = null;
+            _approachFailCount = 0;
+            ClearForcedGoal();
+            EndNavigationFlight();
+            _lastPosition = null;
+            _lastMovementUtc = DateTime.UtcNow;
+            Logger.Info("[路徑追蹤] 已重置打怪工作階段狀態（熔斷／Approach／強制目標）");
+        }
+
+        /// <summary>熔斷冷卻到期則自動解除，避免假卡點造成巡邏永久停走。</summary>
+        private void TryRecoverRescueCircuitBreaker()
+        {
+            if (!_rescueCircuitBroken)
+                return;
+
+            int cooldownSec = AppConfig.Instance?.Navigation?.RescueCircuitCooldownSeconds ?? 20;
+            if (cooldownSec <= 0)
+                return;
+
+            if ((DateTime.UtcNow - _rescueCircuitBrokenUtc).TotalSeconds < cooldownSec)
+                return;
+
+            Logger.Info($"[導航救援] 熔斷冷卻結束（{cooldownSec}s），恢復救援與導航編排");
+            ResetRescueCircuitBreaker();
         }
 
 
@@ -711,6 +846,7 @@ namespace ArtaleAI.Vision
         public void ProcessTrackingResult(MinimapTrackingResult? result)
         {
             if (result == null) return;
+            TryRecoverRescueCircuitBreaker();
             UpdateTrackingHistory(result);
             UpdatePathState(result);
         }
@@ -739,8 +875,8 @@ namespace ArtaleAI.Vision
             }
             else
             {
-                // 強制目標已到達＝休息倒數中，靜止是預期行為，不可當卡點。
-                if (_forcedGoalArrived)
+                // 休息倒數／攻擊佔鍵等：靜止是預期行為，不可當卡點、不可累積救援熔斷。
+                if (_forcedGoalArrived || SuppressStuckDetection)
                 {
                     _lastMovementUtc = DateTime.UtcNow;
                     return;
@@ -1201,6 +1337,15 @@ namespace ArtaleAI.Vision
             EndNavigationFlight();
             ClearSideJumpApproachState();
 
+            // 掛繩時吸到平台再排 JumpDown 會立刻再次救援並熔斷；交給編排層先離繩。
+            if (IsPlayerOnRope(currentPos))
+            {
+                Logger.Warning(
+                    $"[導航救援] 角色仍在繩上，跳過平台吸點重規劃 " +
+                    $"player=({currentPos.X:F1},{currentPos.Y:F1})");
+                return false;
+            }
+
             var nearestNode = _navGraph.FindNearestNode(currentPos, 150.0f);
 
             if (nearestNode == null)
@@ -1285,8 +1430,11 @@ namespace ArtaleAI.Vision
                 return true;
 
             _rescueCircuitBroken = true;
+            _rescueCircuitBrokenUtc = DateTime.UtcNow;
+            int cooldownSec = AppConfig.Instance?.Navigation?.RescueCircuitCooldownSeconds ?? 20;
+            string cooldownHint = cooldownSec > 0 ? $"，{cooldownSec}s 後自動解除" : "（需位移或重啟才解除）";
             Logger.Error(
-                $"[導航救援] 熔斷觸發：同導航鍵 {rescueKey} 連續救援 {_consecutiveSameRescueCount} 次，停止重試 (blocked/stuck)。");
+                $"[導航救援] 熔斷觸發：同導航鍵 {rescueKey} 連續救援 {_consecutiveSameRescueCount} 次，停止重試 (blocked/stuck){cooldownHint}。");
             return false;
         }
     }

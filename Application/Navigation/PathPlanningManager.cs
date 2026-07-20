@@ -43,12 +43,14 @@ namespace ArtaleAI.Application.Navigation
             if (captureItem == null)
                 throw new InvalidOperationException($"無法找到遊戲視窗: {gameWindowTitle}");
 
+            // 每次開打怪都清熔斷／Approach 黑名單，否則關過再開會被舊狀態擋死。
+            _tracker.ResetFarmSessionState();
             _isRunning = true;
             Logger.Info("[路徑規劃管理] 路徑規劃已啟動");
             return Task.CompletedTask;
         }
 
-        /// <summary>清除運行旗標。</summary>
+        /// <summary>清除運行旗標，並重置打怪工作階段殘留狀態。</summary>
         public Task StopAsync()
         {
             if (!_isRunning)
@@ -58,6 +60,7 @@ namespace ArtaleAI.Application.Navigation
             }
 
             _isRunning = false;
+            _tracker.ResetFarmSessionState();
             Logger.Info("[路徑規劃管理] 路徑規劃已停止");
             return Task.CompletedTask;
         }

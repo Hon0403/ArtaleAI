@@ -52,6 +52,13 @@ namespace ArtaleAI.Models.Config
 
         public int BloodBarDetectIntervalMs { get; set; } = 100;
         public int MonsterDetectIntervalMs { get; set; } = 100;
+
+        /// <summary>
+        /// LiveView 幀分發間隔（毫秒）。0 表示沿用 <see cref="MonsterDetectIntervalMs"/>。
+        /// 與怪物偵測解耦：可讓導航／小地圖較快更新，同時維持較慢的模板比對節流。
+        /// </summary>
+        public int FrameDispatchIntervalMs { get; set; }
+
         public int CaptureFrameRate { get; set; } = 30;
 
         public bool UseFixedMinimapPosition { get; set; } = false;
