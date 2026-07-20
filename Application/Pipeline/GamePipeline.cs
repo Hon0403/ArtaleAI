@@ -9,6 +9,7 @@ using ArtaleAI.Models.Config;
 using ArtaleAI.Vision;
 using ArtaleAI.Application.Navigation;
 using ArtaleAI.Application.Movement;
+using ArtaleAI.Domain.Input;
 using ArtaleAI.Domain.Navigation;
 using ArtaleAI.Models.Detection;
 using ArtaleAI.Models.Minimap;
@@ -52,11 +53,11 @@ namespace ArtaleAI.Application.Pipeline
         private readonly AttackRotationCoordinator _attackRotation = new();
         private readonly OtherPlayerAvoidanceCoordinator _otherPlayerAvoidance = new();
         private readonly ChangeChannelSequence _changeChannelSequence = new();
-        private readonly FarmUiInterruptCoordinator _farmUiInterrupt = new();
-        private readonly PartyHpBarRecoveryCoordinator _partyRecovery = new();
+        private readonly InputLease _inputLease = new();
+        private readonly FarmUiInterruptCoordinator _farmUiInterrupt;
+        private readonly PartyHpBarRecoveryCoordinator _partyRecovery;
         private readonly object _uiAutomationFrameLock = new();
         private Mat? _uiAutomationFrameCache;
-        private int _changeChannelInFlight;
         private DateTime _lastBloodBarDetection = DateTime.MinValue;
         private DateTime _lastPlayerVitalsDetection = DateTime.MinValue;
         private DateTime _lastMonsterDetection = DateTime.MinValue;
@@ -107,7 +108,6 @@ namespace ArtaleAI.Application.Pipeline
         private string? _healRetreatGoalNodeId;
         private readonly HashSet<string> _healRetreatFailedNodeIds = new(StringComparer.Ordinal);
 
-        private int _attackInputLease;
         private int _monsterDetectionInFlight;
         private int _monsterJobReplacementCount;
         private readonly object _monsterJobLock = new();
@@ -188,19 +188,15 @@ namespace ArtaleAI.Application.Pipeline
         public bool IsRecoveringParty => _partyRecovery.IsRecovering;
 
         /// <summary>
-        /// 攻擊／小休倒數／補給等待／遇人退避／換頻／打怪清窗期間，移動控制器應讓出方向鍵。
+        /// 攻擊／小休倒數／補給等待／遇人退避／InputLease 獨佔期間，移動控制器應讓出方向鍵。
         /// 導航 FSM 仍應持續 tick（由 MovementController 在送鍵前讓路），不可連編排一起擋住。
         /// SeekingRest／SeekingHealSafeZone 不在此列：前往目標必須靠導航輸入。
         /// </summary>
         public bool BlocksNavigationInput =>
             _restPhase == RestPhaseResting
             || _healRetreatPhase == HealRetreatWaiting
-            || _isAttacking
             || _otherPlayerAvoidance.IsAvoiding
-            || _farmUiInterrupt.IsDismissing
-            || _partyRecovery.IsRecovering
-            || Volatile.Read(ref _attackInputLease) > 0
-            || Volatile.Read(ref _changeChannelInFlight) != 0;
+            || _inputLease.BlocksNavigationKeys;
 
         /// <summary>每幀處理完成後觸發，攜帶所有偵測結果的快照</summary>
         public event Action<FrameProcessingResult>? OnFrameProcessed;
@@ -221,6 +217,8 @@ namespace ArtaleAI.Application.Pipeline
             _pathPlanningManager = pathPlanningManager;
             _movementController = movementController;
             _playerVitalsDetector = playerVitalsDetector ?? new PlayerVitalsDetector();
+            _farmUiInterrupt = new FarmUiInterruptCoordinator(_inputLease, OnExclusiveUiPreemptedCombat);
+            _partyRecovery = new PartyHpBarRecoveryCoordinator(_inputLease, OnExclusiveUiPreemptedCombat);
         }
 
         /// <summary>更新小地圖邊界範圍（由 MainForm 傳入）</summary>
@@ -282,9 +280,7 @@ namespace ArtaleAI.Application.Pipeline
                     || AutoBuffEnabled
                     || PartyRecoveryEnabled
                     || OtherPlayerAvoidanceEnabled
-                    || Volatile.Read(ref _changeChannelInFlight) != 0
-                    || _partyRecovery.IsRecovering
-                    || _farmUiInterrupt.IsDismissing)
+                    || !_inputLease.IsIdle)
                     CacheFrameForUiAutomation(frameMat);
 
                 MinimapTrackingResult? trackingResult = null;
@@ -339,16 +335,12 @@ namespace ArtaleAI.Application.Pipeline
 
                 if (AutoHealEnabled
                     && !_otherPlayerAvoidance.IsAvoiding
-                    && !_partyRecovery.IsRecovering
-                    && !_farmUiInterrupt.IsDismissing
-                    && Volatile.Read(ref _changeChannelInFlight) == 0)
+                    && _inputLease.IsIdle)
                     ProcessAutoHeal(config, now);
 
                 if (AutoBuffEnabled
                     && !_otherPlayerAvoidance.IsAvoiding
-                    && !_partyRecovery.IsRecovering
-                    && !_farmUiInterrupt.IsDismissing
-                    && Volatile.Read(ref _changeChannelInFlight) == 0)
+                    && _inputLease.IsIdle)
                     ProcessBuffSkills(config, now);
 
                 double msAfterBlood = sw.Elapsed.TotalMilliseconds;
@@ -443,10 +435,7 @@ namespace ArtaleAI.Application.Pipeline
                 && _restPhase == RestPhaseNone
                 && _healRetreatPhase == HealRetreatNone
                 && !_otherPlayerAvoidance.IsAvoiding
-                && !_partyRecovery.IsRecovering
-                && !_farmUiInterrupt.IsDismissing
-                && Volatile.Read(ref _changeChannelInFlight) == 0
-                && Volatile.Read(ref _attackInputLease) == 0
+                && !_inputLease.BlocksCombatStart
                 && AttackInputArbiter.IsCooldownReady(_lastAttackTime, DateTime.UtcNow);
         }
 
@@ -457,27 +446,34 @@ namespace ArtaleAI.Application.Pipeline
                 && _restPhase == RestPhaseNone
                 && _healRetreatPhase == HealRetreatNone
                 && !_otherPlayerAvoidance.IsAvoiding
-                && !_partyRecovery.IsRecovering
-                && !_farmUiInterrupt.IsDismissing
-                && Volatile.Read(ref _changeChannelInFlight) == 0
+                && _inputLease.IsHeldBy(InputOwner.Combat)
                 && !ShouldDeferAttackForNavigation();
         }
 
         private bool IsCombatInputHeld() =>
             _isAttacking
-            || Volatile.Read(ref _attackInputLease) > 0
+            || _inputLease.IsHeldBy(InputOwner.Combat)
             || Volatile.Read(ref _heldAttackVirtualKey) != 0;
 
         /// <summary>
         /// 垂直換層／休息尋路等更高優先活動接管鍵盤前呼叫：
-        /// 立刻放鍵並釋放租約，避免 Walk／JumpDown 假啟動。
+        /// 立刻放鍵並釋放 Combat 租約，避免 Walk／JumpDown 假啟動。
         /// </summary>
         public void PreemptCombatForNavigation()
         {
             AbortCombatInputs();
             Interlocked.Exchange(ref _heldAttackVirtualKey, 0);
             _isAttacking = false;
-            Interlocked.Exchange(ref _attackInputLease, 0);
+            _inputLease.PreemptCombat();
+            _lastAttackTime = DateTime.UtcNow;
+        }
+
+        /// <summary>UI 序列強佔 Combat 時放鍵；租約已由 InputLease 轉給 UI Owner。</summary>
+        private void OnExclusiveUiPreemptedCombat()
+        {
+            AbortCombatInputs();
+            Interlocked.Exchange(ref _heldAttackVirtualKey, 0);
+            _isAttacking = false;
             _lastAttackTime = DateTime.UtcNow;
         }
 
@@ -486,8 +482,7 @@ namespace ArtaleAI.Application.Pipeline
             if (!TryCollectAttackTargets(out SdRect playerAttackBox, out List<DetectionResult> targets))
                 return false;
 
-            // CAS 租約：同一時刻只允許一條攻擊序列持有鍵盤。
-            if (Interlocked.CompareExchange(ref _attackInputLease, 1, 0) != 0)
+            if (!_inputLease.TryAcquire(InputOwner.Combat))
                 return false;
 
             _isAttacking = true;
@@ -866,7 +861,7 @@ namespace ArtaleAI.Application.Pipeline
             // AutoAttack／Heal／Buff 皆由「自動打怪」勾選驅動。
             bool autoFarmActive = AutoAttackEnabled || AutoHealEnabled || AutoBuffEnabled;
             bool uiSequenceBusy =
-                Volatile.Read(ref _changeChannelInFlight) != 0
+                _inputLease.IsHeldBy(InputOwner.ChangeChannel)
                 || _partyRecovery.BlocksInterruptDismiss;
             bool hasMinimap = trackingResult?.MinimapBounds != null;
 
@@ -899,7 +894,9 @@ namespace ArtaleAI.Application.Pipeline
                 return;
             }
 
-            if (Interlocked.CompareExchange(ref _changeChannelInFlight, 1, 0) != 0)
+            if (!_inputLease.TryAcquirePreemptingCombat(
+                    InputOwner.ChangeChannel,
+                    OnExclusiveUiPreemptedCombat))
                 return;
 
             CharacterMovementController movement = _movementController;
@@ -941,7 +938,7 @@ namespace ArtaleAI.Application.Pipeline
                 }
                 finally
                 {
-                    Interlocked.Exchange(ref _changeChannelInFlight, 0);
+                    _inputLease.Release(InputOwner.ChangeChannel);
                 }
             });
         }
@@ -976,7 +973,7 @@ namespace ArtaleAI.Application.Pipeline
             if (_movementController == null)
                 return;
 
-            if (Volatile.Read(ref _changeChannelInFlight) != 0
+            if (_inputLease.IsHeldBy(InputOwner.ChangeChannel)
                 || _farmUiInterrupt.IsDismissing
                 || _otherPlayerAvoidance.IsAvoiding
                 || IsResting)
@@ -1025,9 +1022,8 @@ namespace ArtaleAI.Application.Pipeline
         /// </summary>
         private bool IsHealRetreatPreemptedByHigherPriority() =>
             _otherPlayerAvoidance.IsAvoiding
-            || _partyRecovery.IsRecovering
-            || _farmUiInterrupt.IsDismissing
-            || Volatile.Read(ref _changeChannelInFlight) != 0;
+            || _inputLease.Current is
+                InputOwner.Party or InputOwner.ChangeChannel or InputOwner.FarmDismiss;
 
         private void BeginHealRetreat(HealResourceKind? failedResource, DateTime now)
         {
@@ -1371,7 +1367,7 @@ namespace ArtaleAI.Application.Pipeline
             {
                 ReleaseHeldAttackKey();
                 _isAttacking = false;
-                Interlocked.Exchange(ref _attackInputLease, 0);
+                _inputLease.Release(InputOwner.Combat);
             }
         }
 

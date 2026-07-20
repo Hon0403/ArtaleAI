@@ -18,6 +18,11 @@
 
   <ItemGroup>
     <Compile Include="..\Application\Pipeline\AutoHealCoordinator.cs" Link="Linked\AutoHealCoordinator.cs" />
+    <Compile Include="..\Application\Pipeline\AttackInputArbiter.cs" Link="Linked\AttackInputArbiter.cs" />
+    <Compile Include="..\Domain\Input\InputOwner.cs" Link="Linked\InputOwner.cs" />
+    <Compile Include="..\Domain\Input\InputLease.cs" Link="Linked\InputLease.cs" />
+    <Compile Include="..\Domain\Navigation\NavigationEdge.cs" Link="Linked\NavigationEdge.cs" />
+    <Compile Include="..\Domain\Navigation\NavigationRopeHelper.cs" Link="Linked\NavigationRopeHelper.cs" />
     <Compile Include="..\Models\Config\AutoFarmSettings.cs" Link="Linked\AutoFarmSettings.cs" />
     <Compile Include="..\Models\Config\BuffSkillEntry.cs" Link="Linked\BuffSkillEntry.cs" />
     <Compile Include="..\Models\Config\AttackSkillEntry.cs" Link="Linked\AttackSkillEntry.cs" />

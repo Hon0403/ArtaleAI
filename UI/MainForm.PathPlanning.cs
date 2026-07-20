@@ -94,10 +94,16 @@ namespace ArtaleAI
                             NavigationEdge? edgeToExecute = currentEdge;
                             var executeTarget = nextWaypoint;
 
-                            // 掛繩時必須先離繩；不可先跑 JumpDown 起跳檢查（會誤救援熔斷）。
+                            // 定位與編排分離：僅 Idle 可啟動離繩；Jump／Climb 進行中不可插隊。
+                            var fsmState = _fsm?.CurrentState ?? NavigationState.Idle;
+                            bool canStartNewEdge = fsmState is NavigationState.Idle or NavigationState.Reached_Waypoint;
+
                             if (tracker != null &&
                                 tracker.IsPlayerOnRope((System.Drawing.PointF)playerPos))
                             {
+                                if (!canStartNewEdge)
+                                    return;
+
                                 var climbGoal = pathState.PlannedPath.Count > 0
                                     ? pathState.PlannedPath[^1]
                                     : executeTarget;
@@ -110,16 +116,15 @@ namespace ArtaleAI
                                     ropeClimb != null)
                                 {
                                     _gamePipeline.PreemptCombatForNavigation();
-                                    tracker.MarkRopeDismountClimbStarted();
-                                    Logger.Info(
-                                        $"[導航] 掛繩改爬 {ropeClimb.ActionType} " +
-                                        $"player=({playerPos.X:F1},{playerPos.Y:F1}) " +
-                                        $"goalY={climbGoal.Y:F1} landing=({ropeLanding.X:F1},{ropeLanding.Y:F1})");
-
                                     if (_fsm != null &&
                                         _fsm.TryStartNavigation(
                                             ropeClimb, (SdPointF)playerPos, (SdPointF)ropeLanding))
                                     {
+                                        tracker.MarkRopeDismountClimbStarted();
+                                        Logger.Info(
+                                            $"[導航] 掛繩改爬 {ropeClimb.ActionType} " +
+                                            $"player=({playerPos.X:F1},{playerPos.Y:F1}) " +
+                                            $"goalY={climbGoal.Y:F1} landing=({ropeLanding.X:F1},{ropeLanding.Y:F1})");
                                         ReportAction($"{ropeClimb.ActionType}");
                                     }
 
@@ -127,10 +132,13 @@ namespace ArtaleAI
                                 }
 
                                 Logger.Warning(
-                                    $"[導航] 掛繩但找不到 Climb 邊，暫不執行 " +
+                                    $"[導航] 掛繩但無法啟動 Climb，暫不執行 " +
                                     $"player=({playerPos.X:F1},{playerPos.Y:F1})");
                                 return;
                             }
+
+                            if (!canStartNewEdge)
+                                return;
 
                             bool needsJumpApproach = currentEdge?.ActionType is
                                 NavigationActionType.Jump or NavigationActionType.SideJump or NavigationActionType.JumpDown;
@@ -145,7 +153,6 @@ namespace ArtaleAI
                             if (needsJumpApproach &&
                                 tracker != null &&
                                 currentEdge != null &&
-                                _fsm?.CurrentState != NavigationState.Jumping &&
                                 !tracker.IsSideJumpApproachInProgress)
                             {
                                 if (!tracker.IsJumpTakeoffReachableByWalk(

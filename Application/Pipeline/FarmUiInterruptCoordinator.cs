@@ -1,4 +1,5 @@
 using ArtaleAI.Application.Movement;
+using ArtaleAI.Domain.Input;
 using ArtaleAI.Models.Config;
 using ArtaleAI.Shared;
 using ArtaleAI.Vision;
@@ -13,12 +14,15 @@ namespace ArtaleAI.Application.Pipeline
     /// 1) 小地圖連續消失 → Esc → 暗色 X；
     /// 2) 小地圖橙色 ROI 內探針模板連續命中 → Esc → 最新幀驗證消失。
     /// 換頻／隊伍建隊危險階段不插手。
+    /// 清窗期間透過 InputLease 獨佔鍵盤（可強佔 Combat）。
     /// </summary>
     public sealed class FarmUiInterruptCoordinator : IDisposable
     {
         private const ushort VkEscape = 0x1B;
         private const int PostEscapeSettleMs = 450;
 
+        private readonly InputLease _inputLease;
+        private readonly Action _onCombatPreempted;
         private readonly UiInterruptDismisser _dismisser = new();
         private readonly object _probeLock = new();
         private readonly List<(string Path, Mat Template)> _probeTemplates = [];
@@ -29,6 +33,13 @@ namespace ArtaleAI.Application.Pipeline
         private DateTime _lastProbeScanUtc = DateTime.MinValue;
         private int _probeHitStreak;
         private int _dismissInFlight;
+
+        public FarmUiInterruptCoordinator(InputLease inputLease, Action onCombatPreempted)
+        {
+            _inputLease = inputLease ?? throw new ArgumentNullException(nameof(inputLease));
+            _onCombatPreempted = onCombatPreempted
+                ?? throw new ArgumentNullException(nameof(onCombatPreempted));
+        }
 
         public bool IsDismissing => Volatile.Read(ref _dismissInFlight) != 0;
 
@@ -131,8 +142,14 @@ namespace ArtaleAI.Application.Pipeline
                 return false;
             }
 
-            if (Interlocked.CompareExchange(ref _dismissInFlight, 1, 0) != 0)
+            if (!_inputLease.TryAcquirePreemptingCombat(InputOwner.FarmDismiss, _onCombatPreempted))
                 return false;
+
+            if (Interlocked.CompareExchange(ref _dismissInFlight, 1, 0) != 0)
+            {
+                _inputLease.Release(InputOwner.FarmDismiss);
+                return false;
+            }
 
             _probeHitStreak = 0;
             _lastAttemptUtc = now;
@@ -188,6 +205,7 @@ namespace ArtaleAI.Application.Pipeline
                 finally
                 {
                     Interlocked.Exchange(ref _dismissInFlight, 0);
+                    _inputLease.Release(InputOwner.FarmDismiss);
                 }
             });
 
@@ -205,8 +223,14 @@ namespace ArtaleAI.Application.Pipeline
             if ((now - _lastAttemptUtc).TotalMilliseconds < cooldownMs)
                 return;
 
-            if (Interlocked.CompareExchange(ref _dismissInFlight, 1, 0) != 0)
+            if (!_inputLease.TryAcquirePreemptingCombat(InputOwner.FarmDismiss, _onCombatPreempted))
                 return;
+
+            if (Interlocked.CompareExchange(ref _dismissInFlight, 1, 0) != 0)
+            {
+                _inputLease.Release(InputOwner.FarmDismiss);
+                return;
+            }
 
             _lastAttemptUtc = now;
             Mat clone = frameMat.Clone();
@@ -253,6 +277,7 @@ namespace ArtaleAI.Application.Pipeline
                 {
                     clone.Dispose();
                     Interlocked.Exchange(ref _dismissInFlight, 0);
+                    _inputLease.Release(InputOwner.FarmDismiss);
                 }
             });
         }

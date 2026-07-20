@@ -1,4 +1,5 @@
 using ArtaleAI.Application.Movement;
+using ArtaleAI.Domain.Input;
 using ArtaleAI.Models.Config;
 using ArtaleAI.Shared;
 using ArtaleAI.Vision;
@@ -10,6 +11,7 @@ namespace ArtaleAI.Application.Pipeline
     /// 隊伍血條守門：持續監測＋相位驅動狀態機（對齊換頻）。
     /// 主條件＝畫面相位（PartyUiScreenProbe）；按鍵／點擊僅為動作。
     /// OpenWindow → ClickCreate → CloseWindow(Esc) → AwaitBloodBar。
+    /// 啟動前透過 InputLease 獨佔鍵盤（可強佔 Combat）。
     /// </summary>
     public sealed class PartyHpBarRecoveryCoordinator : IDisposable
     {
@@ -48,6 +50,8 @@ namespace ArtaleAI.Application.Pipeline
         private const int PulseHoldMs = 2500;
         private const int RecentBloodBarMs = 2000;
 
+        private readonly InputLease _inputLease;
+        private readonly Action _onCombatPreempted;
         private readonly object _templateLock = new();
         private Mat? _createTemplate;
         private string _templatePathLoaded = string.Empty;
@@ -56,6 +60,13 @@ namespace ArtaleAI.Application.Pipeline
         private string _lastPulseLabel = string.Empty;
         private int _recoveryInFlight;
         private int _currentStepOrdinal = -1;
+
+        public PartyHpBarRecoveryCoordinator(InputLease inputLease, Action onCombatPreempted)
+        {
+            _inputLease = inputLease ?? throw new ArgumentNullException(nameof(inputLease));
+            _onCombatPreempted = onCombatPreempted
+                ?? throw new ArgumentNullException(nameof(onCombatPreempted));
+        }
 
         public bool IsRecovering => Volatile.Read(ref _recoveryInFlight) != 0;
 
@@ -102,8 +113,14 @@ namespace ArtaleAI.Application.Pipeline
                 return;
             }
 
-            if (Interlocked.CompareExchange(ref _recoveryInFlight, 1, 0) != 0)
+            if (!_inputLease.TryAcquirePreemptingCombat(InputOwner.Party, _onCombatPreempted))
                 return;
+
+            if (Interlocked.CompareExchange(ref _recoveryInFlight, 1, 0) != 0)
+            {
+                _inputLease.Release(InputOwner.Party);
+                return;
+            }
 
             _lastAttemptUtc = nowUtc;
             SetPulse("隊伍重建中");
@@ -134,6 +151,7 @@ namespace ArtaleAI.Application.Pipeline
                 {
                     Volatile.Write(ref _currentStepOrdinal, -1);
                     Interlocked.Exchange(ref _recoveryInFlight, 0);
+                    _inputLease.Release(InputOwner.Party);
                 }
             });
         }

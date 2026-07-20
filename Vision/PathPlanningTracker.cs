@@ -697,13 +697,22 @@ namespace ArtaleAI.Vision
                         ClearSideJumpApproachState();
                         Logger.Info("[路徑追蹤] 跳躍起跳點已對齊，下帧執行跳躍動作。");
                     }
-                    else if (_ropeDismountClimbInProgress)
+                    else if (_ropeDismountClimbInProgress &&
+                             ActiveFlightActionType is NavigationActionType.ClimbUp or NavigationActionType.ClimbDown)
                     {
                         ClearRopeDismountClimbState();
                         Logger.Info("[路徑追蹤] 掛繩離繩完成，不推進巡邏 waypoint，下帧可啟動 Walk。");
                     }
                     else
                     {
+                        // Jump 等非離繩飛行若誤留旗標，清掉後仍正常推進，避免同一 Jump 死循環。
+                        if (_ropeDismountClimbInProgress)
+                        {
+                            Logger.Debug(
+                                $"[路徑追蹤] 忽略非 Climb 的離繩旗標 action={ActiveFlightActionType}");
+                            ClearRopeDismountClimbState();
+                        }
+
                         Logger.Info($"[路徑追蹤] FSM 驗收成功，正式推進進度。");
 
                         CurrentPathState.CurrentWaypointIndex++;
